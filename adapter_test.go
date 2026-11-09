@@ -20,8 +20,8 @@ func TestAdapterCommandsAndSurvivors(t *testing.T) {
 	}
 	var calls []invocation
 	runner := func(_ context.Context, env []string, name string, args ...string) ([]byte, error) {
-		if !reflect.DeepEqual(env, dockerEnv(l)) {
-			t.Fatalf("context environment not pinned: %v", env)
+		if !reflect.DeepEqual(env, []string{"DOCKER_HOST=", "DOCKER_CONTEXT=test-context", "KIND_EXPERIMENTAL_PROVIDER=docker", "COMPOSE_INTERACTIVE_NO_CLI=1"}) {
+			t.Fatalf("context environment not pinned to recorded context: %v", env)
 		}
 		calls = append(calls, invocation{name, args})
 		return nil, nil

@@ -132,7 +132,11 @@ func TestOpenStoreRestrictsExistingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := filepath.Join(dir, "state.json")
-	if err := os.WriteFile(state, []byte(`{"version":1,"leases":{}}`), 0600); err != nil {
+	if err := os.WriteFile(state, []byte(`{"version":1,"leases":{}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(dir, "lock")
+	if err := os.WriteFile(lock, nil, 0644); err != nil {
 		t.Fatal(err)
 	}
 	s, err := openStore(context.Background(), dir)
@@ -147,8 +151,14 @@ func TestOpenStoreRestrictsExistingDirectory(t *testing.T) {
 	if info.Mode().Perm() != 0700 {
 		t.Fatalf("directory permissions = %04o, want 0700", info.Mode().Perm())
 	}
-	if _, err := os.Stat(state); err != nil {
-		t.Fatalf("existing lease state was not preserved: %v", err)
+	for _, path := range []string{state, lock} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("existing store file was not preserved: %v", err)
+		}
+		if info.Mode().Perm() != 0600 {
+			t.Fatalf("%s permissions = %04o, want 0600", filepath.Base(path), info.Mode().Perm())
+		}
 	}
 }
 

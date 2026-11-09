@@ -48,6 +48,10 @@ func openStore(ctx context.Context, dir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := f.Chmod(0600); err != nil {
+		f.Close()
+		return nil, err
+	}
 	// ponytail: one host-wide lock covers slow adapters too; split only if measured contention matters.
 	for {
 		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
@@ -66,7 +70,12 @@ func openStore(ctx context.Context, dir string) (*Store, error) {
 		}
 	}
 	s := &Store{Version: 1, Leases: map[string]Lease{}, dir: dir, lock: f}
-	data, err := os.ReadFile(filepath.Join(dir, "state.json"))
+	statePath := filepath.Join(dir, "state.json")
+	if err := os.Chmod(statePath, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
+		s.Close()
+		return nil, err
+	}
+	data, err := os.ReadFile(statePath)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
