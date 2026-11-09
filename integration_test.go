@@ -73,6 +73,7 @@ func TestIntegrationKind(t *testing.T) {
 	id := l["id"].(string)
 	resource := l["resource"].(map[string]any)
 	name := resource["name"].(string)
+	t.Logf("created uniquely leased kind cluster %s", name)
 	out, err := runCommand(context.Background(), []string{"KIND_EXPERIMENTAL_PROVIDER=docker"}, "kind", "get", "clusters")
 	if err != nil || !strings.Contains(string(out), name) {
 		t.Fatalf("leased cluster not running: %s, %v", out, err)
@@ -84,6 +85,7 @@ func TestIntegrationKind(t *testing.T) {
 	if err != nil || strings.Contains(string(out), name) {
 		t.Fatalf("cluster survived release: %s, %v", out, err)
 	}
+	t.Logf("verified kind get clusters no longer lists %s", name)
 }
 
 func TestIntegrationCompose(t *testing.T) {
