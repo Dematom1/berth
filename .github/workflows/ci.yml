@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check conventional commit title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^\)]+\))?\!?:\ .+ ]]; then
+            echo 'Use a conventional commit title, for example: feat: add leases'
+            exit 1
+          fi
+  no-mistakes:
+    name: PR must be raised via no-mistakes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify pipeline attestation
+        uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
+  main-required-ci:
+    name: main-required-ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Format, vet, test, and build
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race ./...
+          go build -o "$RUNNER_TEMP/berth" .
+          GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
+          GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
+      - name: Install kind and k3d for real adapter integration
+        run: |
+          curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"
+          echo 'aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  '"$RUNNER_TEMP/kind-linux-amd64" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
+          curl -fsSL https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64 -o "$RUNNER_TEMP/k3d-linux-amd64"
+          echo 'dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  '"$RUNNER_TEMP/k3d-linux-amd64" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/k3d-linux-amd64" /usr/local/bin/k3d
+          kind --version
+          k3d version
+          docker info
+          docker compose version
+      - name: Real kind, k3d, and Compose adapter integration
+        run: make integration
