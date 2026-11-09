@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -66,6 +67,24 @@ func TestJobBudgetAndConfig(t *testing.T) {
 		if _, err := loadJobConfig(); err == nil {
 			t.Fatalf("accepted bad config %s", data)
 		}
+	}
+}
+
+func TestPartialConfigKeepsDefaultClass(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"classes":{"suite":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BERTH_CONFIG", path)
+	config, err := loadJobConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := config.class("default"); err != nil {
+		t.Fatalf("default class lost: %v", err)
+	}
+	if _, _, err := config.class("suite"); err != nil {
+		t.Fatalf("configured class lost: %v", err)
 	}
 }
 
@@ -141,6 +160,15 @@ func TestJobsRealProcesses(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
+	t.Run("partial config runs default class", func(t *testing.T) {
+		config := filepath.Join(t.TempDir(), "config.json")
+		if err := os.WriteFile(config, []byte(`{"classes":{"suite":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("BERTH_CONFIG", config)
+		t.Setenv("BERTH_STATE", t.TempDir())
+		childExit(t, exec.Command(binary, "job", "--", "true"), 0)
+	})
 	jobTestConfig(t)
 	t.Run("exit codes and transparent argv", func(t *testing.T) {
 		dir := t.TempDir()
@@ -355,6 +383,45 @@ func TestJobsRealProcesses(t *testing.T) {
 				t.Fatal("cancellation leaked budget")
 			}
 		})
+	})
+}
+
+func TestExpiredWaiterCleanupAfterLockContention(t *testing.T) {
+	dir := t.TempDir()
+	owner, err := parseOwner("pid:"+strconv.Itoa(os.Getpid()), 0, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := newLease(owner, time.Minute, "", nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease.Job = &JobResource{Budget: Budget{Cores: 2, Memory: 2}}
+	result := make(chan error, 1)
+	go func() {
+		_, err := admitJob(context.Background(), dir, lease, Budget{Cores: 1, Memory: 1}, 200*time.Millisecond)
+		result <- err
+	}()
+	awaitJob(t, func() bool {
+		var waiting bool
+		jobStore(t, dir, func(s *Store) { waiting = len(s.Waiters) == 1 })
+		return waiting
+	})
+	lockCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	locked, err := openStore(lockCtx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	locked.Close()
+	if err := <-result; !errors.Is(err, errNoCapacity) {
+		t.Fatalf("admission returned %v", err)
+	}
+	jobStore(t, dir, func(s *Store) {
+		if len(s.Waiters) != 0 {
+			t.Fatalf("expired waiter remains after lock release: %+v", s.Waiters)
+		}
 	})
 }
 

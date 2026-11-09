@@ -144,10 +144,19 @@ func loadJobConfig() (JobConfig, error) {
 	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
 		return c, errors.New("job config must be a JSON object")
 	}
+	defaults := c.Classes
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&c); err != nil {
 		return c, fmt.Errorf("invalid job config: %w", err)
+	}
+	if c.Classes == nil {
+		c.Classes = map[string]JobClass{}
+	}
+	for name, class := range defaults {
+		if _, ok := c.Classes[name]; !ok {
+			c.Classes[name] = class
+		}
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return c, errors.New("job config must contain exactly one JSON object")

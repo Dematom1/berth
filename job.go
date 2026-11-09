@@ -72,8 +72,8 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 		if !queued {
 			return
 		}
-		cleanupCtx, cancel := context.WithCancel(context.Background())
-		cancel()
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 		if s, err := openStore(cleanupCtx, dir); err == nil {
 			defer s.Close()
 			removeWaiter(s, l.ID)
