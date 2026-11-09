@@ -1,3 +1,5 @@
+//go:build integration
+
 package main
 
 import (
@@ -12,19 +14,21 @@ import (
 
 func integrationReady(t *testing.T, driver string) {
 	t.Helper()
-	if os.Getenv("BERTH_INTEGRATION") != "1" {
-		t.Skip("set BERTH_INTEGRATION=1 to create and reclaim isolated Docker resources")
-	}
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker unavailable")
+		t.Fatalf("docker executable required for %s integration: %v", driver, err)
 	}
 	if driver == "kind" || driver == "k3d" {
 		if _, err := exec.LookPath(driver); err != nil {
-			t.Skip(driver + " unavailable")
+			t.Fatalf("%s executable required for integration: %v", driver, err)
 		}
 	}
 	if _, err := runCommand(context.Background(), nil, "docker", "info"); err != nil {
-		t.Skip("Docker engine unavailable")
+		t.Fatalf("Docker engine required for %s integration: %v", driver, err)
+	}
+	if driver == "compose" {
+		if _, err := runCommand(context.Background(), nil, "docker", "compose", "version"); err != nil {
+			t.Fatalf("Docker Compose required for integration: %v", err)
+		}
 	}
 	dir, err := os.MkdirTemp("", "berth-integration-*")
 	if err != nil {
@@ -107,9 +111,6 @@ func TestIntegrationK3d(t *testing.T) {
 
 func TestIntegrationCompose(t *testing.T) {
 	integrationReady(t, "compose")
-	if _, err := runCommand(context.Background(), nil, "docker", "compose", "version"); err != nil {
-		t.Skip("Docker Compose unavailable")
-	}
 	file := filepath.Join(t.TempDir(), "compose.yaml")
 	config := "services:\n  test:\n    image: alpine:3.23\n    command: [sleep, '600']\n    volumes: [data:/data]\nvolumes:\n  data: {}\n"
 	if err := os.WriteFile(file, []byte(config), 0600); err != nil {

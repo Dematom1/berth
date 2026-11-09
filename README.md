@@ -182,14 +182,15 @@ push-event requirements cannot be met by CLI invocations and host timers.
 `make check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
 owner, unknown liveness, machine boundaries, retry, state corruption, locking,
-and the CLI lifecycle. Integration tests create real, uniquely named kind, k3d, or Compose resources
-and reclaim them. They are opt-in with `BERTH_INTEGRATION=1`
-and skip when the needed command or Docker engine is unavailable. They retain
-state and print its path if cleanup fails.
+and the CLI lifecycle. Real adapter tests are isolated behind the `integration` build tag and run with
+`make integration`. They create unique kind, k3d, and Compose resources, then
+verify cleanup. Missing adapter tools, Docker, or Compose fail the command rather
+than skip; failed cleanup retains the state directory and reports its path.
 
-CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, tests, build,
-cross-builds, and real kind, k3d, and Compose integration tests. It installs a pinned,
-checksum-verified kind and k3d binaries and checks Docker availability before integration.
+CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
+cross-builds, and `make integration`. It installs pinned, checksum-verified
+kind and k3d binaries; the integration target fails if Docker or any adapter
+prerequisite is unavailable.
 The live `main-required-ci` ruleset requires the checks `PR title` and
 `PR must be raised via no-mistakes`; the workflow also provides the Go validation
 check named `main-required-ci`.

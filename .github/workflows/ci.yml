@@ -62,6 +62,4 @@ jobs:
           docker info
           docker compose version
       - name: Real kind, k3d, and Compose adapter integration
-        env:
-          BERTH_INTEGRATION: '1'
-        run: go test -v -run Integration -timeout 15m ./...
+        run: make integration

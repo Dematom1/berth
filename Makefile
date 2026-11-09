@@ -10,7 +10,7 @@ test:
 	go test -race ./...
 
 integration:
-	BERTH_INTEGRATION=1 go test -v -run Integration -timeout 15m ./...
+	go test -tags integration -count=1 -v -run '^TestIntegration' -timeout 15m .
 
 check:
 	test -z "$$(gofmt -l .)"
