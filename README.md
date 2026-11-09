@@ -156,10 +156,11 @@ eligible sweep retries the same unique resource. Kernel locks end on process
 death. Corrupt or unsupported state is an error, never an empty lease list.
 
 Each lease records the hostname of its authoritative machine. This slice never
-acts on another machine's leases, even after expiry. It does not SSH to a host
-or interpret a foreign PID as local. Run cleanup on the original machine with
-its original state path. Do not share state between hosts or change the host's
-name while leases exist.
+acts on another machine's leases, even after expiry: a host cannot verify a
+foreign owner's liveness or delete its resources. Run cleanup on the original
+machine with its original state path. Cross-machine reclaim arrives with the
+SSH agent in slice 3. Do not share state between hosts or change the host's name
+while leases exist.
 
 Adapters pin the Docker context selected at creation. `DOCKER_HOST` overrides
 are rejected; select a named context instead. Keep that context's endpoint
