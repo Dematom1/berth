@@ -323,12 +323,12 @@ resource. If berth dies midway through create or delete, the next release or
 eligible sweep retries the same unique resource. Kernel locks end on process
 death. Corrupt or unsupported state is an error, never an empty lease list.
 
-Each lease records the hostname of its authoritative machine. This slice never
-acts on another machine's leases, even after expiry: a host cannot verify a
-foreign owner's liveness or delete its resources. Run cleanup on the original
-machine with its original state path, directly or through
-`berth sweep --machine <name> --confirm`. Do not share state between hosts or change the host's name
-while leases exist.
+Each lease records the hostname of its authoritative machine. A host never
+acts on another machine's leases, even after expiry: it cannot verify a foreign
+owner's liveness or delete its resources. Run cleanup on the original machine
+with its original state path, directly or through
+`berth sweep --machine <name> --confirm`. Do not share state between hosts or
+change the host's name while leases exist.
 
 Adapters pin the Docker context selected at creation. `DOCKER_HOST` overrides
 are rejected; select a named context instead. Keep that context's endpoint
@@ -339,9 +339,10 @@ release for diagnosis and may be removed once their leases are absent.
 
 Berth is a cooperation protocol, not a security boundary for programs with the
 same Unix user. SSH session-as-liveness does not isolate untrusted code.
-Worktree transport and Kubernetes-backed machines are deferred. A resident scheduler is not
-required for these leases; revisit it only when measured queue fairness or
-push-event requirements cannot be met by CLI invocations and host timers.
+Worktree transport and Kubernetes-backed machines are deferred. A resident
+scheduler is not required for these leases; revisit it only when measured queue
+fairness or push-event requirements cannot be met by CLI invocations and host
+timers.
 
 ## Develop and verify
 
@@ -371,9 +372,9 @@ output, remote budget and owner room, child exit codes including 255, deadline
 refusal, atomic upgrades, and transport failure 76.
 
 CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
-cross-builds, `make ssh-integration`, and `make integration`. It installs pinned, checksum-verified
-kind and k3d binaries; the integration target fails if Docker or any adapter
-prerequisite is unavailable.
+cross-builds, `make ssh-integration`, and `make integration`. It installs pinned,
+checksum-verified kind and k3d binaries; the integration target fails if Docker
+or any adapter prerequisite is unavailable.
 The live `main-required-ci` ruleset requires the checks `PR title` and
 `PR must be raised via no-mistakes`; the workflow also provides the Go validation
 check named `main-required-ci`.
