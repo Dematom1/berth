@@ -326,7 +326,9 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 		}
 		if exists && confirm {
 			_, err = releaseLease(ctx, s, id, host, adapters())
-			status = "released"
+			if err == nil {
+				status = "released"
+			}
 		}
 		result = map[string]any{"id": id, "status": status}
 	case "sweep":
@@ -350,5 +352,5 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 }
 
 func leaseView(l Lease, live Liveness, now time.Time) map[string]any {
-	return map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name}
+	return map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name, "resource_adapter": l.Resource.Adapter, "resource_name": l.Resource.Name, "labels": l.Labels}
 }

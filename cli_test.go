@@ -45,6 +45,9 @@ func TestCLILeaseLifecycle(t *testing.T) {
 		if l["resources"] != "2 CPUs, test lab" || l["age"] == "" || l["owner"] != os.Getenv("BERTH_OWNER") {
 			t.Fatalf("incomplete listing: %+v", l)
 		}
+		if l["labels"].(map[string]any)["task"] != "lab" || l["resource_adapter"] != "none" || l["resource_name"] != "" {
+			t.Fatalf("missing durable lease identity: %+v", l)
+		}
 	}
 	invoke(t, 0, "extend", id, "--ttl", "2h")
 	list := invoke(t, 0, "ps")
@@ -61,6 +64,31 @@ func TestCLILeaseLifecycle(t *testing.T) {
 	invoke(t, 0, "release", id, "--confirm")
 	if invoke(t, 0, "ps")["count"] != float64(0) {
 		t.Fatal("release did not remove lease")
+	}
+}
+
+func TestCLIReleaseFailureDoesNotReportReleased(t *testing.T) {
+	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	created := invoke(t, 0, "create", "--ttl", "1h")
+	id := created["record"].(map[string]any)["id"].(string)
+	s, err := openStore(context.Background(), os.Getenv("BERTH_STATE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease := s.Leases[id]
+	lease.Machine = "another-machine"
+	s.Leases[id] = lease
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	result := invoke(t, 1, "release", id, "--confirm")
+	if result["status"] == "released" || result["error"] == nil {
+		t.Fatalf("failed release reported success: %+v", result)
+	}
+	if invoke(t, 0, "ps")["count"] != float64(1) {
+		t.Fatal("failed release discarded lease")
 	}
 }
 
