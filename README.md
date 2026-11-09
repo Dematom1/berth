@@ -189,7 +189,9 @@ class defaults. Remote state stays on the remote machine, under that SSH user's
 usual berth state directory. `ps --machine` and `sweep --machine` use that state.
 Each machine reclaims only its own leases. There is no shared cross-host ledger.
 
-Remote jobs inherit the remote login environment and the configured workdir.
+Remote jobs run in the configured workdir with the environment of a
+non-interactive SSH command. Login profiles such as `~/.profile` are not read.
+Make required tools available on that PATH, or invoke them by absolute path.
 No source, worktree, environment variables, build tools, or credentials are
 copied. Remote child stdin is `/dev/null`; SSH stdin is reserved for liveness,
 so remote commands must be noninteractive. Child stdout and stderr pass through.

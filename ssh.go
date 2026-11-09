@@ -114,7 +114,7 @@ func (w *frameWriter) Write(p []byte) (int, error) {
 func runRemote(ctx context.Context, config JobConfig, name string, args []string, out io.Writer, jsonOutput bool) int {
 	m, err := configuredMachine(config, name)
 	if err != nil {
-		return emitError(out, jsonOutput, 2, err.Error(), "Run berth job --help; configure the SSH machine before retrying")
+		return emitError(out, jsonOutput, 2, err.Error(), "Run berth "+args[0]+" --help; configure the SSH machine before retrying")
 	}
 	mismatch, _ := json.Marshal(agentFrame{Type: "error", Error: "agent version mismatch; no child started (expected " + version + ")"})
 	// Probe first so older berth versions without the agent command also get a
@@ -123,16 +123,16 @@ func runRemote(ctx context.Context, config JobConfig, name string, args []string
 	cmd := m.command(ctx, script)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job --machine "+name)
+		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth "+args[0]+" --machine "+name)
 	}
 	defer stdin.Close()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job --machine "+name)
+		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth "+args[0]+" --machine "+name)
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return emitError(out, jsonOutput, 1, "cannot start SSH; no child started", "Install SSH and retry berth job --machine "+name)
+		return emitError(out, jsonOutput, 1, "cannot start SSH; no child started", "Install SSH and retry berth "+args[0]+" --machine "+name)
 	}
 	writer := &frameWriter{enc: json.NewEncoder(stdin)}
 	transportError := func(err error) int {

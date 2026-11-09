@@ -41,6 +41,16 @@ func TestSessionWaiterStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRemoteConfigErrorHelp(t *testing.T) {
+	for _, command := range []string{"job", "list", "sweep"} {
+		var out bytes.Buffer
+		code := runRemote(context.Background(), JobConfig{}, "missing", []string{command}, &out, false)
+		if code != 2 || !strings.Contains(out.String(), "Run berth "+command+" --help") {
+			t.Fatalf("%s config error: %d %s", command, code, out.String())
+		}
+	}
+}
+
 func TestShellQuote(t *testing.T) {
 	for _, s := range []string{"", "simple", "a b", "'\"$`\\;\n", "$(touch /never-run)", "--flag", "世界"} {
 		out, err := exec.Command("sh", "-c", "printf '%s' "+shellQuote(s)).Output()
