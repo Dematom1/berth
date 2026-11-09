@@ -22,10 +22,11 @@ type Lease struct {
 }
 
 type Resource struct {
-	Adapter string `json:"adapter"`
-	Name    string `json:"name,omitempty"`
-	Context string `json:"docker_context,omitempty"`
-	File    string `json:"file,omitempty"`
+	Adapter    string `json:"adapter"`
+	Name       string `json:"name,omitempty"`
+	Context    string `json:"docker_context,omitempty"`
+	DockerHost string `json:"docker_host,omitempty"`
+	File       string `json:"file,omitempty"`
 }
 
 type Liveness string

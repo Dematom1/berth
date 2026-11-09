@@ -1,8 +1,8 @@
 # berth
 
 Owner-and-expiry leases for local stacks and clusters. One Go binary, no daemon.
-This first slice supports leases, kind clusters, and Docker Compose projects on
-macOS and Linux. Jobs, admission budgets, SSH agents, and k3d follow in later slices.
+This first slice supports leases, kind and k3d clusters, and Docker Compose
+projects on macOS and Linux. Jobs, admission budgets, and SSH agents follow in later slices.
 
 ## Install
 
@@ -14,8 +14,8 @@ Requires Go 1.26 or later.
 ```
 
 From a checkout, `make install` installs to Go's binary directory. `make build`
-writes `bin/berth`. Resource adapters also require their respective `kind`,
-`docker`, and Docker Compose commands, plus a running Docker engine.
+writes `bin/berth`. Resource adapters also require `kind`, `k3d`, `docker`,
+and Docker Compose, plus a running Docker engine.
 
 ## Start a leased test lab
 
@@ -30,9 +30,10 @@ Keep the shell or session that owns the lab alive.
  berth release <id> --confirm        # delete cluster and release lease
 ```
 
-The cluster name is `berth-<id>`. Its kubeconfig is private to the lease under
-`$BERTH_STATE/resources/<id>/kubeconfig`; creation does not edit your default
-kubeconfig. The resources description is metadata, not a CPU or memory limit.
+The cluster name is `berth-<id>`. For kind, its kubeconfig is private to the lease
+under `$BERTH_STATE/resources/<id>/kubeconfig`; creation does not edit your
+default kubeconfig. k3d uses the selected Docker context. The resources
+description is metadata, not a CPU or memory limit.
 An orphaned lab such as `k8s-axi-lab` is prevented by creating the new cluster
 through berth. This slice does not adopt or delete existing unleased clusters.
 
@@ -97,7 +98,7 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 | Command | Behavior |
 | --- | --- |
 | `berth` | Live home view with executable path, description, lease count, and hints |
-| `berth create` or `berth up` | Create a lease, optionally with `--adapter kind` or `compose` |
+| `berth create` or `berth up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose` |
 | `berth list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
 | `berth extend <id> --ttl D` | Renew an unexpired lease with a live owner |
 | `berth release <id>` or `down` | Preview cleanup; `--confirm` performs it |
@@ -181,14 +182,14 @@ push-event requirements cannot be met by CLI invocations and host timers.
 `make check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
 owner, unknown liveness, machine boundaries, retry, state corruption, locking,
-and the CLI lifecycle. Integration tests create real, uniquely named kind or
-Compose resources and reclaim them. They are opt-in with `BERTH_INTEGRATION=1`
+and the CLI lifecycle. Integration tests create real, uniquely named kind, k3d, or Compose resources
+and reclaim them. They are opt-in with `BERTH_INTEGRATION=1`
 and skip when the needed command or Docker engine is unavailable. They retain
 state and print its path if cleanup fails.
 
 CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, tests, build,
-cross-builds, and real kind and Compose integration tests. It installs a pinned,
-checksum-verified kind binary and checks Docker availability before integration.
+cross-builds, and real kind, k3d, and Compose integration tests. It installs a pinned,
+checksum-verified kind and k3d binaries and checks Docker availability before integration.
 The live `main-required-ci` ruleset requires the checks `PR title` and
 `PR must be raised via no-mistakes`; the workflow also provides the Go validation
 check named `main-required-ci`.

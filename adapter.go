@@ -47,6 +47,40 @@ func dockerEnv(l Lease) []string {
 	return []string{"DOCKER_HOST=", "DOCKER_CONTEXT=" + l.Resource.Context, "KIND_EXPERIMENTAL_PROVIDER=docker", "COMPOSE_INTERACTIVE_NO_CLI=1"}
 }
 
+type k3dAdapter struct{ run commandRunner }
+
+func k3dEnv(l Lease) []string {
+	return []string{"DOCKER_CONTEXT=", "DOCKER_HOST=" + l.Resource.DockerHost, "KIND_EXPERIMENTAL_PROVIDER=docker"}
+}
+
+func (a k3dAdapter) Create(ctx context.Context, l Lease) error {
+	_, err := a.run(ctx, k3dEnv(l), "k3d", "cluster", "create", l.Resource.Name)
+	return err
+}
+
+func (a k3dAdapter) Destroy(ctx context.Context, l Lease) error {
+	_, err := a.run(ctx, k3dEnv(l), "k3d", "cluster", "delete", l.Resource.Name)
+	if err != nil {
+		return err
+	}
+	out, err := a.run(ctx, k3dEnv(l), "k3d", "cluster", "list", "-o", "json")
+	if err != nil {
+		return err
+	}
+	var clusters []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(out, &clusters); err != nil {
+		return errors.New("cannot verify k3d cluster cleanup")
+	}
+	for _, cluster := range clusters {
+		if cluster.Name == l.Resource.Name {
+			return errors.New("cluster survived cleanup; retry berth release")
+		}
+	}
+	return nil
+}
+
 type kindAdapter struct{ run commandRunner }
 
 func (a kindAdapter) Create(ctx context.Context, l Lease) error {
@@ -92,7 +126,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l Lease) error {
 		return errors.New("stack containers survived cleanup; retry berth release")
 	}
 	for _, kind := range []string{"volume", "network"} {
-		out, err := a.run(ctx, dockerEnv(l), "docker", "--context", l.Resource.Context, kind, "ls", "-q", "--filter", "label=io.berth.lease="+l.ID)
+		out, err := a.run(ctx, dockerEnv(l), "docker", "--context", l.Resource.Context, kind, "ls", "-q", "--filter", "label=com.docker.compose.project="+l.Resource.Name)
 		if err != nil {
 			return err
 		}
@@ -104,7 +138,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l Lease) error {
 }
 
 func adapters() map[string]Adapter {
-	return map[string]Adapter{"none": noResource{}, "kind": kindAdapter{runCommand}, "compose": composeAdapter{runCommand}}
+	return map[string]Adapter{"none": noResource{}, "kind": kindAdapter{runCommand}, "k3d": k3dAdapter{runCommand}, "compose": composeAdapter{runCommand}}
 }
 
 // Prepare snapshots the resolved Compose config before saving the lease. Cleanup
@@ -128,7 +162,25 @@ func prepareResource(ctx context.Context, s *Store, l *Lease, adapter, file stri
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	l.Resource = Resource{Adapter: adapter, Name: "berth-" + l.ID, Context: contextName, File: filepath.Join(dir, "kubeconfig")}
+	resourceFile := "kubeconfig"
+	if adapter == "k3d" {
+		resourceFile = "k3d"
+	}
+	resourceName := "berth-" + l.ID
+	if adapter == "k3d" {
+		resourceName = "berth-" + l.ID[:26]
+	}
+	l.Resource = Resource{Adapter: adapter, Name: resourceName, Context: contextName, File: filepath.Join(dir, resourceFile)}
+	if adapter == "k3d" {
+		out, err = run(ctx, nil, "docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}", contextName)
+		if err != nil {
+			return err
+		}
+		l.Resource.DockerHost = strings.TrimSpace(string(out))
+		if l.Resource.DockerHost == "" {
+			return errors.New("selected Docker context has no endpoint")
+		}
+	}
 	if adapter != "compose" {
 		return nil
 	}

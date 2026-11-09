@@ -49,15 +49,19 @@ jobs:
           go build -o "$RUNNER_TEMP/berth" .
           GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
           GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
-      - name: Install kind for real adapter integration
+      - name: Install kind and k3d for real adapter integration
         run: |
           curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"
           echo 'aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  '"$RUNNER_TEMP/kind-linux-amd64" | sha256sum --check
           sudo install -m 0755 "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
+          curl -fsSL https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64 -o "$RUNNER_TEMP/k3d-linux-amd64"
+          echo 'cdb57148885e7177d5ce1925fc63a94a1b4780729f9db460555bad7ea46976b5  '"$RUNNER_TEMP/k3d-linux-amd64" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/k3d-linux-amd64" /usr/local/bin/k3d
           kind --version
+          k3d version
           docker info
           docker compose version
-      - name: Real kind and Compose adapter integration
+      - name: Real kind, k3d, and Compose adapter integration
         env:
           BERTH_INTEGRATION: '1'
         run: go test -v -run Integration -timeout 15m ./...

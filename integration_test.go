@@ -18,9 +18,9 @@ func integrationReady(t *testing.T, driver string) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker unavailable")
 	}
-	if driver == "kind" {
-		if _, err := exec.LookPath("kind"); err != nil {
-			t.Skip("kind unavailable")
+	if driver == "kind" || driver == "k3d" {
+		if _, err := exec.LookPath(driver); err != nil {
+			t.Skip(driver + " unavailable")
 		}
 	}
 	if _, err := runCommand(context.Background(), nil, "docker", "info"); err != nil {
@@ -86,6 +86,23 @@ func TestIntegrationKind(t *testing.T) {
 		t.Fatalf("cluster survived release: %s, %v", out, err)
 	}
 	t.Logf("verified kind get clusters no longer lists %s", name)
+}
+
+func TestIntegrationK3d(t *testing.T) {
+	integrationReady(t, "k3d")
+	created := invoke(t, 0, "create", "--adapter", "k3d", "--ttl", "15m", "--resources", "k3d adapter integration")
+	l := created["record"].(map[string]any)
+	id := l["id"].(string)
+	name := l["resource"].(map[string]any)["name"].(string)
+	t.Logf("created uniquely leased k3d cluster %s", name)
+	removeIntegrationResource(t, id)
+	invoke(t, 0, "release", id, "--confirm")
+	invoke(t, 0, "release", id, "--confirm")
+	out, err := runCommand(context.Background(), nil, "k3d", "cluster", "list", "-o", "json")
+	if err != nil || strings.Contains(string(out), name) {
+		t.Fatalf("cluster survived release: %s, %v", out, err)
+	}
+	t.Logf("verified k3d cluster list no longer lists %s", name)
 }
 
 func TestIntegrationCompose(t *testing.T) {

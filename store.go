@@ -91,13 +91,25 @@ func (s *Store) validate() error {
 		if !leaseID.MatchString(id) || id != l.ID || l.Machine == "" || l.Created.IsZero() || l.Expires.IsZero() || l.TTL <= 0 {
 			return errors.New("invalid lease record")
 		}
-		if l.Resource.Adapter != "none" && (l.Resource.Name != "berth-"+id || l.Resource.Context == "") {
+		if l.Resource.Adapter != "none" && l.Resource.Adapter != "kind" && l.Resource.Adapter != "k3d" && l.Resource.Adapter != "compose" {
+			return errors.New("unsupported resource adapter")
+		}
+		resourceName := "berth-" + id
+		if l.Resource.Adapter == "k3d" {
+			resourceName = "berth-" + id[:26]
+		}
+		if l.Resource.Adapter != "none" && (l.Resource.Name != resourceName || l.Resource.Context == "") {
 			return errors.New("invalid managed resource identity")
 		}
-		if l.Resource.Adapter == "kind" || l.Resource.Adapter == "compose" {
+		if l.Resource.Adapter == "k3d" && l.Resource.DockerHost == "" {
+			return errors.New("k3d resource is missing its captured Docker endpoint")
+		}
+		if l.Resource.Adapter == "kind" || l.Resource.Adapter == "k3d" || l.Resource.Adapter == "compose" {
 			name := "kubeconfig"
 			if l.Resource.Adapter == "compose" {
 				name = "compose.json"
+			} else if l.Resource.Adapter == "k3d" {
+				name = "k3d"
 			}
 			if l.Resource.File != filepath.Join(s.dir, "resources", id, name) {
 				return errors.New("managed resource file must remain inside its original BERTH_STATE directory")
@@ -126,8 +138,22 @@ func (s *Store) Save() error {
 
 func (s *Store) Close() error { return s.lock.Close() }
 
+var syncDirectory = func(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
 // Sync the new file before rename, and the directory after rename. The lock file is never replaced.
 func atomicWrite(path string, data []byte) error {
+	previous, readErr := os.ReadFile(path)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	existed := readErr == nil
 	f, err := os.CreateTemp(filepath.Dir(path), ".berth-*")
 	if err != nil {
 		return err
@@ -146,10 +172,38 @@ func atomicWrite(path string, data []byte) error {
 	if err = os.Rename(f.Name(), path); err != nil {
 		return err
 	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
+	if err := syncDirectory(filepath.Dir(path)); err != nil {
+		var rollbackErr error
+		if existed {
+			var restore *os.File
+			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".berth-rollback-*")
+			if rollbackErr == nil {
+				_, rollbackErr = restore.Write(previous)
+				if rollbackErr == nil {
+					rollbackErr = restore.Sync()
+				}
+				name := restore.Name()
+				if closeErr := restore.Close(); rollbackErr == nil {
+					rollbackErr = closeErr
+				}
+				if rollbackErr == nil {
+					rollbackErr = os.Rename(name, path)
+				}
+				os.Remove(name)
+			}
+		} else {
+			rollbackErr = os.Remove(path)
+			if errors.Is(rollbackErr, os.ErrNotExist) {
+				rollbackErr = nil
+			}
+		}
+		if rollbackErr == nil {
+			rollbackErr = syncDirectory(filepath.Dir(path))
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("directory sync failed: %v; rollback failed: %w", err, rollbackErr)
+		}
 		return err
 	}
-	defer d.Close()
-	return d.Sync()
+	return nil
 }

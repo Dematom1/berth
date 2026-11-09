@@ -42,6 +42,27 @@ func TestAdapterCommandsAndSurvivors(t *testing.T) {
 	if calls[1].args[0] != "delete" || calls[2].args[0] != "get" {
 		t.Fatalf("kind deletion must verify absence: %+v", calls)
 	}
+	calls = nil
+	l.Resource.DockerHost = "unix:///docker.sock"
+	k3d := k3dAdapter{func(_ context.Context, env []string, name string, args ...string) ([]byte, error) {
+		if !reflect.DeepEqual(env, k3dEnv(l)) || name != "k3d" {
+			t.Fatalf("k3d did not use captured Docker context: %s %v", name, env)
+		}
+		calls = append(calls, invocation{name, args})
+		if reflect.DeepEqual(args, []string{"cluster", "list", "-o", "json"}) {
+			return []byte("[]"), nil
+		}
+		return nil, nil
+	}}
+	if err := k3d.Create(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	if err := k3d.Destroy(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(calls[0].args, []string{"cluster", "create", l.Resource.Name}) || !reflect.DeepEqual(calls[1].args, []string{"cluster", "delete", l.Resource.Name}) {
+		t.Fatalf("unexpected k3d lifecycle: %+v", calls)
+	}
 	alive := kindAdapter{func(context.Context, []string, string, ...string) ([]byte, error) {
 		return []byte(l.Resource.Name + "\n"), nil
 	}}
@@ -65,6 +86,9 @@ func TestAdapterCommandsAndSurvivors(t *testing.T) {
 	for _, survive := range []string{"container", "volume", "network"} {
 		c := composeAdapter{func(_ context.Context, _ []string, _ string, args ...string) ([]byte, error) {
 			joined := strings.Join(args, " ")
+			if strings.Contains(joined, survive+" ls") && survive != "container" && !strings.Contains(joined, "label=com.docker.compose.project="+l.Resource.Name) {
+				t.Fatalf("cleanup verification did not use project identity: %s", joined)
+			}
 			if (survive == "container" && strings.Contains(joined, "ps -aq")) || strings.Contains(joined, survive+" ls") {
 				return []byte("survivor\n"), nil
 			}

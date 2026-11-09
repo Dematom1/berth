@@ -24,12 +24,13 @@ reclaimable: a live owner missing either cadence loses its resources.`
 
 var commandHelp = map[string]string{
 	"create": `berth create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
-  [--resources TEXT] [--label key=value ...] [--adapter none|kind|compose]
+  [--resources TEXT] [--label key=value ...] [--adapter none|kind|k3d|compose]
   [--file PATH (required for compose)] [--json]
 Owner defaults to BERTH_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
 not a Unix SID. heartbeat:<path> must already be a fresh regular file.
-kind creates a uniquely named cluster and a private kubeconfig; compose creates
+kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
+compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
 Examples:
@@ -222,8 +223,8 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	if (command == "create" || command == "extend") && ttl <= 0 {
 		return emitError(out, jsonOutput, 2, "--ttl must be positive", help(command))
 	}
-	if command == "create" && ((driver != "none" && driver != "kind" && driver != "compose") || (driver == "compose" && file == "") || (driver != "compose" && file != "")) {
-		return emitError(out, jsonOutput, 2, "use --adapter none, kind, or compose; --file is required only for compose", help(command))
+	if command == "create" && ((driver != "none" && driver != "kind" && driver != "k3d" && driver != "compose") || (driver == "compose" && file == "") || (driver != "compose" && file != "")) {
+		return emitError(out, jsonOutput, 2, "use --adapter none, kind, k3d, or compose; --file is required only for compose", help(command))
 	}
 	now := time.Now().UTC()
 	var newOwner Owner
