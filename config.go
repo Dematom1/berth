@@ -30,11 +30,12 @@ type JobClass struct {
 }
 
 type JobConfig struct {
-	Cores      int                 `json:"cores"`
-	Memory     string              `json:"memory"`
-	RoomCores  int                 `json:"room_cores"`
-	RoomMemory string              `json:"room_memory"`
-	Classes    map[string]JobClass `json:"classes"`
+	Cores      int                   `json:"cores"`
+	Memory     string                `json:"memory"`
+	RoomCores  int                   `json:"room_cores"`
+	RoomMemory string                `json:"room_memory"`
+	Classes    map[string]JobClass   `json:"classes"`
+	Machines   map[string]SSHMachine `json:"machines"`
 }
 
 func memoryBytes(s string) (int64, error) {

@@ -244,7 +244,7 @@ func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
 			t.Fatalf("version fast path: %d, %q", code, out.String())
 		}
 	}
-	for _, cmd := range []string{"create", "extend", "release", "list", "sweep", "job"} {
+	for _, cmd := range []string{"create", "extend", "release", "list", "sweep", "job", "agent", "machine"} {
 		out.Reset()
 		if code := run(context.Background(), []string{cmd, "--help"}, &out); code != 0 || !strings.Contains(out.String(), "Exit codes:") {
 			t.Fatalf("%s help: %d %s", cmd, code, out.String())
@@ -252,7 +252,7 @@ func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
 		if cmd == "extend" && (!strings.Contains(out.String(), "staleness/3") || !strings.Contains(out.String(), "one third")) {
 			t.Fatal("R-B3 cadence missing from emitted extend help")
 		}
-		if cmd == "job" && (!strings.Contains(out.String(), "124") || !strings.Contains(out.String(), "75")) {
+		if cmd == "job" && (!strings.Contains(out.String(), "124") || !strings.Contains(out.String(), "75") || !strings.Contains(out.String(), "76")) {
 			t.Fatal("R-B4 exit codes missing from emitted job help")
 		}
 	}

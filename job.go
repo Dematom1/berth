@@ -185,7 +185,7 @@ func jobExec(args []string) int {
 	return 126
 }
 
-func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.Writer) (*exec.Cmd, <-chan error, error) {
+func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.Writer, input io.Reader) (*exec.Cmd, <-chan error, error) {
 	s, err := openStore(ctx, dir)
 	if err != nil {
 		return nil, nil, err
@@ -212,7 +212,7 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.ExtraFiles = []*os.File{gate}
 	cmd.Env = append(os.Environ(), "BERTH_LEASE="+l.ID)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, os.Stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, out, os.Stderr
 	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
 		return nil, nil, err
@@ -354,7 +354,7 @@ func finishJob(dir string, l Lease, groupCleaned bool) {
 	}
 }
 
-func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) int {
+func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool, input io.Reader, ownerKind string) int {
 	fs := flag.NewFlagSet("job", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "help")
@@ -364,6 +364,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 	class := fs.String("class", "default", "resource class")
 	timeout := fs.Duration("timeout", 0, "job deadline")
 	wait := fs.Duration("wait", 30*time.Minute, "admission wait")
+	machine := fs.String("machine", "", "SSH machine name; local by default")
 	// Unlike lease commands, everything after -- is opaque child argv.
 	split := -1
 	for i, a := range args {
@@ -393,6 +394,20 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 	if err != nil {
 		return usageError(err)
 	}
+	if *machine != "" {
+		remoteArgs := []string{"job"}
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name != "machine" {
+				remoteArgs = append(remoteArgs, "--"+f.Name+"="+f.Value.String())
+			}
+		})
+		if jsonOutput {
+			remoteArgs = append(remoteArgs, "--json")
+		}
+		remoteArgs = append(remoteArgs, "--")
+		remoteArgs = append(remoteArgs, args[split+1:]...)
+		return runRemote(ctx, config, *machine, remoteArgs, out, jsonOutput)
+	}
 	capacity, err := config.available()
 	if err != nil {
 		return usageError(err)
@@ -421,7 +436,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 	if err != nil {
 		return emitError(out, jsonOutput, 1, "child executable not found; no child started", "Check the command and PATH, then retry berth job")
 	}
-	owner, err := parseOwner("pid:"+strconv.Itoa(os.Getpid()), 0, time.Now())
+	owner, err := parseOwner(ownerKind+":"+strconv.Itoa(os.Getpid()), 0, time.Now())
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job when the process is inspectable")
 	}
@@ -449,7 +464,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 			finishJob(dir, l, groupCleaned)
 		}
 	}()
-	cmd, observed, err := startJob(ctx, dir, &l, child, out)
+	cmd, observed, err := startJob(ctx, dir, &l, child, out, input)
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Run berth ps to inspect retained reservations")
 	}
