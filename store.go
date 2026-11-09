@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -18,6 +19,7 @@ var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 type Store struct {
 	Version int              `json:"version"`
 	Leases  map[string]Lease `json:"leases"`
+	Waiters []JobWaiter      `json:"waiters,omitempty"`
 	dir     string
 	lock    *os.File
 }
@@ -96,9 +98,29 @@ func (s *Store) validate() error {
 	if s.Version != 1 || s.Leases == nil {
 		return errors.New("unsupported or incomplete state format")
 	}
+	for _, w := range s.Waiters {
+		if !leaseID.MatchString(w.ID) || w.Machine == "" || w.Expires.IsZero() || w.Owner.Kind != "pid" || w.Owner.Start == "" {
+			return errors.New("invalid queue record")
+		}
+	}
 	for id, l := range s.Leases {
 		if !leaseID.MatchString(id) || id != l.ID || l.Machine == "" || l.Created.IsZero() || l.Expires.IsZero() || l.TTL <= 0 {
 			return errors.New("invalid lease record")
+		}
+		if l.Resource.Adapter == "process" {
+			if l.Job == nil || l.Job.Budget.Cores <= 0 || l.Job.Budget.Memory <= 0 || l.Job.Class == "" {
+				return errors.New("invalid job reservation")
+			}
+			if leader := l.Job.Leader; leader.ID != "" {
+				pid, err := strconv.ParseInt(leader.ID, 10, 32)
+				if err != nil || pid <= 1 || leader.Kind != "pid" || leader.Start == "" {
+					return errors.New("invalid job group identity")
+				}
+			}
+			continue
+		}
+		if l.Job != nil {
+			return errors.New("job reservation requires process adapter")
 		}
 		if l.Resource.Adapter != "none" && l.Resource.Adapter != "kind" && l.Resource.Adapter != "k3d" && l.Resource.Adapter != "compose" {
 			return errors.New("unsupported resource adapter")

@@ -19,6 +19,7 @@ type Lease struct {
 	Resources string            `json:"resources"`
 	Labels    map[string]string `json:"labels"`
 	Resource  Resource          `json:"resource"`
+	Job       *JobResource      `json:"job,omitempty"`
 }
 
 type Resource struct {
@@ -75,6 +76,9 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 	}
 	if l.Machine != host {
 		return errors.New("run berth extend on the lease's machine")
+	}
+	if l.Job != nil {
+		return errors.New("job deadlines cannot be extended; start a new berth job with --timeout")
 	}
 	if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != Alive {
 		return errors.New("lease is expired, dead, or its owner cannot be verified; create a new lease")

@@ -138,7 +138,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l Lease) error {
 }
 
 func adapters() map[string]Adapter {
-	return map[string]Adapter{"none": noResource{}, "kind": kindAdapter{runCommand}, "k3d": k3dAdapter{runCommand}, "compose": composeAdapter{runCommand}}
+	return map[string]Adapter{"process": processResource{}, "none": noResource{}, "kind": kindAdapter{runCommand}, "k3d": k3dAdapter{runCommand}, "compose": composeAdapter{runCommand}}
 }
 
 // Prepare snapshots the resolved Compose config before saving the lease. Cleanup
