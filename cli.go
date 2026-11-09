@@ -14,9 +14,10 @@ import (
 )
 
 const exitCodes = `Exit codes: 0 success (including no-ops), 1 operation failed, 2 invalid usage.
-Reserved for future berth job: child's exit code on completion; 124 deadline
-killed child; 75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only
-when no child was started. The job command is not implemented in this slice.`
+berth job: child's exit code on completion; 124 deadline killed child;
+75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only when no child
+was started. Signal termination returns 128 + signal number. Helper/wait
+failures after start use 125/126 and diagnostics on stderr.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
@@ -65,8 +66,26 @@ Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
   berth sweep
   berth sweep --confirm --json`,
-	"job": `berth job --help
-Reserved for the later job/admission slice; no child is started by this version.`,
+	"job": `berth job [--cores N --memory M --class C --timeout D --wait W] -- <cmd...>
+Local machine only. Reserve logical cores and memory minus owner room, FIFO
+(no backfill). Defaults: --class default (1 core, up to 1GiB, timeout 1h),
+--wait 30m. --cores, --memory and --timeout override class defaults.
+Memory: integer bytes or KiB/MiB/GiB/KB/MB/GB. Durations: positive Go durations;
+--wait 0 tries once. Oversized requests fail with 2 before starting a child.
+BERTH_CONFIG selects strict JSON config; default ~/.config/berth/config.json
+(or $XDG_CONFIG_HOME/berth/config.json). Budget defaults derive from the host.
+Jobs run at nice 10 (or less-favored inherited priority) in a process group,
+owned by the berth job PID. Use noninteractive commands; no terminal job-control
+handoff is provided. Deadline
+or cancellation terminates the group (TERM, then KILL after 1s); sweep reclaims
+after owner death or expiry. Children that call setsid can escape the group.
+Reservations are cooperative admission, not hard CPU/memory limits.
+Child stdin/stdout/stderr pass through unchanged, including with --json;
+--json applies only to pre-start errors. Post-start cleanup errors go to stderr
+and retain the lease, never replacing the child's exit code.
+Examples:
+  berth job --cores 2 --memory 2GiB --timeout 10m -- go test ./...
+  berth job --class suite --wait 0 -- make check`,
 }
 
 type labelsFlag map[string]string
@@ -117,7 +136,7 @@ func help(command string) string {
 	body, ok := commandHelp[command]
 	if !ok {
 		body = `berth: owner-and-expiry leases for local resources (macOS and Linux).
-Commands: create (up), list (ls, ps, who), extend, release (down), sweep.
+Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job.
 Global flags: --json, --help. Version: --version, -v, -V.
 Environment: BERTH_OWNER; BERTH_STATE (default $XDG_STATE_HOME/berth or
 ~/.local/state/berth). State is local to one host and one Unix user.
@@ -174,6 +193,9 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	if _, ok := commandHelp[command]; !ok {
 		return emitError(out, jsonOutput, 2, "unknown command "+command, help(""))
 	}
+	if command == "job" {
+		return runJob(ctx, args, out, jsonOutput)
+	}
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "show help")
@@ -209,9 +231,6 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 			fmt.Fprint(out, help(command))
 		}
 		return 0
-	}
-	if command == "job" {
-		return emitError(out, jsonOutput, 2, "berth job is not implemented yet; no child started", help("job"))
 	}
 	expected := 0
 	if command == "extend" || command == "release" {
@@ -365,5 +384,10 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 }
 
 func leaseView(l Lease, live Liveness, now time.Time) map[string]any {
-	return map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name, "resource_adapter": l.Resource.Adapter, "resource_name": l.Resource.Name, "labels": l.Labels}
+	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name, "resource_adapter": l.Resource.Adapter, "resource_name": l.Resource.Name, "labels": l.Labels}
+	view["cores"], view["memory"], view["class"] = 0, "0B", ""
+	if l.Job != nil {
+		view["cores"], view["memory"], view["class"] = l.Job.Budget.Cores, strconv.FormatInt(l.Job.Budget.Memory, 10)+"B", l.Job.Class
+	}
+	return view
 }
