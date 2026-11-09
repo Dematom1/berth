@@ -549,13 +549,29 @@ func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	lease := Lease{Job: &JobResource{Leader: leader}}
-	if err := (processResource{}).Destroy(context.Background(), lease); err != nil {
-		t.Fatalf("missing leader should not prevent release: %v", err)
-	}
+	lease := Lease{Machine: "local", Resource: Resource{Adapter: "process"}, Job: &JobResource{Leader: leader}}
+	lease.ID = "orphaned-job"
+	dir := t.TempDir()
+	jobStore(t, dir, func(s *Store) {
+		s.Leases[lease.ID] = lease
+		if err := s.Save(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := releaseLease(context.Background(), s, lease.ID, "local", adapters()); err != nil {
+			t.Fatalf("missing leader should permit lease release: %v", err)
+		}
+		if _, ok := s.Leases[lease.ID]; ok {
+			t.Fatal("unverifiable group lease was retained")
+		}
+	})
+	jobStore(t, dir, func(s *Store) {
+		if _, ok := s.Leases[lease.ID]; ok {
+			t.Fatal("lease release was not durable")
+		}
+	})
 	alive, err := groupAlive(context.Background(), pid)
 	if err != nil || !alive {
-		t.Fatal("destroy signaled an unverifiable group")
+		t.Fatal("release signaled an unverifiable group")
 	}
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
 }

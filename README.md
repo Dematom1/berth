@@ -96,12 +96,16 @@ berth sends TERM to the process group, then KILL after one second if needed.
 Normal completion also cleans up remaining group members before releasing the
 reservation. Cleanup failures go to stderr and retain the lease; they never
 replace the child's exit code. If berth itself is killed, `sweep --confirm`
-reclaims the orphaned group on owner death or expiry. Keep a host sweep timer.
+reclaims the job lease on owner death or expiry. Keep a host sweep timer. A
+matching live leader permits process-group cleanup; if the leader is missing or
+reaped, berth warns and releases the lease without signaling an unverifiable
+group. Orphan descendants may then require manual cleanup.
 
 Process groups are not a security boundary: programs that call `setsid` or
 change groups can escape cleanup. Container/cgroup enforcement is not part of
 local job admission. Cleanup verifies the recorded group leader's start identity
-before signaling and retains the record if identity is unknown or reused.
+before signaling and retains the record if identity is unknown or reused while
+the leader is present.
 
 ### Machine budget and classes
 
