@@ -2,7 +2,7 @@
 
 Owner-and-expiry leases for local stacks and clusters. One Go binary, no daemon.
 Supports leases, kind and k3d clusters, Docker Compose projects, and local jobs
-with machine-budget admission on macOS and Linux. SSH agents follow in slice 3.
+with machine-budget admission on macOS and Linux. Jobs can run on configured SSH machines.
 
 ## Install
 
@@ -145,6 +145,78 @@ durations. Config edits apply to new invocations; existing reservations still
 count, and running jobs keep their original deadline. Use the same config and
 state directory for every cooperating invocation on a machine.
 
+## Run jobs over SSH
+
+Add a machine to your local config. Paths refer to the remote machine and must
+be absolute. `host` can be an SSH config alias. `port` and `identity_file` are
+optional. SSH uses batch authentication, normal host-key checking, a 15-second
+connection timeout, and keepalives every 5 seconds with 3 unanswered probes.
+
+```json
+{
+  "machines": {
+    "lenovo": {
+      "host": "lenovo",
+      "user": "worker",
+      "workdir": "/home/worker/src/project",
+      "agent": "/home/worker/.local/bin/berth"
+    }
+  }
+}
+```
+
+Build a trusted binary for the remote OS and architecture, then install it:
+
+```sh
+ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/berth-linux .
+ berth machine install lenovo --file /tmp/berth-linux
+ berth job --machine lenovo --class suite -- go test ./...
+ berth ps --machine lenovo
+ berth sweep --machine lenovo --confirm
+```
+
+Installation streams the binary over SSH, checks its version on the remote,
+and atomically replaces the configured agent path. A wrong version or
+architecture fails without replacing the installed binary. Running agents
+keep their executable. Every connection checks the remote version before
+requesting work, and the agent checks the client's version again. Mismatches
+refuse to start a child and explain how to install the matching binary.
+
+The same berth binary runs as `berth agent` on the remote, once per SSH session.
+It is not a daemon. The remote config decides classes, total budget, owner room,
+and admission across all clients. The client does not forward its budget or
+class defaults. Remote state stays on the remote machine, under that SSH user's
+usual berth state directory. `ps --machine` and `sweep --machine` use that state.
+Each machine reclaims only its own leases. There is no shared cross-host ledger.
+
+Remote jobs inherit the remote login environment and the configured workdir.
+No source, worktree, environment variables, build tools, or credentials are
+copied. Remote child stdin is `/dev/null`; SSH stdin is reserved for liveness,
+so remote commands must be noninteractive. Child stdout and stderr pass through.
+The private protocol frames stdout, including arbitrary bytes, and the final
+exit code separately. Child exit 255 is preserved rather than mistaken for an
+SSH transport failure.
+
+The agent is the lease's `session:<holder-pid>` owner. EOF on its SSH stdin or
+session cancellation kills the job's process group and releases its lease,
+including while admission is waiting. An idle local stdin does not end the SSH
+session. For broken-network detection on the server, configure sshd's
+`ClientAliveInterval` and `ClientAliveCountMax`, for example 5 and 3. Client
+keepalives alone do not bound how long the server waits for a lost client.
+Remote deadlines still apply. Keep a sweep timer on each machine for agent
+crashes and failed cleanup. Process-group escape limitations apply remotely too.
+
+A missing or broken transport returns 76 with diagnostics on stderr once SSH
+has started. The remote result is then unknown; do not assume the child did not
+run. This code avoids reporting berth's own 1 or 2 after a child may have started.
+A completed child can itself return 76, as with any reserved job exit code.
+
+For a Lenovo rollout, provision key-based SSH and trusted host keys, a remote
+checkout and its dependencies, the matching Linux binary, and a remote berth
+config with a budget partition that leaves owner room and avoids other
+schedulers. Configure an sshd keepalive policy and a per-user sweep timer.
+Kubernetes-backed machines remain deferred.
+
 ## Owners and renewal
 
 `--owner` overrides `BERTH_OWNER`. Without either, berth uses the parent PID,
@@ -154,8 +226,8 @@ workers. The supported owner kinds are:
 - `pid:<pid>` follows a local process and records its start time to detect PID
   reuse. Process start identity comes from `ps` with one-second precision.
 - `session:<holder-pid>` follows the local process holding a session, with the
-  same start-time check. This is not a Unix session ID. A later SSH agent can
-  use its session-holding process as the owner without querying a remote PID.
+  same start-time check. This is not a Unix session ID. The SSH agent uses its
+  own session-holding process as the owner without querying a client PID.
 - `heartbeat:<file>` follows an existing regular file's modification time.
   `--stale` defaults to `15m`. A missing file or a stale heartbeat means dead;
   an unreadable file or a timestamp in the future means unknown. Create the
@@ -187,7 +259,11 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 | `berth extend <id> --ttl D` | Renew an unexpired lease with a live owner |
 | `berth release <id>` or `down` | Preview cleanup; `--confirm` performs it |
 | `berth sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
-| `berth job [flags] -- <cmd...>` | FIFO local-budget admission, deadline, and child exit-code passthrough |
+| `berth job [--machine NAME] [flags] -- <cmd...>` | FIFO machine-budget admission, deadline, and child exit-code passthrough |
+| `berth machine install <name> --file <binary>` | Version-checked SSH agent installation or upgrade |
+| `berth agent` | Internal SSH protocol with session-as-liveness |
+
+`list` and `sweep` also accept `--machine NAME` to operate on that SSH machine.
 
 Every command accepts `--help` and `--json`. Output defaults to concise TOON-style
 objects and tables. Label cells in text tables contain compact JSON, with `"{}"`
@@ -216,6 +292,7 @@ heartbeat paths and numeric PID spellings without checking owner liveness.
 | `75` | `berth job`: no slot frees within `--wait`, `EX_TEMPFAIL` |
 | `128 + signal` | Child terminated by a signal, e.g. 143 for SIGTERM |
 | `125` | Job child started, but its wait status could not be obtained |
+| `76` | SSH transport or protocol failed; the remote result is unknown |
 
 `berth job` uses berth's own codes 1 and 2 only when no user child was started.
 Child completion passes through the child's code even when it overlaps these
@@ -249,8 +326,8 @@ death. Corrupt or unsupported state is an error, never an empty lease list.
 Each lease records the hostname of its authoritative machine. This slice never
 acts on another machine's leases, even after expiry: a host cannot verify a
 foreign owner's liveness or delete its resources. Run cleanup on the original
-machine with its original state path. Cross-machine reclaim arrives with the
-SSH agent in slice 3. Do not share state between hosts or change the host's name
+machine with its original state path, directly or through
+`berth sweep --machine <name> --confirm`. Do not share state between hosts or change the host's name
 while leases exist.
 
 Adapters pin the Docker context selected at creation. `DOCKER_HOST` overrides
@@ -261,8 +338,8 @@ all managed resources are released. Small resource snapshots remain after
 release for diagnosis and may be removed once their leases are absent.
 
 Berth is a cooperation protocol, not a security boundary for programs with the
-same Unix user. SSH session-as-liveness and worktree transport belong to slice 3.
-Kubernetes-backed machines are deferred. A resident scheduler is not
+same Unix user. SSH session-as-liveness does not isolate untrusted code.
+Worktree transport and Kubernetes-backed machines are deferred. A resident scheduler is not
 required for these leases; revisit it only when measured queue fairness or
 push-event requirements cannot be met by CLI invocations and host timers.
 
@@ -271,6 +348,7 @@ push-event requirements cannot be met by CLI invocations and host timers.
 ```sh
  make check
  make integration
+ make ssh-integration
 ```
 
 `make check` runs formatting checks, vet, race-enabled tests, and build. Unit
@@ -284,8 +362,16 @@ Real adapter tests are isolated behind the `integration` build tag and run with
 verify cleanup. Missing adapter tools, Docker, or Compose fail the command rather
 than skip; failed cleanup retains the state directory and reports its path.
 
+`make ssh-integration` runs real SSH end-to-end tests against a disposable
+Alpine container with OpenSSH and procps. It requires Docker, SSH, ssh-keygen,
+and Go. It fails rather than skips when a prerequisite is absent. Tests use
+isolated keys and a strict private known-hosts file. They cover quoting, binary
+output, remote budget and owner room, child exit codes including 255, deadline
+124, wait 75, session disconnect cleanup, remote listing and sweep, version
+refusal, atomic upgrades, and transport failure 76.
+
 CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
-cross-builds, and `make integration`. It installs pinned, checksum-verified
+cross-builds, `make ssh-integration`, and `make integration`. It installs pinned, checksum-verified
 kind and k3d binaries; the integration target fails if Docker or any adapter
 prerequisite is unavailable.
 The live `main-required-ci` ruleset requires the checks `PR title` and

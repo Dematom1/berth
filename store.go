@@ -99,7 +99,7 @@ func (s *Store) validate() error {
 		return errors.New("unsupported or incomplete state format")
 	}
 	for _, w := range s.Waiters {
-		if !leaseID.MatchString(w.ID) || w.Machine == "" || w.Expires.IsZero() || w.Owner.Kind != "pid" || w.Owner.Start == "" {
+		if !leaseID.MatchString(w.ID) || w.Machine == "" || w.Expires.IsZero() || (w.Owner.Kind != "pid" && w.Owner.Kind != "session") || w.Owner.Start == "" {
 			return errors.New("invalid queue record")
 		}
 	}

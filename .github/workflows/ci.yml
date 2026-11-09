@@ -51,6 +51,8 @@ jobs:
           go build -o "$RUNNER_TEMP/berth" .
           GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
           GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
+      - name: Real SSH agent integration
+        run: make ssh-integration
       - name: Install kind and k3d for real adapter integration
         run: |
           curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"

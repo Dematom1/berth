@@ -17,7 +17,9 @@ const exitCodes = `Exit codes: 0 success (including no-ops), 1 operation failed,
 berth job: child's exit code on completion; 124 deadline killed child;
 75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only when no child
 was started. Signal termination returns 128 + signal number. Helper/wait
-failures after start use 125/126 and diagnostics on stderr.`
+failures after start use 125/126 and diagnostics on stderr.
+76 is SSH transport/protocol failure with unknown remote result (stderr).
+Child exit 255 is preserved and is not confused with SSH failure.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
@@ -38,7 +40,7 @@ Examples:
   berth create --owner pid:1234 --ttl 2h --resources '2 CPUs, test lab'
   berth create --adapter kind --owner session:1234 --ttl 1h
   berth create --adapter compose --file compose.yaml --label task=lab`,
-	"list": `berth list [--owner KIND:ID] [--json]
+	"list": `berth list [--owner KIND:ID] [--machine NAME] [--json]
 List every recorded lease with owner liveness, age, expiry, machine, resource
 identity, and description. --json includes full records and labels.
 Aliases: ls, ps, who. No arguments shows the live home view.
@@ -58,7 +60,7 @@ A failed cleanup retains the lease for retry. down is an alias.
 Examples:
   berth release <id>
   berth release <id> --confirm`,
-	"sweep": `berth sweep [--confirm] [--json]
+	"sweep": `berth sweep [--confirm] [--machine NAME] [--json]
 Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
 are retained unless expired. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
@@ -66,8 +68,29 @@ Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
   berth sweep
   berth sweep --confirm --json`,
-	"job": `berth job [--cores N --memory M --class C --timeout D --wait W] -- <cmd...>
-Local machine only. Reserve logical cores and memory minus owner room, FIFO
+	"agent": `berth agent
+Internal, version-checked JSON protocol over SSH stdin/stdout. EOF on stdin
+cancels the session's job and releases its remote reservation. No daemon.
+Use berth job --machine <name> -- <cmd> rather than invoking the protocol.
+Examples:
+  berth job --machine lenovo -- go test ./...
+  berth ps --machine lenovo`,
+	"machine": `berth machine install <name> --file <binary> [--json]
+Install or upgrade a trusted berth binary built for the remote OS/architecture.
+The remote checks --version before atomic replacement; mismatches retain the
+existing binary. Machine config requires host, user, absolute workdir and agent
+paths; optional port and identity_file. SSH config aliases are supported.
+No source, worktree, environment, credentials, or build tools are synchronized.
+Examples:
+  GOOS=linux GOARCH=amd64 go build -o /tmp/berth-linux .
+  berth machine install lenovo --file /tmp/berth-linux`,
+	"job": `berth job [--machine NAME] [--cores N --memory M --class C --timeout D --wait W] -- <cmd...>
+Local by default; --machine selects a configured SSH host. SSH admission,
+classes, budget, owner room, state, deadlines and cleanup are remote-authoritative.
+Remote jobs use the configured workdir and remote environment; stdin is /dev/null
+(the SSH stdin channel is reserved for session liveness). Disconnect cancels the
+remote process group and reclaims its lease. No worktree transfer or daemon.
+Reserve logical cores and memory minus owner room, FIFO
 (no backfill). Defaults: --class default (1 core, up to 1GiB, timeout 1h),
 --wait 30m. --cores, --memory and --timeout override class defaults.
 Memory: integer bytes or KiB/MiB/GiB/KB/MB/GB. Durations: positive Go durations;
@@ -136,7 +159,8 @@ func help(command string) string {
 	body, ok := commandHelp[command]
 	if !ok {
 		body = `berth: owner-and-expiry leases for local resources (macOS and Linux).
-Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job.
+Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job,
+agent (internal SSH protocol), machine install.
 Global flags: --json, --help. Version: --version, -v, -V.
 Environment: BERTH_OWNER; BERTH_STATE (default $XDG_STATE_HOME/berth or
 ~/.local/state/berth). State is local to one host and one Unix user.
@@ -193,17 +217,26 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	if _, ok := commandHelp[command]; !ok {
 		return emitError(out, jsonOutput, 2, "unknown command "+command, help(""))
 	}
+	if command == "agent" {
+		return runAgent(ctx, args, os.Stdin, out)
+	}
+	if command == "machine" {
+		return runMachine(ctx, args, out, jsonOutput)
+	}
 	if command == "job" {
-		return runJob(ctx, args, out, jsonOutput)
+		return runJob(ctx, args, out, jsonOutput, os.Stdin, "pid")
 	}
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "show help")
 	fs.BoolVar(&jsonOutput, "json", jsonOutput, "JSON output")
-	var owner, resources, driver, file string
+	var owner, resources, driver, file, machineName string
 	var ttl, stale time.Duration
 	var confirm bool
 	labels := labelsFlag{}
+	if command == "list" || command == "sweep" {
+		fs.StringVar(&machineName, "machine", "", "SSH machine name")
+	}
 	if command == "create" || command == "list" {
 		fs.StringVar(&owner, "owner", "", "owner selector")
 	}
@@ -244,6 +277,22 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	}
 	if command == "create" && ((driver != "none" && driver != "kind" && driver != "k3d" && driver != "compose") || (driver == "compose" && file == "") || (driver != "compose" && file != "")) {
 		return emitError(out, jsonOutput, 2, "use --adapter none, kind, k3d, or compose; --file is required only for compose", help(command))
+	}
+	if machineName != "" {
+		config, err := loadJobConfig()
+		if err != nil {
+			return emitError(out, jsonOutput, 2, err.Error(), help(command))
+		}
+		remoteArgs := []string{command}
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name != "machine" {
+				remoteArgs = append(remoteArgs, "--"+f.Name+"="+f.Value.String())
+			}
+		})
+		if jsonOutput {
+			remoteArgs = append(remoteArgs, "--json")
+		}
+		return runRemote(ctx, config, machineName, remoteArgs, out, jsonOutput)
 	}
 	now := time.Now().UTC()
 	var newOwner Owner
