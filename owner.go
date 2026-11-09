@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,8 +32,8 @@ func parseOwner(value string, stale time.Duration, now time.Time) (Owner, error)
 	switch kind {
 	case "pid", "session":
 		pid, err := strconv.Atoi(id)
-		if err != nil || pid <= 0 {
-			return Owner{}, errors.New("owner PID must be a positive integer")
+		if err != nil || pid <= 0 || pid > math.MaxInt32 {
+			return Owner{}, errors.New("owner PID must be a positive signed 32-bit integer")
 		}
 		o.ID = strconv.Itoa(pid)
 		start, live := processIdentity(pid)
@@ -91,7 +92,7 @@ func checkOwner(o Owner, now time.Time) Liveness {
 	switch o.Kind {
 	case "pid", "session":
 		pid, err := strconv.Atoi(o.ID)
-		if err != nil || pid <= 0 || o.Start == "" {
+		if err != nil || pid <= 0 || pid > math.MaxInt32 || o.Start == "" {
 			return Unknown
 		}
 		start, live := processIdentity(pid)

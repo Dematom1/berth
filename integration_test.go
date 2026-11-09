@@ -94,11 +94,25 @@ func TestIntegrationKind(t *testing.T) {
 
 func TestIntegrationK3d(t *testing.T) {
 	integrationReady(t, "k3d")
+	caller := filepath.Join(t.TempDir(), "caller-kubeconfig")
+	original := []byte("apiVersion: v1\nkind: Config\nclusters: []\nusers: []\ncontexts: []\ncurrent-context: \"\"\n")
+	if err := os.WriteFile(caller, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", caller)
+	assertCallerUnchanged := func() {
+		t.Helper()
+		data, err := os.ReadFile(caller)
+		if err != nil || string(data) != string(original) {
+			t.Fatalf("k3d changed caller kubeconfig: %q, %v", data, err)
+		}
+	}
 	created := invoke(t, 0, "create", "--adapter", "k3d", "--ttl", "15m", "--resources", "k3d adapter integration")
 	l := created["record"].(map[string]any)
 	id := l["id"].(string)
 	name := l["resource"].(map[string]any)["name"].(string)
 	t.Logf("created uniquely leased k3d cluster %s", name)
+	assertCallerUnchanged()
 	removeIntegrationResource(t, id)
 	invoke(t, 0, "release", id, "--confirm")
 	invoke(t, 0, "release", id, "--confirm")
@@ -106,7 +120,8 @@ func TestIntegrationK3d(t *testing.T) {
 	if err != nil || strings.Contains(string(out), name) {
 		t.Fatalf("cluster survived release: %s, %v", out, err)
 	}
-	t.Logf("verified k3d cluster list no longer lists %s", name)
+	assertCallerUnchanged()
+	t.Logf("verified k3d cluster list no longer lists %s; caller kubeconfig unchanged", name)
 }
 
 func TestIntegrationCompose(t *testing.T) {

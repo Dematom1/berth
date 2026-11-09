@@ -176,6 +176,62 @@ esac
 	}
 }
 
+func TestCLIOwnerFilterUsesCanonicalIdentity(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BERTH_STATE", filepath.Join(dir, "state"))
+	pid := strconv.Itoa(os.Getpid())
+	invoke(t, 0, "create", "--owner", "pid:"+pid)
+	if invoke(t, 0, "who", "--owner", "pid:0"+pid)["count"] != float64(1) {
+		t.Fatal("PID filter did not normalize leading zeros")
+	}
+	t.Chdir(dir)
+	file := filepath.Join(dir, "heartbeat")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	invoke(t, 0, "create", "--owner", "heartbeat:./heartbeat")
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if invoke(t, 0, "ps", "--owner", "heartbeat:./heartbeat")["count"] != float64(1) {
+		t.Fatal("relative heartbeat filter failed after owner death")
+	}
+	if invoke(t, 0, "ps", "--owner", "unknown:owner")["count"] != float64(0) {
+		t.Fatal("unrecognized owner selector must not match")
+	}
+}
+
+func TestCLITextListKeepsLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name, label, cell string
+	}{
+		{"empty", "", `,"{}",`},
+		{"populated", "task=lab", `,"{\"task\":\"lab\"}",`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("BERTH_STATE", t.TempDir())
+			t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+			args := []string{"create"}
+			if tc.label != "" {
+				args = append(args, "--label", tc.label)
+			}
+			invoke(t, 0, args...)
+			var out bytes.Buffer
+			if code := run(context.Background(), []string{"ps"}, &out); code != 0 {
+				t.Fatalf("ps failed: %d, %s", code, out.String())
+			}
+			if !strings.Contains(out.String(), tc.cell) || strings.Contains(out.String(), ",null,") {
+				t.Fatalf("TOON table lost %s labels: %s", tc.name, out.String())
+			}
+			list := invoke(t, 0, "ps")
+			labels, ok := list["leases"].([]any)[0].(map[string]any)["labels"].(map[string]any)
+			if !ok || (tc.label != "" && labels["task"] != "lab") {
+				t.Fatalf("JSON labels must remain an object: %#v", labels)
+			}
+		})
+	}
+}
+
 func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
 	t.Setenv("BERTH_STATE", t.TempDir())
 	var out bytes.Buffer

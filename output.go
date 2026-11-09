@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,17 +36,22 @@ func keys(m map[string]any) []string {
 func toonObject(w io.Writer, object map[string]any, indent string) {
 	for _, key := range keys(object) {
 		value := object[key]
+		quotedKey := toonKey(key)
 		switch v := value.(type) {
 		case map[string]any:
-			fmt.Fprintf(w, "%s%s:\n", indent, toonString(key))
+			fmt.Fprintf(w, "%s%s:\n", indent, quotedKey)
 			toonObject(w, v, indent+"  ")
 		case []map[string]any:
 			if len(v) == 0 {
-				fmt.Fprintf(w, "%s%s: []\n", indent, key)
+				fmt.Fprintf(w, "%s%s: []\n", indent, quotedKey)
 				continue
 			}
 			fields := keys(v[0])
-			fmt.Fprintf(w, "%s%s[%d]{%s}:\n", indent, key, len(v), strings.Join(fields, ","))
+			quotedFields := make([]string, len(fields))
+			for i, field := range fields {
+				quotedFields[i] = toonKey(field)
+			}
+			fmt.Fprintf(w, "%s%s[%d]{%s}:\n", indent, quotedKey, len(v), strings.Join(quotedFields, ","))
 			for _, row := range v {
 				cells := make([]string, len(fields))
 				for i, field := range fields {
@@ -55,23 +61,23 @@ func toonObject(w io.Writer, object map[string]any, indent string) {
 			}
 		case []string:
 			if len(v) == 0 {
-				fmt.Fprintf(w, "%s%s: []\n", indent, key)
+				fmt.Fprintf(w, "%s%s: []\n", indent, quotedKey)
 				continue
 			}
 			cells := make([]string, len(v))
 			for i, s := range v {
 				cells[i] = toonString(s)
 			}
-			fmt.Fprintf(w, "%s%s[%d]: %s\n", indent, key, len(v), strings.Join(cells, ","))
+			fmt.Fprintf(w, "%s%s[%d]: %s\n", indent, quotedKey, len(v), strings.Join(cells, ","))
 		case map[string]string:
 			fields := map[string]any{}
 			for k, s := range v {
 				fields[k] = s
 			}
-			fmt.Fprintf(w, "%s%s:\n", indent, key)
+			fmt.Fprintf(w, "%s%s:\n", indent, quotedKey)
 			toonObject(w, fields, indent+"  ")
 		default:
-			fmt.Fprintf(w, "%s%s: %s\n", indent, key, toonScalar(v))
+			fmt.Fprintf(w, "%s%s: %s\n", indent, quotedKey, toonScalar(v))
 		}
 	}
 }
@@ -84,9 +90,24 @@ func toonScalar(value any) string {
 		return strconv.FormatBool(v)
 	case int:
 		return strconv.Itoa(v)
+	case map[string]string:
+		if len(v) == 0 {
+			return `"{}"`
+		}
+		encoded, _ := json.Marshal(v)
+		return toonString(string(encoded))
 	default:
 		return "null"
 	}
+}
+
+var toonKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*$`)
+
+func toonKey(s string) string {
+	if toonKeyPattern.MatchString(s) {
+		return s
+	}
+	return quoteToon(s)
 }
 
 func toonString(s string) string {
@@ -95,6 +116,10 @@ func toonString(s string) string {
 			return s
 		}
 	}
+	return quoteToon(s)
+}
+
+func quoteToon(s string) string {
 	// TOON's quoted strings use backslash, quote, newline, return, and tab escapes.
 	replacer := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\n", "\\n", "\r", "\\r", "\t", "\\t")
 	return "\"" + replacer.Replace(s) + "\""

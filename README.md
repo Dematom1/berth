@@ -30,10 +30,11 @@ Keep the shell or session that owns the lab alive.
  berth release <id> --confirm        # delete cluster and release lease
 ```
 
-The cluster name is `berth-<id>`. For kind, its kubeconfig is private to the lease
-under `$BERTH_STATE/resources/<id>/kubeconfig`; creation does not edit your
-default kubeconfig. k3d uses the selected Docker context. The resources
-description is metadata, not a CPU or memory limit.
+Kind cluster names are `berth-<id>`. K3d names use the first 26 ID characters
+to fit its 32-character limit. Both use the selected Docker context and private
+kubeconfigs under `$BERTH_STATE/resources/<id>/`: `kubeconfig` for kind and `k3d`
+for k3d. Creation and cleanup do not edit the caller's kubeconfig or current
+context. The resources description is metadata, not a CPU or memory limit.
 An orphaned lab such as `k8s-axi-lab` is prevented by creating the new cluster
 through berth. This slice does not adopt or delete existing unleased clusters.
 
@@ -56,7 +57,7 @@ the generated project are rejected. Mark shared volumes and networks `external`
 to keep them out of cleanup. Release runs Compose down with `--volumes` and
 `--remove-orphans`, so data in managed volumes is deleted.
 
-Both adapters tolerate already absent resources. Cleanup errors retain the
+Adapters tolerate already absent resources. Cleanup errors retain the
 lease and exit 1. Berth verifies that managed resources are gone before removing
 the record. A create that fails after saving its lease also retains the record
 for release or sweep to clean up partial resources.
@@ -105,14 +106,16 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 | `berth sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
 
 Every command accepts `--help` and `--json`. Output defaults to concise TOON-style
-objects and tables. JSON listings include the full records and labels. Both
-formats have explicit empty states and structured errors on stdout. Resource
+objects and tables. Label cells in text tables contain compact JSON, with `"{}"`
+for empty labels. JSON listings keep labels as native objects and include full
+records. Both formats have explicit empty states and structured errors on stdout. Resource
 tool diagnostics go to stderr. There are no prompts. Unknown arguments and
 flags fail with code 2 and help before state or resource operations run.
 
 `create --adapter none` records a metadata-only lease. It does not manage or
 delete an external resource. Labels are repeatable `--label key=value` metadata.
-`list --owner KIND:ID` filters by the exact recorded owner string.
+`list --owner KIND:ID` filters by canonical owner identity, resolving relative
+heartbeat paths and numeric PID spellings without checking owner liveness.
 
 ### AXI exit codes
 

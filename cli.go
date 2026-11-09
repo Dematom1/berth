@@ -259,6 +259,18 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	var result map[string]any
 	switch command {
 	case "list":
+		if kind, id, ok := strings.Cut(owner, ":"); ok && id != "" {
+			switch kind {
+			case "pid", "session":
+				if pid, err := strconv.ParseInt(id, 10, 32); err == nil && pid > 0 {
+					owner = kind + ":" + strconv.FormatInt(pid, 10)
+				}
+			case "heartbeat":
+				if path, err := filepath.Abs(id); err == nil {
+					owner = kind + ":" + path
+				}
+			}
+		}
 		views := []map[string]any{}
 		full := []Lease{}
 		for _, id := range s.IDs() {

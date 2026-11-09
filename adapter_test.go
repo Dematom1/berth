@@ -106,6 +106,37 @@ func TestAdapterCommandsAndSurvivors(t *testing.T) {
 	}
 }
 
+func TestK3dKeepsCallerKubeconfig(t *testing.T) {
+	dir := t.TempDir()
+	caller := filepath.Join(dir, "caller-kubeconfig")
+	if err := os.WriteFile(caller, []byte("caller configuration"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", caller)
+	// Model k3d's documented create/delete writes at the real subprocess boundary.
+	stub := "#!/bin/sh\nif [ \"$2\" = list ]; then printf '[]'; else printf 'updated by k3d' > \"$KUBECONFIG\"; fi\n"
+	if err := os.WriteFile(filepath.Join(dir, "k3d"), []byte(stub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	l := testLease(t)
+	l.Resource = Resource{Adapter: "k3d", Name: "berth-test", File: filepath.Join(dir, "private-kubeconfig"), DockerHost: "unix:///docker.sock"}
+	a := k3dAdapter{runCommand}
+	if err := a.Create(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Destroy(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(caller)
+	if err != nil || string(data) != "caller configuration" {
+		t.Fatalf("caller kubeconfig changed: %q, %v", data, err)
+	}
+	if data, err := os.ReadFile(l.Resource.File); err != nil || string(data) != "updated by k3d" {
+		t.Fatalf("k3d did not use its private kubeconfig: %q, %v", data, err)
+	}
+}
+
 func TestComposeSnapshotAndUnsafeNames(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "")
 	for _, unsafe := range []string{"", "volume", "network", "container"} {

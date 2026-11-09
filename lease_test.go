@@ -192,6 +192,18 @@ func TestStoreDurabilityLockAndCorruption(t *testing.T) {
 	}
 }
 
+func TestOutOfRangePIDIsUnknownNotDead(t *testing.T) {
+	for _, kind := range []string{"pid", "session"} {
+		o := Owner{Kind: kind, ID: "4299161601", Start: "invalid persisted process"}
+		if live := checkOwner(o, testNow); live != Unknown {
+			t.Fatalf("%s PID outside pid_t range is %s, want unknown", kind, live)
+		}
+		if _, err := parseOwner(o.String(), time.Minute, testNow); err == nil {
+			t.Fatalf("accepted out-of-range %s owner", kind)
+		}
+	}
+}
+
 func TestOwnerLiveness(t *testing.T) {
 	now := time.Now()
 	o, err := parseOwner("pid:"+strconv.Itoa(os.Getpid()), time.Minute, now)

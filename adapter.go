@@ -50,7 +50,7 @@ func dockerEnv(l Lease) []string {
 type k3dAdapter struct{ run commandRunner }
 
 func k3dEnv(l Lease) []string {
-	return []string{"DOCKER_CONTEXT=", "DOCKER_HOST=" + l.Resource.DockerHost, "KIND_EXPERIMENTAL_PROVIDER=docker"}
+	return []string{"DOCKER_CONTEXT=", "DOCKER_HOST=" + l.Resource.DockerHost, "KIND_EXPERIMENTAL_PROVIDER=docker", "KUBECONFIG=" + l.Resource.File}
 }
 
 func (a k3dAdapter) Create(ctx context.Context, l Lease) error {
