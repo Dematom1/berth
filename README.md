@@ -9,9 +9,12 @@ with machine-budget admission on macOS and Linux. SSH agents follow in slice 3.
 Requires Go 1.26 or later.
 
 ```sh
- go install github.com/Dematom1/berth@latest
- berth --version
+go install github.com/Dematom1/berth@latest
+berth --version
 ```
+
+The module path is case-sensitive; `github.com/dematom1/berth` fails. Prebuilt
+Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/berth/releases) page.
 
 From a checkout, `make install` installs to Go's binary directory. `make build`
 writes `bin/berth`. Resource adapters also require `kind`, `k3d`, `docker`,
