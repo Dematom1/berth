@@ -148,6 +148,34 @@ func jobStore(t *testing.T, dir string, f func(*Store)) {
 	f(s)
 }
 
+func cleanupProcessGroup(cmd *exec.Cmd) {
+	pid := cmd.Process.Pid
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+}
+
+func registerProcessGroupCleanup(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	t.Cleanup(func() { cleanupProcessGroup(cmd) })
+}
+
+func TestProcessGroupCleanupRunsOnSubtestExit(t *testing.T) {
+	var pid int
+	t.Run("started process", func(t *testing.T) {
+		cmd := exec.Command("sh", "-c", "exec sleep 30")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		pid = cmd.Process.Pid
+		registerProcessGroupCleanup(t, cmd)
+	})
+	if _, state := processIdentity(pid); state != Dead {
+		t.Fatal("subtest cleanup left its process alive")
+	}
+}
+
 func startJobCommand(t *testing.T, binary string, args ...string) *exec.Cmd {
 	t.Helper()
 	cmd := exec.Command(binary, append([]string{"job"}, args...)...)
@@ -159,7 +187,13 @@ func startJobCommand(t *testing.T, binary string, args ...string) *exec.Cmd {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait(); log.Close() })
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			_ = cmd.Process.Signal(os.Interrupt)
+		}
+		_ = cmd.Wait()
+		_ = log.Close()
+	})
 	return cmd
 }
 
@@ -383,14 +417,14 @@ func TestJobsRealProcesses(t *testing.T) {
 		}
 		bin := t.TempDir()
 		marker := filepath.Join(bin, "fail")
-		script := "#!/bin/sh\nif test -e " + strconv.Quote(marker) + "; then exit 1; fi\nexec " + strconv.Quote(ps) + " \"$@\"\n"
+		script := "#!/bin/sh\nif test -e " + strconv.Quote(marker) + " && test \"$1\" = -A; then exit 1; fi\nexec " + strconv.Quote(ps) + " \"$@\"\n"
 		if err := os.WriteFile(filepath.Join(bin, "ps"), []byte(script), 0700); err != nil {
 			t.Fatal(err)
 		}
 		originalPath := os.Getenv("PATH")
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+originalPath)
 		pidfile := filepath.Join(t.TempDir(), "descendant")
-		out := childExit(t, exec.Command(binary, "job", "--timeout", "200ms", "--", "sh", "-c", `touch "$2"; sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; wait`, "_", pidfile, marker), 124)
+		out := childExit(t, exec.Command(binary, "job", "--timeout", "1s", "--", "sh", "-c", `touch "$2"; sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; wait`, "_", pidfile, marker), 124)
 		if !strings.Contains(out, "cleanup incomplete") {
 			t.Fatal("timeout cleanup failure was silent")
 		}
@@ -456,6 +490,29 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 }
 
+func TestDeadlineProbeSeesCompletedUnreapedChild(t *testing.T) {
+	cmd := exec.Command("sh", "-c", "exit 37")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+	awaitJob(t, func() bool {
+		completed, err := childExited(pid)
+		return err == nil && completed
+	})
+	completed, err := childCompletion(make(chan error), pid)
+	if err != nil || !completed {
+		t.Fatal("deadline probe missed completed child")
+	}
+	if err := cmd.Wait(); err == nil || cmd.ProcessState.ExitCode() != 37 {
+		t.Fatal("child's own completion status was not preserved")
+	}
+}
+
 func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
 	pidfile := filepath.Join(t.TempDir(), "child")
 	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; exit`, "_", pidfile)
@@ -464,6 +521,7 @@ func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
 		t.Fatal(err)
 	}
 	pid := cmd.Process.Pid
+	registerProcessGroupCleanup(t, cmd)
 	leader, err := parseOwner("pid:"+strconv.Itoa(pid), 0, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -491,6 +549,7 @@ func TestDestroyRejectsReusedZombieGroupLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	pid := cmd.Process.Pid
+	registerProcessGroupCleanup(t, cmd)
 	awaitJob(t, func() bool {
 		_, err := os.Stat(pidfile)
 		_, state := processIdentity(pid)

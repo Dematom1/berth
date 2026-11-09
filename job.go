@@ -244,6 +244,17 @@ type processResource struct{}
 
 func (processResource) Create(context.Context, Lease) error { return nil }
 
+func childCompletion(observed <-chan error, pid int) (bool, error) {
+	select {
+	case err := <-observed:
+		if err == nil {
+			return true, nil
+		}
+	default:
+	}
+	return childExited(pid)
+}
+
 func groupAlive(ctx context.Context, pgid int) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -458,19 +469,17 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 		}
 		waitErr = cmd.Wait()
 	case <-timer.C:
-		select {
-		case err := <-observed:
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "berth: cannot observe job exit without reaping; sweep will retry:", err)
-				finish = false
-				cmd.Process.Kill()
-			} else {
-				cleanup()
-			}
+		completed, err := childCompletion(observed, cmd.Process.Pid)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "berth: cannot verify job completion at deadline; sweep will retry:", err)
+			finish = false
+			cmd.Process.Kill()
 			waitErr = cmd.Wait()
-		default:
-			cleanup()
-			waitErr = cmd.Wait()
+			return 124
+		}
+		cleanup()
+		waitErr = cmd.Wait()
+		if !completed {
 			return 124
 		}
 	case <-ctx.Done():

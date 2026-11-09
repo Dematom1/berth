@@ -2,7 +2,19 @@
 
 package main
 
-import "golang.org/x/sys/unix"
+import (
+	"errors"
+
+	"golang.org/x/sys/unix"
+)
+
+func childExited(pid int) (bool, error) {
+	_, state := processIdentity(pid)
+	if state == Unknown {
+		return false, errors.New("cannot inspect child process")
+	}
+	return state == Dead, nil
+}
 
 func waitChildExit(pid int) error {
 	kq, err := unix.Kqueue()
