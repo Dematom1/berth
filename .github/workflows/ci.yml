@@ -14,7 +14,7 @@ jobs:
   pr-title:
     name: PR title
     if: github.event_name == 'pull_request'
-    runs-on: ${{ vars.CI_RUNNER }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Check conventional commit title
         env:
@@ -27,13 +27,14 @@ jobs:
   no-mistakes:
     name: PR must be raised via no-mistakes
     if: github.event_name == 'pull_request'
-    runs-on: ${{ vars.CI_RUNNER }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Verify pipeline attestation
         uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
   main-required-ci:
     name: main-required-ci
-    runs-on: ${{ vars.CI_RUNNER }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -48,7 +49,15 @@ jobs:
           go build -o "$RUNNER_TEMP/berth" .
           GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
           GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
-      - name: Adapter integration tests when tools are available
+      - name: Install kind for real adapter integration
+        run: |
+          curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"
+          echo 'aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  '"$RUNNER_TEMP/kind-linux-amd64" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
+          kind --version
+          docker info
+          docker compose version
+      - name: Real kind and Compose adapter integration
         env:
           BERTH_INTEGRATION: '1'
         run: go test -v -run Integration -timeout 15m ./...
