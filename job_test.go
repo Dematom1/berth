@@ -515,7 +515,7 @@ func TestDeadlineProbeSeesCompletedUnreapedChild(t *testing.T) {
 
 func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
 	pidfile := filepath.Join(t.TempDir(), "child")
-	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; exit`, "_", pidfile)
+	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; sleep 1`, "_", pidfile)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
