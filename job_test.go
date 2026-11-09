@@ -202,7 +202,18 @@ func TestJobsRealProcesses(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
+	developerConfig := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(developerConfig, "berth"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(developerConfig, "berth", "config.json"), []byte(`{"cores":0}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", developerConfig)
+	t.Setenv("BERTH_CONFIG", filepath.Join(developerConfig, "missing.json"))
 	t.Run("command metadata excludes arguments", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		t.Setenv("BERTH_CONFIG", "")
 		dir := t.TempDir()
 		t.Setenv("BERTH_STATE", dir)
 		marker := filepath.Join(t.TempDir(), "started")
@@ -515,8 +526,13 @@ func TestDeadlineProbeSeesCompletedUnreapedChild(t *testing.T) {
 
 func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
 	pidfile := filepath.Join(t.TempDir(), "child")
-	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; sleep 1`, "_", pidfile)
+	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; read _; exit 0`, "_", pidfile)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	release, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = release.Close() })
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -527,6 +543,9 @@ func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitJob(t, func() bool { _, err := os.Stat(pidfile); return err == nil })
+	if err := release.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
@@ -625,6 +644,74 @@ func TestExpiredWaiterCleanupAfterLockContention(t *testing.T) {
 			t.Fatalf("expired waiter remains after lock release: %+v", s.Waiters)
 		}
 	})
+}
+
+func TestAdmissionReclaimHasLiveSharedCleanupBudget(t *testing.T) {
+	for _, count := range []int{1, 7} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			dir := t.TempDir()
+			owner, err := parseOwner("pid:"+strconv.Itoa(os.Getpid()), 0, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := newLease(owner, time.Minute, "true", nil, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Resource.Adapter = "process"
+			request.Job = &JobResource{Budget: Budget{1, 1}, Class: "default"}
+			for i := 0; i < count; i++ {
+				ready := filepath.Join(t.TempDir(), "ready")
+				script := `echo ready > "$1"; exec sleep 30`
+				if count > 1 {
+					script = `trap '' TERM; ` + script
+				}
+				cmd := exec.Command("sh", "-c", script, "_", ready)
+				cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+				if err := cmd.Start(); err != nil {
+					t.Fatal(err)
+				}
+				registerProcessGroupCleanup(t, cmd)
+				awaitJob(t, func() bool { _, err := os.Stat(ready); return err == nil })
+				leader, err := parseOwner("pid:"+strconv.Itoa(cmd.Process.Pid), 0, time.Now())
+				if err != nil {
+					t.Fatal(err)
+				}
+				stale, err := newLease(Owner{Kind: "heartbeat", ID: filepath.Join(dir, "missing-owner"), Stale: time.Minute}, time.Minute, "sleep", nil, time.Now())
+				if err != nil {
+					t.Fatal(err)
+				}
+				stale.Resource.Adapter = "process"
+				stale.Job = &JobResource{Budget: Budget{1, 1}, Class: "default", Leader: leader}
+				jobStore(t, dir, func(s *Store) {
+					s.Leases[stale.ID] = stale
+					if err := s.Save(); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+			_, err = admitJob(context.Background(), dir, request, Budget{1, 1}, 0)
+			if count == 1 {
+				if err != nil {
+					t.Fatalf("zero-wait request did not reclaim the dead owner's live job: %v", err)
+				}
+				jobStore(t, dir, func(s *Store) {
+					if len(s.Leases) != 1 || s.Leases[request.ID].ID != request.ID {
+						t.Fatal("reclaimed reservation was not replaced by admitted request")
+					}
+				})
+			} else {
+				if !errors.Is(err, errNoCapacity) {
+					t.Fatalf("cleanup budget restarted for each lease: %v", err)
+				}
+				jobStore(t, dir, func(s *Store) {
+					if len(s.Leases) == 0 || len(s.Leases) >= count {
+						t.Fatal("shared cleanup budget must reclaim some jobs and retain unfinished cleanup")
+					}
+				})
+			}
+		})
+	}
 }
 
 func TestJobQueuePrunesExpiredButKeepsUnknown(t *testing.T) {

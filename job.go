@@ -103,16 +103,21 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 			s.Waiters = append(s.Waiters, JobWaiter{l.ID, l.Machine, l.Owner, deadline})
 			queued, changed = true, true
 		}
+		cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 5*time.Second)
 		for _, id := range s.IDs() {
+			if cleanupCtx.Err() != nil {
+				break
+			}
 			existing := s.Leases[id]
 			if existing.Job != nil {
 				if eligible, _ := reclaimable(existing, l.Machine, now, checkOwner); eligible {
-					if _, err := releaseLease(lockCtx, s, id, l.Machine, adapters()); err != nil {
+					if _, err := releaseLease(cleanupCtx, s, id, l.Machine, adapters()); err != nil {
 						fmt.Fprintln(os.Stderr, "berth: retaining job reservation after cleanup failure:", err)
 					}
 				}
 			}
 		}
+		cancelCleanup()
 		now = time.Now().UTC()
 		if ctx.Err() != nil || (wait > 0 && !now.Before(deadline)) {
 			s.Close()
