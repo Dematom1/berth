@@ -55,7 +55,7 @@ jobs:
           echo 'aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  '"$RUNNER_TEMP/kind-linux-amd64" | sha256sum --check
           sudo install -m 0755 "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
           curl -fsSL https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64 -o "$RUNNER_TEMP/k3d-linux-amd64"
-          echo 'cdb57148885e7177d5ce1925fc63a94a1b4780729f9db460555bad7ea46976b5  '"$RUNNER_TEMP/k3d-linux-amd64" | sha256sum --check
+          echo 'dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  '"$RUNNER_TEMP/k3d-linux-amd64" | sha256sum --check
           sudo install -m 0755 "$RUNNER_TEMP/k3d-linux-amd64" /usr/local/bin/k3d
           kind --version
           k3d version
