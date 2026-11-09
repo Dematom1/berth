@@ -75,9 +75,8 @@ reserved for interactive work. Reservations coordinate cooperating berth jobs;
 they are not OS CPU or memory caps, and stack leases' resource descriptions do
 not count against them. Configure a static partition if other tools such as
 runner-up also schedule work on the host; berth does not read their ledgers.
-Jobs run at nice 10 or a less-favored inherited priority. They inherit the
-working directory and environment, and pass
-stdin, stdout and stderr through unchanged. `BERTH_LEASE` identifies the job.
+Jobs inherit the working directory and environment, and pass stdin, stdout and
+stderr through unchanged. `BERTH_LEASE` identifies the job.
 `--json` changes only pre-start errors, not child output. Use noninteractive
 commands. Berth does not hand terminal foreground job control to the child.
 

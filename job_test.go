@@ -58,6 +58,13 @@ func TestJobBudgetAndConfig(t *testing.T) {
 			t.Fatal("overbooked budget")
 		}
 	}
+	stale := &Store{Leases: map[string]Lease{
+		"large": {Machine: "local", Job: &JobResource{Budget: Budget{4, 3 * gib}}},
+		"small": {Machine: "local", Job: &JobResource{Budget: Budget{1, gib}}},
+	}}
+	if budgetFits(stale, "local", Budget{3, 2 * gib}, Budget{1, 1}) {
+		t.Fatal("reduced capacity freed resources held by stale reservations")
+	}
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("BERTH_CONFIG", path)
 	for _, data := range []string{`null`, `[]`, `{"classes":{"":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`, `{"typo":1}`, `{"cores":0}`, `{"room_memory":"999999GiB"}`, `{"classes":{"suite":{"cores":1,"memory":"1MiB","timeout":"0s"}}}`, `{} {}`} {
@@ -181,7 +188,7 @@ func TestJobsRealProcesses(t *testing.T) {
 			t.Fatalf("child output/argv changed: %q", out)
 		}
 		childExit(t, exec.Command(binary, "job", "--", "sh", "-c", "kill -TERM $$"), 143)
-		childExit(t, exec.Command("nice", "-n", "19", binary, "job", "--", "true"), 0)
+		childExit(t, exec.Command(binary, "job", "--", "true"), 0)
 		jobStore(t, dir, func(s *Store) {
 			if len(s.Leases) != 0 || len(s.Waiters) != 0 {
 				t.Fatalf("finished jobs leaked state: %+v", s)
@@ -384,6 +391,23 @@ func TestJobsRealProcesses(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestDestroyRejectsReusedLeaderPID(t *testing.T) {
+	identity, live := processIdentity(os.Getpid())
+	if live != Alive {
+		t.Fatal("test process identity unavailable")
+	}
+	lease := Lease{Job: &JobResource{Leader: Owner{ID: strconv.Itoa(os.Getpid()), Start: "not-the-current-start"}}}
+	if err := (processResource{}).Destroy(context.Background(), lease); err == nil {
+		t.Fatal("destroy accepted a reused process ID")
+	}
+	if _, live := processIdentity(os.Getpid()); live != Alive {
+		t.Fatal("destroy signaled the unrelated process")
+	}
+	if current, _ := processIdentity(os.Getpid()); current != identity {
+		t.Fatal("test process identity changed")
+	}
 }
 
 func TestExpiredWaiterCleanupAfterLockContention(t *testing.T) {

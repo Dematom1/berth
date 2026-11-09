@@ -32,11 +32,8 @@ func budgetFits(s *Store, host string, capacity, request Budget) bool {
 		if l.Machine != host || l.Job == nil {
 			continue
 		}
-		if l.Job.Budget.Cores > capacity.Cores || l.Job.Budget.Memory > capacity.Memory {
-			return false
-		}
-		capacity.Cores -= l.Job.Budget.Cores
-		capacity.Memory -= l.Job.Budget.Memory
+		capacity.Cores = max(0, capacity.Cores-l.Job.Budget.Cores)
+		capacity.Memory = max(0, capacity.Memory-l.Job.Budget.Memory)
 	}
 	return request.Cores <= capacity.Cores && request.Memory <= capacity.Memory
 }
@@ -174,11 +171,6 @@ func jobExec(args []string) int {
 	gate.Close()
 	if err != nil || n != 1 || b[0] != 1 {
 		return 125
-	}
-	// A less-favored inherited priority may not be raised back to nice 10.
-	if err := syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10); err != nil && !errors.Is(err, syscall.EACCES) && !errors.Is(err, syscall.EPERM) {
-		fmt.Fprintln(os.Stderr, "berth: cannot lower job priority:", err)
-		return 126
 	}
 	if err := syscall.Exec(args[0], args, os.Environ()); err != nil {
 		fmt.Fprintln(os.Stderr, "berth: cannot execute child:", err)
