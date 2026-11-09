@@ -1,0 +1,22 @@
+version: 2
+
+builds:
+  - main: .
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: Dematom1
+    name: berth
