@@ -456,6 +456,33 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 }
 
+func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
+	pidfile := filepath.Join(t.TempDir(), "child")
+	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; exit`, "_", pidfile)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	leader, err := parseOwner("pid:"+strconv.Itoa(pid), 0, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitJob(t, func() bool { _, err := os.Stat(pidfile); return err == nil })
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	lease := Lease{Job: &JobResource{Leader: leader}}
+	if err := (processResource{}).Destroy(context.Background(), lease); err != nil {
+		t.Fatalf("missing leader should not prevent release: %v", err)
+	}
+	alive, err := groupAlive(context.Background(), pid)
+	if err != nil || !alive {
+		t.Fatal("destroy signaled an unverifiable group")
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+}
+
 func TestDestroyRejectsReusedZombieGroupLeader(t *testing.T) {
 	pidfile := filepath.Join(t.TempDir(), "child")
 	cmd := exec.Command("sh", "-c", `sleep 30 & echo $! > "$1"; exit`, "_", pidfile)

@@ -180,28 +180,28 @@ func jobExec(args []string) int {
 	return 126
 }
 
-func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.Writer) (*exec.Cmd, error) {
+func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.Writer) (*exec.Cmd, <-chan error, error) {
 	s, err := openStore(ctx, dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer s.Close()
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	current, ok := s.Leases[l.ID]
 	if !ok || !time.Now().Before(current.Expires) {
-		return nil, errors.New("job reservation expired or was released before start")
+		return nil, nil, errors.New("job reservation expired or was released before start")
 	}
 	gate, start, err := os.Pipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer gate.Close()
 	defer start.Close()
 	bin, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cmd := exec.Command(bin, append([]string{"__job_exec"}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -210,7 +210,7 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, os.Stderr
 	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	leader, err := parseOwner("pid:"+strconv.Itoa(cmd.Process.Pid), 0, time.Now())
 	if err == nil {
@@ -225,15 +225,19 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	if err == nil && !time.Now().Before(current.Expires) {
 		err = errors.New("job reservation expired before child start")
 	}
-	if err == nil {
-		_, err = start.Write([]byte{1})
-	}
 	if err != nil {
 		cmd.Process.Kill()
 		cmd.Wait()
-		return nil, err
+		return nil, nil, err
 	}
-	return cmd, nil
+	observed := make(chan error, 1)
+	go func() { observed <- waitChildExit(cmd.Process.Pid) }()
+	if _, err := start.Write([]byte{1}); err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+		return nil, nil, err
+	}
+	return cmd, observed, nil
 }
 
 type processResource struct{}
@@ -272,6 +276,10 @@ func (processResource) Destroy(ctx context.Context, l Lease) error {
 	if live == Unknown || ((live == Alive || identity != "") && identity != leader.Start) {
 		return errors.New("job group identity cannot be verified; lease retained")
 	}
+	if live == Dead && identity == "" {
+		fmt.Fprintln(os.Stderr, "berth: job leader is gone; releasing lease without signaling an unverifiable process group")
+		return nil
+	}
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
 		alive, err := groupAlive(ctx, pid)
 		if err != nil || !alive {
@@ -307,13 +315,23 @@ func stopJob(l Lease, cmd *exec.Cmd) error {
 	return nil
 }
 
-func finishJob(dir string, l Lease) {
+func finishJob(dir string, l Lease, groupCleaned bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	s, err := openStore(ctx, dir)
 	if err == nil {
 		defer s.Close()
-		_, err = releaseLease(ctx, s, l.ID, l.Machine, adapters())
+		if groupCleaned {
+			if _, ok := s.Leases[l.ID]; ok {
+				delete(s.Leases, l.ID)
+				err = s.Save()
+				if err != nil {
+					s.Leases[l.ID] = l
+				}
+			}
+		} else {
+			_, err = releaseLease(ctx, s, l.ID, l.Machine, adapters())
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "berth: job cleanup incomplete; retry berth sweep --confirm:", err)
@@ -409,41 +427,55 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 		}
 		return emitError(out, jsonOutput, code, err.Error(), "Run berth ps to inspect reservations; retry berth job with --wait")
 	}
-	finish := true
+	finish, groupCleaned := true, false
 	defer func() {
 		if finish {
-			finishJob(dir, l)
+			finishJob(dir, l, groupCleaned)
 		}
 	}()
-	cmd, err := startJob(ctx, dir, &l, child, out)
+	cmd, observed, err := startJob(ctx, dir, &l, child, out)
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Run berth ps to inspect retained reservations")
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
 	timer := time.NewTimer(time.Until(l.Expires))
 	defer timer.Stop()
-	var waitErr error
-	select {
-	case waitErr = <-done:
-	case <-timer.C:
-		select {
-		case waitErr = <-done:
-		default:
-			_, live := processIdentity(cmd.Process.Pid)
-			if err := stopJob(l, cmd); err != nil {
-				finish = false
-			}
-			waitErr = <-done
-			if live != Dead {
-				return 124
-			}
-		}
-	case <-ctx.Done():
+	cleanup := func() {
 		if err := stopJob(l, cmd); err != nil {
 			finish = false
+		} else {
+			groupCleaned = true
 		}
-		waitErr = <-done
+	}
+	var waitErr error
+	select {
+	case err := <-observed:
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "berth: cannot observe job exit without reaping; sweep will retry:", err)
+			finish = false
+			cmd.Process.Kill()
+		} else {
+			cleanup()
+		}
+		waitErr = cmd.Wait()
+	case <-timer.C:
+		select {
+		case err := <-observed:
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "berth: cannot observe job exit without reaping; sweep will retry:", err)
+				finish = false
+				cmd.Process.Kill()
+			} else {
+				cleanup()
+			}
+			waitErr = cmd.Wait()
+		default:
+			cleanup()
+			waitErr = cmd.Wait()
+			return 124
+		}
+	case <-ctx.Done():
+		cleanup()
+		waitErr = cmd.Wait()
 	}
 	if waitErr == nil {
 		return 0
