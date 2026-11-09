@@ -2,7 +2,8 @@
 
 Owner-and-expiry leases for local stacks and clusters. One Go binary, no daemon.
 Supports leases, kind and k3d clusters, Docker Compose projects, and local jobs
-with machine-budget admission on macOS and Linux. Jobs can run on configured SSH machines.
+with machine-budget admission on macOS and Linux. Jobs can run on configured
+SSH machines.
 
 ## Install
 
