@@ -82,10 +82,11 @@ func processIdentity(pid int) (string, Liveness) {
 	if len(fields) != 6 {
 		return "", Unknown
 	}
+	identity := strings.Join(fields[:5], " ")
 	if strings.HasPrefix(fields[5], "Z") {
-		return "", Dead
+		return identity, Dead
 	}
-	return strings.Join(fields[:5], " "), Alive
+	return identity, Alive
 }
 
 func checkOwner(o Owner, now time.Time) Liveness {

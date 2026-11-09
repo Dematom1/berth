@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -268,7 +269,7 @@ func (processResource) Destroy(ctx context.Context, l Lease) error {
 		return errors.New("invalid job process identity")
 	}
 	identity, live := processIdentity(pid)
-	if live == Unknown || (live == Alive && identity != leader.Start) {
+	if live == Unknown || ((live == Alive || identity != "") && identity != leader.Start) {
 		return errors.New("job group identity cannot be verified; lease retained")
 	}
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
@@ -295,13 +296,15 @@ func (processResource) Destroy(ctx context.Context, l Lease) error {
 	return errors.New("job processes survived cleanup; lease retained")
 }
 
-func stopJob(l Lease, cmd *exec.Cmd) {
+func stopJob(l Lease, cmd *exec.Cmd) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := (processResource{}).Destroy(ctx, l); err != nil {
 		fmt.Fprintln(os.Stderr, "berth: group cleanup incomplete; sweep will retry:", err)
 		cmd.Process.Kill()
+		return err
 	}
+	return nil
 }
 
 func finishJob(dir string, l Lease) {
@@ -388,7 +391,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job when the process is inspectable")
 	}
-	l, err := newLease(owner, duration, strings.Join(child, " "), nil, time.Now().UTC())
+	l, err := newLease(owner, duration, filepath.Base(child[0]), nil, time.Now().UTC())
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job")
 	}
@@ -406,7 +409,12 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 		}
 		return emitError(out, jsonOutput, code, err.Error(), "Run berth ps to inspect reservations; retry berth job with --wait")
 	}
-	defer finishJob(dir, l)
+	finish := true
+	defer func() {
+		if finish {
+			finishJob(dir, l)
+		}
+	}()
 	cmd, err := startJob(ctx, dir, &l, child, out)
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Run berth ps to inspect retained reservations")
@@ -423,14 +431,18 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool) 
 		case waitErr = <-done:
 		default:
 			_, live := processIdentity(cmd.Process.Pid)
-			stopJob(l, cmd)
+			if err := stopJob(l, cmd); err != nil {
+				finish = false
+			}
 			waitErr = <-done
 			if live != Dead {
 				return 124
 			}
 		}
 	case <-ctx.Done():
-		stopJob(l, cmd)
+		if err := stopJob(l, cmd); err != nil {
+			finish = false
+		}
 		waitErr = <-done
 	}
 	if waitErr == nil {

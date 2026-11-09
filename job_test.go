@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -167,6 +168,29 @@ func TestJobsRealProcesses(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
+	t.Run("command metadata excludes arguments", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("BERTH_STATE", dir)
+		marker := filepath.Join(t.TempDir(), "started")
+		secret := "private-argument-do-not-display"
+		holder := startJobCommand(t, binary, "--", "sh", "-c", `touch "$1"; exec sleep 30`, "_", marker, secret)
+		awaitJob(t, func() bool { _, err := os.Stat(marker); return err == nil })
+		state, err := os.ReadFile(filepath.Join(dir, "state.json"))
+		if err != nil {
+			t.Fatal("could not read persisted lease state")
+		}
+		plain := childExit(t, exec.Command(binary, "list"), 0)
+		structured := childExit(t, exec.Command(binary, "list", "--json"), 0)
+		if strings.Contains(string(state), secret) || strings.Contains(plain, secret) || strings.Contains(structured, secret) {
+			t.Fatal("job arguments leaked into lease metadata")
+		}
+		if !strings.Contains(string(state), `"resources": "sh"`) || !strings.Contains(plain, "sh") || !strings.Contains(structured, `"resources":"sh"`) {
+			t.Fatal("executable basename missing from lease metadata")
+		}
+		holder.Process.Kill()
+		holder.Wait()
+		childExit(t, exec.Command(binary, "sweep", "--confirm"), 0)
+	})
 	t.Run("partial config runs default class", func(t *testing.T) {
 		config := filepath.Join(t.TempDir(), "config.json")
 		if err := os.WriteFile(config, []byte(`{"classes":{"suite":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`), 0600); err != nil {
@@ -350,6 +374,40 @@ func TestJobsRealProcesses(t *testing.T) {
 			}
 		})
 	})
+	t.Run("timeout cleanup failure retains reservation", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("BERTH_STATE", dir)
+		ps, err := exec.LookPath("ps")
+		if err != nil {
+			t.Fatal(err)
+		}
+		bin := t.TempDir()
+		marker := filepath.Join(bin, "fail")
+		script := "#!/bin/sh\nif test -e " + strconv.Quote(marker) + "; then exit 1; fi\nexec " + strconv.Quote(ps) + " \"$@\"\n"
+		if err := os.WriteFile(filepath.Join(bin, "ps"), []byte(script), 0700); err != nil {
+			t.Fatal(err)
+		}
+		originalPath := os.Getenv("PATH")
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+originalPath)
+		pidfile := filepath.Join(t.TempDir(), "descendant")
+		out := childExit(t, exec.Command(binary, "job", "--timeout", "200ms", "--", "sh", "-c", `touch "$2"; sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; wait`, "_", pidfile, marker), 124)
+		if !strings.Contains(out, "cleanup incomplete") {
+			t.Fatal("timeout cleanup failure was silent")
+		}
+		jobStore(t, dir, func(s *Store) {
+			if len(s.Leases) != 1 {
+				t.Fatal("timeout cleanup failure released reservation")
+			}
+		})
+		data, err := os.ReadFile(pidfile)
+		if err != nil {
+			t.Fatal("timeout child did not start")
+		}
+		pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Setenv("PATH", originalPath)
+		childExit(t, exec.Command(binary, "sweep", "--confirm"), 0)
+	})
 	t.Run("cleanup failure retains child code and lease", func(t *testing.T) {
 		dir := t.TempDir()
 		t.Setenv("BERTH_STATE", dir)
@@ -396,6 +454,35 @@ func TestJobsRealProcesses(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestDestroyRejectsReusedZombieGroupLeader(t *testing.T) {
+	pidfile := filepath.Join(t.TempDir(), "child")
+	cmd := exec.Command("sh", "-c", `sleep 30 & echo $! > "$1"; exit`, "_", pidfile)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	awaitJob(t, func() bool {
+		_, err := os.Stat(pidfile)
+		_, state := processIdentity(pid)
+		return err == nil && state == Dead
+	})
+	identity, state := processIdentity(pid)
+	if state != Dead || identity == "" {
+		t.Fatal("zombie leader identity unavailable")
+	}
+	lease := Lease{Job: &JobResource{Leader: Owner{ID: strconv.Itoa(pid), Start: "different-start"}}}
+	if err := (processResource{}).Destroy(context.Background(), lease); err == nil {
+		t.Fatal("destroy accepted a reused zombie group leader")
+	}
+	alive, err := groupAlive(context.Background(), pid)
+	if err != nil || !alive {
+		t.Fatal("destroy signaled a group with a mismatched leader identity")
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = cmd.Wait()
 }
 
 func TestDestroyRejectsReusedLeaderPID(t *testing.T) {

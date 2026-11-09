@@ -74,8 +74,8 @@ Memory: integer bytes or KiB/MiB/GiB/KB/MB/GB. Durations: positive Go durations;
 --wait 0 tries once. Oversized requests fail with 2 before starting a child.
 BERTH_CONFIG selects strict JSON config; default ~/.config/berth/config.json
 (or $XDG_CONFIG_HOME/berth/config.json). Budget defaults derive from the host.
-Jobs run at nice 10 (or less-favored inherited priority) in a process group,
-owned by the berth job PID. Use noninteractive commands; no terminal job-control
+Jobs run in a process group owned by the berth job PID. Use noninteractive
+commands; no terminal job-control
 handoff is provided. Deadline
 or cancellation terminates the group (TERM, then KILL after 1s); sweep reclaims
 after owner death or expiry. Children that call setsid can escape the group.
