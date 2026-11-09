@@ -41,6 +41,9 @@ func openStore(ctx context.Context, dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err

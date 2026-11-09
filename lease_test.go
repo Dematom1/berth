@@ -126,6 +126,32 @@ func TestSweepDecisions(t *testing.T) {
 	}
 }
 
+func TestOpenStoreRestrictsExistingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(state, []byte(`{"version":1,"leases":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Fatalf("directory permissions = %04o, want 0700", info.Mode().Perm())
+	}
+	if _, err := os.Stat(state); err != nil {
+		t.Fatalf("existing lease state was not preserved: %v", err)
+	}
+}
+
 func TestStoreDurabilityLockAndCorruption(t *testing.T) {
 	dir := t.TempDir()
 	s, err := openStore(context.Background(), dir)
