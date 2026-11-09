@@ -120,7 +120,7 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 			}
 			return l, errNoCapacity
 		}
-		first := !queued
+		first := true
 		for _, w := range s.Waiters {
 			if w.Machine == l.Machine {
 				first = queued && w.ID == l.ID && now.Before(w.Expires)

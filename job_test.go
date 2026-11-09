@@ -257,6 +257,11 @@ func TestJobsRealProcesses(t *testing.T) {
 		big := startJobCommand(t, binary, "--cores", "2", "--memory", "2GiB", "--wait", "10s", "--", "sh", "-c", `echo big >> "$1"; sleep 0.1`, "_", order)
 		awaitJob(t, func() bool { n := 0; jobStore(t, dir, func(s *Store) { n = len(s.Waiters) }); return n == 1 })
 		// One core is free, but the earlier 2-core waiter owns the next admission.
+		zeroWaitMarker := filepath.Join(t.TempDir(), "zero-wait-started")
+		childExit(t, exec.Command(binary, "job", "--wait", "0", "--", "touch", zeroWaitMarker), 75)
+		if _, err := os.Stat(zeroWaitMarker); !os.IsNotExist(err) {
+			t.Fatal("zero-wait child backfilled ahead of queued job")
+		}
 		childExit(t, exec.Command(binary, "job", "--wait", "100ms", "--", "sh", "-c", `echo bypass >> "$1"`, "_", order), 75)
 		small := startJobCommand(t, binary, "--wait", "10s", "--", "sh", "-c", `echo small >> "$1"`, "_", order)
 		awaitJob(t, func() bool { n := 0; jobStore(t, dir, func(s *Store) { n = len(s.Waiters) }); return n == 2 })
