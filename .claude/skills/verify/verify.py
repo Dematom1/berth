@@ -410,7 +410,7 @@ class Driver:
 
     def ssh(self):
         # Existing harness drives the built binary against real isolated OpenSSH.
-        self.run("make", "ssh-integration", timeout=360)
+        self.run("just", "ssh-integration", timeout=360)
 
     def cleanup(self):
         success = True
