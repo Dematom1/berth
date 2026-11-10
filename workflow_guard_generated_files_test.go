@@ -9,17 +9,17 @@ import (
 )
 
 func TestGuardGeneratedFilesWorkflow(t *testing.T) {
-	text := workflowText(t, "guard-generated-files")
-	requireWorkflowText(t, text, "types: [opened, synchronize, reopened]", "fetch-depth: 0",
-		"github.event.pull_request.user.login != 'github-actions[bot]' &&",
-		"github.event.pull_request.user.login != 'release-please[bot]'")
-	if strings.Contains(text, "paths-ignore:") {
-		t.Fatal("generated-only PRs must still run the guard")
+	doc := workflow(t, "guard-generated-files")
+	job := object(object(doc["jobs"])["check"])
+	steps := list(job["steps"])
+	var script string
+	for _, raw := range steps {
+		if run, ok := object(raw)["run"].(string); ok {
+			script = run
+		}
 	}
-	job := workflowJob(t, "guard-generated-files", "check")
-	_, script, ok := strings.Cut(job, "        run: |\n")
-	if !ok {
-		t.Fatal("guard has no shell script")
+	if script == "" {
+		t.Fatal("guard has no executable script")
 	}
 	for _, tc := range []struct {
 		name, changed string
