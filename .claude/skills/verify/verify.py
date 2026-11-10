@@ -82,6 +82,16 @@ class Driver:
     def dibs(self, *args, code=0):
         return json.loads(self.run(self.binary, *args, "--json", code=code))
 
+    def docker_resources(self, *args, lease):
+        resources = set()
+        for namespace in ("io.dibs.lease", "io.berth.lease"):
+            resources.update(
+                self.run(
+                    "docker", *args, "--filter", f"label={namespace}={lease}"
+                ).split()
+            )
+        return resources
+
     def observe(self, condition, message):
         self.record(observation=message, passed=bool(condition))
         assert condition, message
@@ -291,9 +301,7 @@ class Driver:
             'services:\n  web:\n    image: nginx:alpine\n    ports: ["127.0.0.1::80"]\n  cache:\n    image: redis:7-alpine\n    volumes: [data:/data]\nvolumes:\n  data: {}\n'
         )
         lease = self.create("--adapter", "compose", "--file", str(compose))
-        ids = self.run(
-            "docker", "ps", "-q", "--filter", "label=io.dibs.lease=" + lease
-        ).split()
+        ids = self.docker_resources("ps", "-q", lease=lease)
         self.observe(len(ids) == 2, "two attributed Compose containers")
         containers = json.loads(self.run("docker", "inspect", *ids))
         for container in containers:
@@ -331,12 +339,7 @@ class Driver:
         compose.unlink()
         self.dibs("release", lease)  # Preview must leave the service running.
         self.observe(
-            len(
-                self.run(
-                    "docker", "ps", "-q", "--filter", "label=io.dibs.lease=" + lease
-                ).split()
-            )
-            == 2,
+            len(self.docker_resources("ps", "-q", lease=lease)) == 2,
             "release preview preserves containers",
         )
         self.dibs("release", lease, "--confirm")
@@ -405,8 +408,8 @@ class Driver:
 
     def assert_no_resources(self, lease):
         for args in (("ps", "-aq"), ("volume", "ls", "-q"), ("network", "ls", "-q")):
-            out = self.run("docker", *args, "--filter", "label=io.dibs.lease=" + lease)
-            self.observe(not out.strip(), "managed " + " ".join(args) + " absent")
+            resources = self.docker_resources(*args, lease=lease)
+            self.observe(not resources, "managed " + " ".join(args) + " absent")
 
     def ssh(self):
         # Existing harness drives the built binary against real isolated OpenSSH.
