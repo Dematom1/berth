@@ -526,8 +526,11 @@ Each new lease records a stable machine identity: `darwin:<IOPlatformUUID>` on
 macOS or `linux:</etc/machine-id>` on Linux, normalized to lowercase hexadecimal
 without hyphens. Hostname changes no longer change lease ownership. An unavailable
 or invalid OS identity is an error; berth never falls back to a hostname.
-Cloned hosts must have distinct OS machine identities. Keep state on its original
-host, and do not copy machine IDs between hosts.
+Cloned hosts must have distinct OS machine identities. On minimal Linux hosts
+without `/etc/machine-id`, provision a unique persistent ID before running berth
+(for example, `systemd-machine-id-setup` on systemd hosts). Berth does not generate
+or modify OS identities. Keep state on its original host, and do not copy machine
+IDs between hosts.
 
 Opening existing state migrates schema version 1 to version 2 atomically under
 the state lock, including during previews and listing. Legacy lease and queue
