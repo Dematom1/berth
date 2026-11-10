@@ -3,16 +3,23 @@ package main
 import "testing"
 
 func TestNixWorkflowMatrixAndBuildChecks(t *testing.T) {
-	doc := workflow(t, "nix")
-	jobs := object(doc["jobs"])
-	job := object(jobs["nix"])
+	job := object(object(workflow(t, "nix")["jobs"])["nix"])
 	matrix := object(object(object(job["strategy"])["matrix"]))
-	require(t, len(list(matrix["os"])) == 2, "Nix checks must cover Linux and macOS")
-	var runs []string
-	for _, raw := range list(job["steps"]) {
-		if run, ok := object(raw)["run"].(string); ok {
-			runs = append(runs, run)
-		}
+	gotOS := map[any]bool{}
+	for _, os := range list(matrix["os"]) {
+		gotOS[os] = true
 	}
-	require(t, len(runs) >= 3, "Nix job must evaluate, build, and verify the package")
+	require(t, len(gotOS) == 2 && gotOS["ubuntu-24.04"] && gotOS["macos-15"], "Nix checks must cover Ubuntu and macOS")
+	var installer, checkoutFull bool
+	for _, raw := range list(job["steps"]) {
+		step := object(raw)
+		uses, _ := step["uses"].(string)
+		installer = installer || uses == "DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa"
+		checkoutFull = checkoutFull || object(step["with"])["fetch-depth"] == 0
+	}
+	require(t, installer && checkoutFull, "Nix build requires installer and complete history for flake-compat")
+	for _, command := range []string{"nix flake check --all-systems --no-build", "nix build --print-build-logs", "nix-build default.nix -A"} {
+		require(t, hasRun(job, command), "missing Nix verification command: "+command)
+	}
+	require(t, hasRun(job, `test "$(./result/bin/berth --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"`), "built version must equal the release manifest")
 }
