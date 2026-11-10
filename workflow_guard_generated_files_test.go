@@ -14,8 +14,17 @@ func TestGuardGeneratedFilesWorkflow(t *testing.T) {
 	steps := list(job["steps"])
 	var script string
 	for _, raw := range steps {
-		if run, ok := object(raw)["run"].(string); ok {
+		step := object(raw)
+		if run, ok := step["run"].(string); ok {
 			script = run
+		}
+		if run, ok := step["run"].(string); ok {
+			env := object(step["env"])
+			if strings.Contains(run, "git diff --name-only") {
+				if env["BASE_SHA"] != "${{ github.event.pull_request.base.sha }}" || env["HEAD_SHA"] != "${{ github.event.pull_request.head.sha }}" {
+					t.Fatal("guard must compare pull request base and head commits")
+				}
+			}
 		}
 	}
 	if script == "" {
