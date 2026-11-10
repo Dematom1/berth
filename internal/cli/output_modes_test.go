@@ -88,8 +88,7 @@ func TestAXIBoundedListsAndFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
-	host, _ := machine()
-	fixtureMachine := "fixture-" + host
+	fixtureMachine := "fixture-foreign-machine"
 	owner := ownerpkg.Reference{Kind: "heartbeat", ID: "/missing-berth-test-owner"}
 	longText := strings.Repeat("界", 501)
 	for i := 0; i < 101; i++ {

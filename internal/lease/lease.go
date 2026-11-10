@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	adapterpkg "github.com/Dematom1/berth/internal/adapter"
@@ -23,14 +22,6 @@ type Lease struct {
 	Labels      map[string]string      `json:"labels"`
 	ResourceRef adapterpkg.ResourceRef `json:"resource"`
 	Reservation *ReservationView       `json:"job,omitempty"`
-}
-
-func machine() (string, error) {
-	host, err := os.Hostname()
-	if err != nil || host == "" {
-		return "", errors.New("cannot determine this machine's hostname")
-	}
-	return host, nil
 }
 
 func newLease(owner ownerpkg.Reference, ttl time.Duration, resources string, labels map[string]string, now time.Time) (Lease, error) {

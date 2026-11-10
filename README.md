@@ -522,12 +522,39 @@ resource. If berth dies midway through create or delete, the next release or
 eligible sweep retries the same unique resource. Kernel locks end on process
 death. Corrupt or unsupported state is an error, never an empty lease list.
 
-Each lease records the hostname of its authoritative machine. A host never
-acts on another machine's leases, even after expiry: it cannot verify a foreign
-owner's liveness or delete its resources. Run cleanup on the original machine
-with its original state path, directly or through
-`berth sweep --machine <name> --confirm`. Do not share state between hosts or
-change the host's name while leases exist.
+Each new lease records a stable machine identity: `darwin:<IOPlatformUUID>` on
+macOS or `linux:</etc/machine-id>` on Linux, normalized to lowercase hexadecimal
+without hyphens. Hostname changes no longer change lease ownership. An unavailable
+or invalid OS identity is an error; berth never falls back to a hostname.
+Cloned hosts must have distinct OS machine identities. Keep state on its original
+host, and do not copy machine IDs between hosts.
+
+Opening existing state migrates schema version 1 to version 2 atomically under
+the state lock, including during previews and listing. Legacy lease and queue
+records with the current hostname receive the stable identity. Other legacy
+hostnames remain foreign until explicitly identified by you. Old berth binaries
+cannot read version 2 state; use the upgraded binary for every invocation.
+
+If this machine was renamed before upgrading, first verify that the old hostname
+belongs to this machine and that you are using its original local state directory.
+Then authorize that exact legacy hostname through the invocation's environment:
+
+```sh
+ BERTH_LEGACY_MACHINE=Mac.localdomain berth sweep             # migrate and preview
+ berth sweep --confirm                                      # separate cleanup decision
+```
+
+`BERTH_LEGACY_MACHINE` is an explicit same-user attestation, not automatic proof
+from the old ledger. Never set it from a project file or use it for another host.
+The migration persists the stable identity, so later commands need no alias.
+The alias affects only hostname records, never another host's stable identity.
+Unrecognized legacy names remain unknown and cannot be reclaimed, even if expired.
+
+A host never acts on another machine's leases, even after expiry. Expiry overrides
+unknown **owner** liveness only after machine ownership matches. Run cleanup on
+the original machine with its original state path, directly or through
+`berth sweep --machine <name> --confirm`. Human, AXI, and JSON output all use the
+same machine identity and reclamation decisions.
 
 Adapters pin the Docker context selected at creation. `DOCKER_HOST` overrides
 are rejected; select a named context instead. Keep that context's endpoint

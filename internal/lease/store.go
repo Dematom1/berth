@@ -75,7 +75,7 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	s := &store{Version: 1, Leases: map[string]Lease{}, dir: dir, lock: f, resources: m.options.Adapters}
+	s := &store{Version: 2, Leases: map[string]Lease{}, dir: dir, lock: f, resources: m.options.Adapters}
 	statePath := filepath.Join(dir, "state.json")
 	if err := os.Chmod(statePath, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
 		s.Close()
@@ -86,10 +86,14 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 		return s, nil
 	}
 	if err == nil {
+		s.Version = 0
 		err = json.Unmarshal(data, s)
 	}
 	if err == nil {
 		err = s.validate()
+	}
+	if err == nil {
+		err = s.migrateMachines()
 	}
 	if err != nil {
 		s.Close()
