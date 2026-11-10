@@ -66,7 +66,7 @@ CodeRabbit reviews are advisory. The maintainer decides which findings need acti
 
 A contributor does not have standing authority to merge, close issues, or authorize CI. Merge requires accepted scope, green required checks on the current head, resolved review conversations, and an explicit decision for a `new-default` change.
 
-Releases are separate. release-please uses conventional commits on `main` to maintain a Go release PR. A weekly workflow can merge only the verified release App's green release PR, subject to repository policy. The release workflow uses the same App identity, creates a draft, and uploads all four GoReleaser archives and checksums before publishing a prerelease. Stable promotion remains manual. macOS Developer ID signing is disabled pending credentials and an identity decision. No npm publishing is involved.
+Releases are separate. release-please uses conventional commits on `main` to maintain a Go release PR. To reconcile release history without editing generated files, put `Release-As: <version>` on its own final line in the PR body; the squash commit message preserves it for release-please. A weekly workflow can merge only the verified release App's green release PR, subject to repository policy. The release workflow uses the same App identity, creates a draft, and uploads all four GoReleaser archives and checksums before publishing a prerelease. Stable promotion remains manual. macOS Developer ID signing is disabled pending credentials and an identity decision. No npm publishing is involved.
 
 ## License
 
