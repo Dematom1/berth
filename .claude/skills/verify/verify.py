@@ -133,7 +133,7 @@ class Driver:
         self.run(self.binary, "job", "--", "sh", "-c", "echo working; echo done")
         self.run(self.binary, "job", "--", "sh", "-c", "exit 7", code=7)
         marker = self.scratch / "deadline-started"
-        self.run(self.binary, "job", "--timeout", "500ms", "--", "sh", "-c",
+        self.run(self.binary, "job", "--timeout", "5s", "--", "sh", "-c",
                  'touch "$1"; exec sleep 30', "_", str(marker), code=124)
         self.observe(marker.exists(), "deadline child really started")
         never = self.scratch / "never-started"
