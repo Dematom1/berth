@@ -60,7 +60,7 @@ ssh-integration:
     go test -race -tags sshintegration -count=1 -v -run '^TestSSHIntegration$' -timeout 5m .
 
 release-check:
-    go run github.com/goreleaser/goreleaser/v2@v2.20.0 check
+    goreleaser check
 
 release-snapshot: release-check
     goreleaser release --snapshot --clean --skip=publish

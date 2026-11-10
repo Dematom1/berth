@@ -96,11 +96,20 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 	}
 	require(t, gotOS["ubuntu-24.04"] && gotOS["macos-15"] && len(gotOS) == 2, "race tests must cover Ubuntu 24.04 and macOS 15")
 	require(t, object(testJob)["runs-on"] == "${{ matrix.os }}", "test job must run on each matrix OS")
+	var releaseCheck bool
+	for _, raw := range list(object(check)["steps"]) {
+		step := object(raw)
+		if step["uses"] == "goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552" {
+			with := object(step["with"])
+			releaseCheck = with["version"] == "v2.20.0" && with["args"] == "check"
+		}
+	}
+	require(t, releaseCheck, "CI must validate the release configuration with pinned GoReleaser")
 	for _, pair := range []struct {
 		job     any
 		command string
 	}{
-		{check, "just release-check"}, {check, "just lint"}, {check, "just cross"}, {check, "just deps-check"}, {check, "just vulncheck"},
+		{check, "just lint"}, {check, "just cross"}, {check, "just deps-check"}, {check, "just vulncheck"},
 		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"},
 		{integration, ".claude/skills/verify/verify.py local --evidence \"$RUNNER_TEMP/verify/local\""}, {integration, ".claude/skills/verify/verify.py ssh --evidence \"$RUNNER_TEMP/verify/ssh\""}, {integration, ".claude/skills/verify/verify.py adapters --evidence \"$RUNNER_TEMP/verify/adapters\""},
 	} {

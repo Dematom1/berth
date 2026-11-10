@@ -28,9 +28,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6
         with:
           version: v2.20.0
-          args: --version
-      - name: Validate release configuration
-        run: just release-check
+          args: check
       - name: Format and vet
         run: just lint
       - name: Cross-build release targets
