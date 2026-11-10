@@ -1,0 +1,39 @@
+name: Nix flake
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          # flake-compat needs the complete history for builtins.fetchGit.
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - name: Evaluate every advertised system
+        run: nix flake check --all-systems --no-build
+      - name: Build flake
+        run: nix build --print-build-logs
+      - name: Check stamped version
+        run: test "$(./result/bin/berth --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"
+      - name: Build through flake-compat
+        run: nix-build default.nix -A "packages.$(nix eval --impure --raw --expr builtins.currentSystem).default" --no-out-link

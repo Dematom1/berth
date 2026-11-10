@@ -2,26 +2,95 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  release-please:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5 # v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-and-upload:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-          cache: false
-      - uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6
+      # Disabled until the captain supplies Apple Developer ID credentials and
+      # chooses a permanent identifier and Team ID. Artifacts are NOT Developer
+      # ID signed today (Go may ad-hoc sign arm64). Before enabling: move Darwin
+      # builds to macOS, import the certificate into an ephemeral keychain, sign
+      # with --timestamp --options runtime, verify with codesign --verify --strict
+      # and assert Developer ID authority/Team ID/identifier before archiving and
+      # checksumming. Always delete the keychain; never put credentials in git.
+      - name: macOS Developer ID signing and verification (disabled)
+        if: ${{ runner.os == 'macOS' && false }}
+        run: |
+          echo 'Apple signing requires a separate credential and identity decision.'
+          exit 1
+      - name: Build archives and checksums without publishing
+        uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6
         with:
           distribution: goreleaser
-          version: latest
-          args: release --clean
+          version: v2.20.0
+          args: release --clean --skip=publish
+      - name: Upload complete asset set to draft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          archives=(dist/*.tar.gz)
+          test "${#archives[@]}" -eq 4
+          ( cd dist && sha256sum --check checksums.txt )
+          gh release upload "$TAG" "${archives[@]}" dist/checksums.txt --clobber
+
+  finalize:
+    needs: [release-please, build-and-upload]
+    if: >-
+      !cancelled() &&
+      needs.release-please.result == 'success' &&
+      needs.build-and-upload.result == 'success' &&
+      needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish complete draft as prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        # Promotion to stable/latest stays a deliberate release decision.
+        run: gh release edit "$TAG" --draft=false --prerelease=true --latest=false
