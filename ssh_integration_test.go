@@ -46,7 +46,7 @@ func TestSSHIntegration(t *testing.T) {
 	run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", filepath.Join(dir, "client"))
 	run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", filepath.Join(dir, "host"))
 	binary := filepath.Join(dir, "berth")
-	run("go", "build", "-o", binary, ".")
+	run("go", "build", "-ldflags", "-X main.version="+version, "-o", binary, ".")
 	arch := runtime.GOARCH
 	buildRemote := func(output, remoteVersion string) {
 		t.Helper()
