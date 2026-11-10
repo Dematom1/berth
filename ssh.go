@@ -62,12 +62,13 @@ func configuredMachine(config JobConfig, name string) (SSHMachine, error) {
 // slices use JSON base64 so arbitrary child output cannot impersonate a result.
 // A result frame distinguishes child exit 255 from an SSH transport failure.
 type agentFrame struct {
-	Type    string   `json:"type"`
-	Version string   `json:"version,omitempty"`
-	Args    []string `json:"args,omitempty"`
-	Data    []byte   `json:"data,omitempty"`
-	Code    int      `json:"code,omitempty"`
-	Error   string   `json:"error,omitempty"`
+	Type    string     `json:"type"`
+	Version string     `json:"version,omitempty"`
+	Args    []string   `json:"args,omitempty"`
+	Data    []byte     `json:"data,omitempty"`
+	Code    int        `json:"code,omitempty"`
+	Error   string     `json:"error,omitempty"`
+	Output  outputMode `json:"output,omitempty"`
 }
 
 func frameScanner(r io.Reader) *bufio.Scanner {
@@ -111,7 +112,7 @@ func (w *frameWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func runRemote(ctx context.Context, config JobConfig, name string, args []string, out io.Writer, jsonOutput bool) int {
+func runRemote(ctx context.Context, config JobConfig, name string, args []string, out io.Writer, jsonOutput outputMode) int {
 	m, err := configuredMachine(config, name)
 	if err != nil {
 		return emitError(out, jsonOutput, 2, err.Error(), "Run berth "+args[0]+" --help; configure the SSH machine before retrying")
@@ -142,7 +143,7 @@ func runRemote(ctx context.Context, config JobConfig, name string, args []string
 		fmt.Fprintln(os.Stderr, "berth: SSH transport/protocol failed; remote result unknown (code 76):", err)
 		return 76
 	}
-	if err := writer.send(agentFrame{Type: "request", Version: version, Args: args}); err != nil {
+	if err := writer.send(agentFrame{Type: "request", Version: version, Args: args, Output: jsonOutput.effective(out)}); err != nil {
 		return transportError(err)
 	}
 	scanner := frameScanner(stdout)
@@ -193,7 +194,7 @@ func runAgent(ctx context.Context, args []string, input io.Reader, out io.Writer
 	w := &frameWriter{enc: json.NewEncoder(out)}
 	fail := func(message string) int { _ = w.send(agentFrame{Type: "error", Error: message}); return 1 }
 	if len(args) != 0 {
-		return emitError(out, false, 2, "agent takes no flags; use berth agent --help", help("agent"))
+		return emitError(out, autoOutput, 2, "agent takes no flags; use berth agent --help", help("agent"))
 	}
 	scanner := frameScanner(input)
 	request, err := readFrame(scanner)
@@ -202,6 +203,9 @@ func runAgent(ctx context.Context, args []string, input io.Reader, out io.Writer
 	}
 	if request.Version != version {
 		return fail(fmt.Sprintf("agent version mismatch: client %q, remote %q; no child started", request.Version, version))
+	}
+	if request.Output != autoOutput && request.Output != humanOutput && request.Output != axiOutput && request.Output != jsonOutput {
+		return fail("invalid output mode")
 	}
 	if len(request.Args) == 0 {
 		return fail("missing remote command")
@@ -236,9 +240,9 @@ func runAgent(ctx context.Context, args []string, input io.Reader, out io.Writer
 	}()
 	var code int
 	if request.Args[0] == "job" {
-		code = runJob(ctx, request.Args[1:], w, false, null, "session")
+		code = runJob(ctx, request.Args[1:], &modeWriter{Writer: w, mode: request.Output.effective(w)}, autoOutput, null, "session")
 	} else {
-		code = run(ctx, request.Args, w)
+		code = runWithOutput(ctx, request.Args, w, request.Output)
 	}
 	if w.send(agentFrame{Type: "result", Code: code}) != nil {
 		return 1
@@ -246,12 +250,12 @@ func runAgent(ctx context.Context, args []string, input io.Reader, out io.Writer
 	return 0
 }
 
-func runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput bool) int {
+func runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput outputMode) int {
 	fs := flag.NewFlagSet("machine install", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	file := fs.String("file", "", "trusted binary built for the remote OS/architecture")
 	wantHelp := fs.Bool("help", false, "help")
-	fs.BoolVar(&jsonOutput, "json", jsonOutput, "JSON output")
+	outputFlags(fs, &jsonOutput)
 	if len(args) == 1 && args[0] == "--help" {
 		fmt.Fprint(out, help("machine"))
 		return 0
