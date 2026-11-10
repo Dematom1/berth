@@ -221,13 +221,14 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	if err == nil {
 		current.Job.Leader = leader
 		l.Job.Leader = leader
-		current.Expires = time.Now().UTC().Add(current.TTL)
-		l.Expires = current.Expires
 		s.Leases[l.ID] = current
 		err = s.Save()
 	}
 	if err == nil {
 		err = ctx.Err()
+	}
+	if err == nil && !time.Now().Before(current.Expires) {
+		err = errors.New("job reservation expired before child start")
 	}
 	if err != nil {
 		cmd.Process.Kill()
