@@ -20,6 +20,21 @@ when one third of its TTL remains. Owner death OR expiry makes a lease
 reclaimable: a live owner missing either cadence loses its resources.`
 
 var commandHelp = map[string]string{
+	"adopt": `berth adopt <kind|k3d|compose> <name> --owner KIND:ID --ttl D
+  [--context NAME] [--file PATH (required for compose)] [--stale 15m] [--full] [--axi | --json]
+Explicitly lease an existing resource. Existence must be verified and no lease
+may already own it. Captures cleanup configuration; does not recreate resources.
+Owner and positive TTL are required. Release/sweep keep their preview defaults.
+Examples:
+  berth adopt kind my-lab --owner pid:1234 --ttl 1h
+  berth adopt compose my-stack --file compose.yaml --owner pid:1234 --ttl 2h`,
+	"orphans": `berth orphans [--context NAME] [--full] [--axi | --json]
+Read-only inventory of unleased kind, k3d and Compose resources in the selected
+Docker context. Includes labels, creation evidence and adoption command templates.
+Unleased does not mean unused: age never authorizes deletion. No state is written.
+Examples:
+  berth orphans
+  berth orphans --context orbstack --json`,
 	"setup": `berth setup hooks [--remove] [--axi | --json]
 Install or remove managed Claude Code, Codex, Pi and OpenCode integrations.
 Sets BERTH_AXI=1 in agent shell environments. Repeated setup is a no-op.
@@ -123,7 +138,7 @@ func help(command string) string {
 	body, ok := commandHelp[command]
 	if !ok {
 		body = `berth: owner-and-expiry leases for local resources (macOS and Linux).
-Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job,
+Commands: create (up), adopt, orphans, list (ls, ps, who), extend, release (down), sweep, job,
 env, setup hooks, agent (internal SSH protocol), machine install.
 Global flags: --axi (agents), --json (scripts), --help. No --human flag.
 Human output on terminals; AXI when BERTH_AXI=1 or stdout is not a TTY.

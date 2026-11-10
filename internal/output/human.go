@@ -50,6 +50,21 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 			continue
 		case "budget":
 			fmt.Fprintln(w, value[key].(map[string]any)["summary"])
+		case "evidence":
+			evidence := value[key].(map[string]any)
+			for _, name := range keys(evidence) {
+				fmt.Fprintln(w, "Resource:", humanText(name))
+				humanObject(w, evidence[name].(map[string]any), now)
+			}
+		case "orphans":
+			rows := value[key].([]map[string]any)
+			if len(rows) == 0 {
+				fmt.Fprintln(w, "No unleased kind, k3d or Compose resources in this Docker context.")
+			}
+			for _, row := range rows {
+				fmt.Fprintf(w, "%s %s (%s)\n", humanText(row["type"].(string)), humanText(row["name"].(string)), humanText(row["docker_context"].(string)))
+				humanObject(w, row, now)
+			}
 		case "leases":
 			rows := value[key].([]map[string]any)
 			if len(rows) == 0 {

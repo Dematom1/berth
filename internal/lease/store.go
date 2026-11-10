@@ -99,7 +99,7 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 }
 
 func (s *store) validate() error {
-	if s.Version != 1 || s.Leases == nil {
+	if (s.Version != 1 && s.Version != 2) || s.Leases == nil {
 		return errors.New("unsupported or incomplete state format")
 	}
 	for _, w := range s.Waiters {
@@ -125,6 +125,9 @@ func (s *store) validate() error {
 		}
 		if l.Reservation != nil {
 			return errors.New("job reservation requires process adapter")
+		}
+		if l.ResourceRef.Adopted && s.Version < 2 {
+			return errors.New("invalid adopted resource identity")
 		}
 		if err := s.resources.Validate(filepath.Join(s.dir, "resources", id), target(l)); err != nil {
 			return err

@@ -120,6 +120,9 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	if command == "job" {
 		return app.runJob(ctx, args, out, jsonOutput, os.Stdin, "pid")
 	}
+	if command == "adopt" || command == "orphans" {
+		return app.runInventory(ctx, command, args, out, jsonOutput)
+	}
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "show help")

@@ -4,12 +4,15 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	adapterpkg "github.com/Dematom1/berth/internal/adapter"
 	leasepkg "github.com/Dematom1/berth/internal/lease"
@@ -70,6 +73,106 @@ func removeIntegrationResource(t *testing.T, id string) {
 	d, _ := newAdapters().Lookup(l.ResourceRef.Adapter)
 	if err := d.Adapter.Destroy(context.Background(), adapterpkg.Target{Ref: l.ResourceRef}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestIntegrationAdoptAndOrphans(t *testing.T) {
+	for _, driver := range []string{"kind", "k3d", "compose"} {
+		t.Run(driver, func(t *testing.T) {
+			integrationReady(t, driver)
+			t.Setenv("DOCKER_HOST", "")
+			ctx := context.Background()
+			var token [16]byte
+			if _, err := rand.Read(token[:]); err != nil {
+				t.Fatal(err)
+			}
+			fixtureID := fmt.Sprintf("%x", token)
+			d, _ := newAdapters().Lookup(driver)
+			file := ""
+			if driver == "compose" {
+				file = filepath.Join(t.TempDir(), "compose.yaml")
+				if err := os.WriteFile(file, []byte("services:\n  test:\n    image: alpine:3.23\n    command: [sleep, '600']\n    volumes: [data:/data]\nvolumes:\n  data: {}\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ref, err := d.Prepare(ctx, adapterpkg.PrepareRequest{Metadata: adapterpkg.Metadata{LeaseID: fixtureID}, SnapshotDir: filepath.Join(t.TempDir(), "snapshot"), File: file})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fixture := adapterpkg.Target{Ref: ref}
+			t.Cleanup(func() {
+				if err := d.Adapter.Destroy(ctx, fixture); err != nil {
+					t.Errorf("fixture cleanup failed: %v", err)
+				}
+			})
+			if err := d.Adapter.Create(ctx, fixture); err != nil {
+				t.Fatal(err)
+			}
+			name := ref.Name
+			find := func(result map[string]any) bool {
+				for _, item := range result["orphans"].([]any) {
+					row := item.(map[string]any)
+					if row["type"] == driver && row["name"] == name {
+						if !strings.Contains(row["adopt"].(string), name) || row["evidence"] == nil {
+							t.Fatal("orphan lacks evidence or adoption command")
+						}
+						return true
+					}
+				}
+				return false
+			}
+			if !find(invoke(t, 0, "orphans")) {
+				t.Fatal("unleased fixture missing from inventory")
+			}
+			if _, err := os.Stat(filepath.Join(os.Getenv("BERTH_STATE"), "state.json")); !os.IsNotExist(err) {
+				t.Fatal("orphan view wrote lease state")
+			}
+			args := []string{"adopt", driver, name, "--owner", os.Getenv("BERTH_OWNER"), "--ttl", "1ms", "--context", ref.Context}
+			if file != "" {
+				args = append(args, "--file", file)
+			}
+			adopted := invoke(t, 0, args...)
+			id := adopted["record"].(map[string]any)["id"].(string)
+			if id == fixtureID {
+				t.Fatal("adoption reused fixture identity")
+			}
+			if find(invoke(t, 0, "orphans")) {
+				t.Fatal("leased resource still listed as unleased")
+			}
+			invoke(t, 1, args...)
+			if file != "" {
+				if err := os.Remove(file); err != nil {
+					t.Fatal(err)
+				}
+			}
+			time.Sleep(2 * time.Millisecond)
+			preview := invoke(t, 0, "sweep")
+			if len(preview["eligible"].([]any)) != 1 || len(preview["reclaimed"].([]any)) != 0 {
+				t.Fatal("sweep preview did not preserve adopted resource")
+			}
+			rows, err := d.Discover(ctx, ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			present := false
+			for _, row := range rows {
+				if row["name"] == name {
+					present = true
+				}
+			}
+			if !present {
+				t.Fatal("preview deleted the resource")
+			}
+			result := invoke(t, 0, "sweep", "--confirm")
+			if len(result["reclaimed"].([]any)) != 1 {
+				t.Fatal("expired adopted resource not reclaimed")
+			}
+			if find(invoke(t, 0, "orphans")) {
+				t.Fatal("adopted fixture survived sweep")
+			}
+			invoke(t, 0, "release", id, "--confirm")
+			t.Logf("verified %s orphan discovery, explicit adoption, preview, expiry sweep and verify-gone", driver)
+		})
 	}
 }
 
