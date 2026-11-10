@@ -535,7 +535,8 @@ IDs between hosts.
 Opening existing state migrates schema version 1 to version 2 atomically under
 the state lock, including during previews and listing. Legacy lease and queue
 records with the current hostname receive the stable identity. Other legacy
-hostnames remain foreign until explicitly identified by you. Old berth binaries
+hostnames remain foreign until explicitly identified by you. Fully migrated
+version 2 state does not require a hostname lookup. Old berth binaries
 cannot read version 2 state; use the upgraded binary for every invocation.
 
 If this machine was renamed before upgrading, first verify that the old hostname

@@ -48,14 +48,26 @@ var machine = sync.OnceValues(func() (string, error) {
 	return runtime.GOOS + ":" + id, nil
 })
 
+var machineHostname = os.Hostname
+
 // v1 used hostnames. Preserve the old exact-hostname locality rule, or require
 // explicit same-user attestation for a renamed host. Never rebind stable IDs.
 func (s *store) migrateMachines() error {
+	needsHostname := s.Version == 1
+	for _, l := range s.Leases {
+		needsHostname = needsHostname || !strings.Contains(l.Machine, ":")
+	}
+	for _, w := range s.Waiters {
+		needsHostname = needsHostname || !strings.Contains(w.Machine, ":")
+	}
+	if !needsHostname {
+		return nil
+	}
 	host, err := machine()
 	if err != nil {
 		return err
 	}
-	hostname, err := os.Hostname()
+	hostname, err := machineHostname()
 	if err != nil || hostname == "" {
 		return errors.New("cannot determine hostname for legacy state migration")
 	}
