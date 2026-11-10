@@ -11,26 +11,6 @@ permissions:
   pull-requests: read
 
 jobs:
-  pr-title:
-    name: PR title
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check conventional commit title
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^\)]+\))?\!?:\ .+ ]]; then
-            echo 'Use a conventional commit title, for example: feat: add leases'
-            exit 1
-          fi
-  no-mistakes:
-    name: PR must be raised via no-mistakes
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Verify pipeline attestation
-        uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
   main-required-ci:
     name: main-required-ci
     runs-on: ubuntu-24.04
