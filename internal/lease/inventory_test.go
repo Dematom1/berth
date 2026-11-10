@@ -177,6 +177,7 @@ func TestReadOnlyInventoryAndStateMigration(t *testing.T) {
 	l := testLease(t)
 	l.ResourceRef = adapterpkg.ResourceRef{Adapter: "kind", Name: "existing-lab", Context: "test", DockerHost: "unix:///test.sock", Adopted: true, File: filepath.Join(s.dir, "resources", l.ID, "kubeconfig")}
 	s.Leases[l.ID] = l
+	s.Version = 1
 	if err := s.validate(); err == nil {
 		t.Fatal("version 1 accepted adopted identity")
 	}
