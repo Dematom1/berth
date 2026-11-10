@@ -14,10 +14,12 @@ go install github.com/Dematom1/berth@latest
 berth --version
 ```
 
-`--version` reports the installed module version without the leading `v` (for
-example, `0.2.0`). Checkout builds report `devel-<12-character-commit>`, with
-`-dirty` for local changes, or `devel` when VCS metadata is unavailable.
-Release builds can override this with `-ldflags '-X main.version=0.2.0'`.
+`--version` reports the module version without the leading `v` (for example,
+`0.2.0`). Checkout builds can report a commit-bearing module pseudo-version,
+such as `0.1.1-0.20261110022950-b59f79420c85`. Without a module version, embedded
+VCS metadata produces `devel-<12-character-commit>`, with `-dirty` for local
+changes. Builds without either form of metadata, such as `go run .`, report
+`devel`. Release builds can override this with `-ldflags '-X main.version=0.2.0'`.
 
 The module path is case-sensitive; `github.com/dematom1/berth` fails. Prebuilt
 Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/berth/releases) page.
