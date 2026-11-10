@@ -33,9 +33,9 @@ jobs:
           test -z "$(gofmt -l .)"
           go vet ./...
           go test -race ./...
-          go build -o "$RUNNER_TEMP/berth" .
-          GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
-          GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
+          go build -o "$RUNNER_TEMP/dibs" .
+          GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/dibs-linux" .
+          GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/dibs-darwin" .
       - name: Verify demo leases, heartbeat, jobs, and FIFO
         run: .claude/skills/verify/verify.py local --evidence "$RUNNER_TEMP/verify/local"
       - name: Verify real SSH machine workflow
@@ -60,7 +60,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: berth-verification
+          name: dibs-verification
           path: ${{ runner.temp }}/verify
           if-no-files-found: warn
           retention-days: 7

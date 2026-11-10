@@ -102,7 +102,7 @@ func (c JobConfig) available() (Budget, error) {
 func (c JobConfig) class(name string) (Budget, time.Duration, error) {
 	class, ok := c.Classes[name]
 	if !ok || name == "" {
-		return Budget{}, 0, fmt.Errorf("unknown class %q; define it in BERTH_CONFIG or use --class default", name)
+		return Budget{}, 0, fmt.Errorf("unknown class %q; define it in DIBS_CONFIG or use --class default", name)
 	}
 	memory, err := memoryBytes(class.Memory)
 	if err != nil {
@@ -121,7 +121,7 @@ func loadJobConfig() (JobConfig, error) {
 		return JobConfig{}, err
 	}
 	c := defaultJobConfig(runtime.NumCPU(), memory)
-	path := os.Getenv("BERTH_CONFIG")
+	path := os.Getenv("DIBS_CONFIG")
 	explicit := path != ""
 	if !explicit {
 		// Use XDG on both macOS and Linux for a consistent CLI config location.
@@ -133,7 +133,7 @@ func loadJobConfig() (JobConfig, error) {
 			}
 			base = filepath.Join(home, ".config")
 		}
-		path = filepath.Join(base, "berth", "config.json")
+		path = filepath.Join(base, "dibs", "config.json")
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) && !explicit {

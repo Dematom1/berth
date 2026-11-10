@@ -12,7 +12,7 @@ A user reserves a machine budget, runs a child, receives its result, and waits i
 
 ## How to get to it (user POV)
 
-Run `berth job [--cores N --memory M --timeout D --wait W] -- <command...>` and inspect active reservations with `berth ps`. SSH transport code 76 is covered in [SSH machines](ssh.md).
+Run `dibs job [--cores N --memory M --timeout D --wait W] -- <command...>` and inspect active reservations with `dibs ps`. SSH transport code 76 is covered in [SSH machines](ssh.md).
 
 ## Driving it with verify.py
 

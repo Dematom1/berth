@@ -45,7 +45,7 @@ func TestRemoteConfigErrorHelp(t *testing.T) {
 	for _, command := range []string{"job", "list", "sweep"} {
 		var out bytes.Buffer
 		code := runRemote(context.Background(), JobConfig{}, "missing", []string{command}, &out, axiOutput)
-		if code != 2 || !strings.Contains(out.String(), "Run berth "+command+" --help") {
+		if code != 2 || !strings.Contains(out.String(), "Run dibs "+command+" --help") {
 			t.Fatalf("%s config error: %d %s", command, code, out.String())
 		}
 	}
@@ -61,12 +61,12 @@ func TestShellQuote(t *testing.T) {
 }
 
 func TestSSHMachineValidation(t *testing.T) {
-	valid := SSHMachine{Host: "lenovo", User: "worker", Workdir: "/home/worker/source 'quoted'", Agent: "/home/worker/bin/berth"}
+	valid := SSHMachine{Host: "lenovo", User: "worker", Workdir: "/home/worker/source 'quoted'", Agent: "/home/worker/bin/dibs"}
 	if err := valid.validate(); err != nil {
 		t.Fatal(err)
 	}
 	for _, alter := range []func(*SSHMachine){
-		func(m *SSHMachine) { m.Host = "-oProxyCommand=bad" }, func(m *SSHMachine) { m.Host = "a b" }, func(m *SSHMachine) { m.User = "" }, func(m *SSHMachine) { m.User = "-root" }, func(m *SSHMachine) { m.Workdir = "relative" }, func(m *SSHMachine) { m.Agent = "berth" }, func(m *SSHMachine) { m.Port = 65536 }, func(m *SSHMachine) { m.Agent = "/nul\x00" },
+		func(m *SSHMachine) { m.Host = "-oProxyCommand=bad" }, func(m *SSHMachine) { m.Host = "a b" }, func(m *SSHMachine) { m.User = "" }, func(m *SSHMachine) { m.User = "-root" }, func(m *SSHMachine) { m.Workdir = "relative" }, func(m *SSHMachine) { m.Agent = "dibs" }, func(m *SSHMachine) { m.Port = 65536 }, func(m *SSHMachine) { m.Agent = "/nul\x00" },
 	} {
 		bad := valid
 		alter(&bad)
@@ -110,8 +110,8 @@ func TestAgentProtocolRefusal(t *testing.T) {
 }
 
 func TestAgentRequestedOutput(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
-	t.Setenv("BERTH_AXI", "1")
+	t.Setenv("DIBS_STATE", t.TempDir())
+	t.Setenv("DIBS_AXI", "1")
 	fixedBudget(t)
 	for _, mode := range []outputMode{humanOutput, axiOutput, jsonOutput} {
 		request, _ := json.Marshal(agentFrame{Type: "request", Version: version, Args: []string{"list"}, Output: mode})

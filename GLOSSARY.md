@@ -1,6 +1,6 @@
-# Berth
+# Dibs
 
-Berth manages owner-and-expiry leases and cooperative machine-budget admission.
+Dibs manages owner-and-expiry leases and cooperative machine-budget admission.
 This language distinguishes a lease's authority from the resource or work it covers.
 
 ## Language

@@ -13,7 +13,7 @@ import (
 
 func TestAdapterCommandsAndSurvivors(t *testing.T) {
 	l := testLease(t)
-	l.Resource = Resource{Adapter: "kind", Name: "berth-" + l.ID, Context: "test-context", File: "/private/kubeconfig"}
+	l.Resource = Resource{Adapter: "kind", Name: "dibs-" + l.ID, Context: "test-context", File: "/private/kubeconfig"}
 	type invocation struct {
 		name string
 		args []string
@@ -120,7 +120,7 @@ func TestK3dKeepsCallerKubeconfig(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	l := testLease(t)
-	l.Resource = Resource{Adapter: "k3d", Name: "berth-test", File: filepath.Join(dir, "private-kubeconfig"), DockerHost: "unix:///docker.sock"}
+	l.Resource = Resource{Adapter: "k3d", Name: "dibs-test", File: filepath.Join(dir, "private-kubeconfig"), DockerHost: "unix:///docker.sock"}
 	a := k3dAdapter{runCommand}
 	if err := a.Create(context.Background(), l); err != nil {
 		t.Fatal(err)
@@ -148,8 +148,8 @@ func TestComposeSnapshotAndUnsafeNames(t *testing.T) {
 			}
 			config := map[string]any{
 				"services": map[string]any{"db": map[string]any{"image": "postgres", "labels": map[string]any{"custom": "keep"}}},
-				"volumes":  map[string]any{"data": map[string]any{"name": "berth-" + l.ID + "_data"}},
-				"networks": map[string]any{"default": map[string]any{"name": "berth-" + l.ID + "_default"}},
+				"volumes":  map[string]any{"data": map[string]any{"name": "dibs-" + l.ID + "_data"}},
+				"networks": map[string]any{"default": map[string]any{"name": "dibs-" + l.ID + "_default"}},
 			}
 			switch unsafe {
 			case "volume":
@@ -184,7 +184,7 @@ func TestComposeSnapshotAndUnsafeNames(t *testing.T) {
 		}
 		db := config["services"].(map[string]any)["db"].(map[string]any)
 		labels := db["labels"].(map[string]any)
-		if labels["io.berth.lease"] != l.ID || labels["custom"] != "keep" || labels["io.berth.owner"] != l.Owner.String() {
+		if labels["io.dibs.lease"] != l.ID || labels["custom"] != "keep" || labels["io.dibs.owner"] != l.Owner.String() {
 			t.Fatalf("snapshot lost attribution: %+v", labels)
 		}
 	}

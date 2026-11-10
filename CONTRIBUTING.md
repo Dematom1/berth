@@ -1,8 +1,8 @@
-# Contributing to berth
+# Contributing to dibs
 
 ## Agree on the change first
 
-Open a [bug report or feature request](https://github.com/Dematom1/berth/issues/new/choose) before a substantial fix or feature. Search existing issues and pull requests first. Include the version, reproduction or requested outcome, scope, and sanitized evidence.
+Open a [bug report or feature request](https://github.com/Dematom1/dibs/issues/new/choose) before a substantial fix or feature. Search existing issues and pull requests first. Include the version, reproduction or requested outcome, scope, and sanitized evidence.
 
 Bug reports are welcome without prior approval. Before implementing a substantial change, wait for the maintainer to add `ready-for-pr` with a note on accepted scope and validation. Green checks do not oblige the maintainer to accept unagreed scope. Tiny documentation fixes with no behavior change can go straight to a pull request.
 
@@ -21,9 +21,9 @@ State the effect on the existing project contract in the issue and pull request:
 
 Human-authored pull requests, including the maintainer's, must use [no-mistakes](https://github.com/kunchenguid/no-mistakes). Install its current release.
 
-1. Fork berth and clone the parent repository, so `origin` points to `git@github.com:Dematom1/berth.git`.
+1. Fork dibs and clone the parent repository, so `origin` points to `git@github.com:Dematom1/dibs.git`.
 2. Create a feature branch and make the change.
-3. Run `no-mistakes init --fork-url git@github.com:<you>/berth.git`. If you have push access to the parent, use `no-mistakes init` instead.
+3. Run `no-mistakes init --fork-url git@github.com:<you>/dibs.git`. If you have push access to the parent, use `no-mistakes init` instead.
 4. Commit your change.
 5. Run `no-mistakes axi run --intent "<the goal of your change>"` and respond to its gates. The pipeline validates the commits, pushes the branch, and opens the pull request. Do not push directly to `main`.
 
@@ -56,7 +56,7 @@ The SSH integration requires Docker, OpenSSH tools, and Go. The adapter integrat
 
 The shared contribution checks read live PR metadata without executing contributed code. They check the title, no-mistakes attestation, release PR identity, and generated files. Do not hand-edit `CHANGELOG.md` or `.release-please-manifest.json`; release-please owns them after bootstrap.
 
-The existing `main-required-ci` job runs the Go checks, cross-builds, SSH integration, and container-adapter integration. Fork workflow runs may require GitHub's maintainer approval. There is no separate `full-ci` label gate in berth.
+The existing `main-required-ci` job runs the Go checks, cross-builds, SSH integration, and container-adapter integration. Fork workflow runs may require GitHub's maintainer approval. There is no separate `full-ci` label gate in dibs.
 
 CodeRabbit reviews are advisory. The maintainer decides which findings need action. Address the completed review for the current head together, check affected callers, rerun relevant tests, and send the repair through no-mistakes. If you disagree, explain why with evidence.
 

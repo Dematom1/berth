@@ -1,7 +1,7 @@
 .PHONY: build install test integration ssh-integration check formal
 
 build:
-	go build -o bin/berth .
+	go build -o bin/dibs .
 
 install:
 	go install .

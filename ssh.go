@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// SSH config aliases may supply proxying, keys, and host-key policy. Berth never
+// SSH config aliases may supply proxying, keys, and host-key policy. Dibs never
 // disables host-key checking or falls back to interactive authentication.
 type SSHMachine struct {
 	Host         string `json:"host"`
@@ -53,7 +53,7 @@ func (m SSHMachine) command(ctx context.Context, script string) *exec.Cmd {
 func configuredMachine(config JobConfig, name string) (SSHMachine, error) {
 	m, ok := config.Machines[name]
 	if !ok {
-		return m, fmt.Errorf("unknown SSH machine %q; define machines.%s in BERTH_CONFIG", name, name)
+		return m, fmt.Errorf("unknown SSH machine %q; define machines.%s in DIBS_CONFIG", name, name)
 	}
 	return m, m.validate()
 }
@@ -116,32 +116,32 @@ func (w *frameWriter) Write(p []byte) (int, error) {
 func runRemote(ctx context.Context, config JobConfig, name string, args []string, out io.Writer, jsonOutput outputMode) int {
 	m, err := configuredMachine(config, name)
 	if err != nil {
-		return emitError(out, jsonOutput, 2, err.Error(), "Run berth "+args[0]+" --help; configure the SSH machine before retrying")
+		return emitError(out, jsonOutput, 2, err.Error(), "Run dibs "+args[0]+" --help; configure the SSH machine before retrying")
 	}
 	mismatch, _ := json.Marshal(agentFrame{Type: "error", Error: "agent version mismatch; no child started (expected " + version + ")"})
-	// Probe first so older berth versions without the agent command also get a
+	// Probe first so older dibs versions without the agent command also get a
 	// clear refusal rather than being mistaken for a broken protocol.
 	script := "actual=$(" + shellQuote(m.Agent) + " --version) || exit 1; if [ \"$actual\" != " + shellQuote(version) + " ]; then printf '%s\\n' " + shellQuote(string(mismatch)) + "; exit 0; fi; cd " + shellQuote(m.Workdir) + " && exec " + shellQuote(m.Agent) + " agent"
 	cmd := m.command(ctx, script)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth "+args[0]+" --machine "+name)
+		return emitError(out, jsonOutput, 1, err.Error(), "Retry dibs "+args[0]+" --machine "+name)
 	}
 	defer stdin.Close()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth "+args[0]+" --machine "+name)
+		return emitError(out, jsonOutput, 1, err.Error(), "Retry dibs "+args[0]+" --machine "+name)
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return emitError(out, jsonOutput, 1, "cannot start SSH; no child started", "Install SSH and retry berth "+args[0]+" --machine "+name)
+		return emitError(out, jsonOutput, 1, "cannot start SSH; no child started", "Install SSH and retry dibs "+args[0]+" --machine "+name)
 	}
 	writer := &frameWriter{enc: json.NewEncoder(stdin)}
 	transportError := func(err error) int {
 		stdin.Close()
 		cmd.Process.Kill()
 		cmd.Wait()
-		fmt.Fprintln(os.Stderr, "berth: SSH transport/protocol failed; remote result unknown (code 76):", err)
+		fmt.Fprintln(os.Stderr, "dibs: SSH transport/protocol failed; remote result unknown (code 76):", err)
 		return 76
 	}
 	if err := writer.send(agentFrame{Type: "request", Version: version, Args: args, Output: jsonOutput.effective(out), Machine: name}); err != nil {
@@ -155,7 +155,7 @@ func runRemote(ctx context.Context, config JobConfig, name string, args []string
 	if first.Type == "error" {
 		stdin.Close()
 		cmd.Wait()
-		return emitError(out, jsonOutput, 1, first.Error, "Install the matching binary with berth machine install "+name+" --file <binary>")
+		return emitError(out, jsonOutput, 1, first.Error, "Install the matching binary with dibs machine install "+name+" --file <binary>")
 	}
 	if first.Type != "ready" || first.Version != version {
 		return transportError(errors.New("invalid agent handshake"))
@@ -195,7 +195,7 @@ func runAgent(ctx context.Context, args []string, input io.Reader, out io.Writer
 	w := &frameWriter{enc: json.NewEncoder(out)}
 	fail := func(message string) int { _ = w.send(agentFrame{Type: "error", Error: message}); return 1 }
 	if len(args) != 0 {
-		return emitError(out, autoOutput, 2, "agent takes no flags; use berth agent --help", help("agent"))
+		return emitError(out, autoOutput, 2, "agent takes no flags; use dibs agent --help", help("agent"))
 	}
 	scanner := frameScanner(input)
 	request, err := readFrame(scanner)
@@ -262,7 +262,7 @@ func runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput ou
 		return 0
 	}
 	if len(args) < 1 || args[0] != "install" {
-		return emitError(out, jsonOutput, 2, "use berth machine install <name> --file <binary>", help("machine"))
+		return emitError(out, jsonOutput, 2, "use dibs machine install <name> --file <binary>", help("machine"))
 	}
 	if err := parseFlags(fs, args[1:]); err != nil {
 		return emitError(out, jsonOutput, 2, err.Error(), help("machine"))
@@ -293,12 +293,12 @@ func runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput ou
 	}
 	// Stage on the target filesystem; reject incomplete uploads and wrong version/architecture before
 	// atomically replacing the configured path. Existing running agents survive.
-	script := "set -eu; umask 077; mkdir -p " + shellQuote(filepath.Dir(m.Agent)) + "; tmp=$(mktemp " + shellQuote(m.Agent+".XXXXXXXX") + "); trap 'rm -f -- \"$tmp\"' EXIT HUP INT TERM; cat > \"$tmp\"; [ \"$(wc -c < \"$tmp\")\" -eq " + strconv.FormatInt(info.Size(), 10) + " ] || { echo 'berth: incomplete binary upload; existing binary retained' >&2; exit 1; }; chmod 700 \"$tmp\"; actual=$(\"$tmp\" --version); if [ \"$actual\" != " + shellQuote(version) + " ]; then echo 'berth: agent version mismatch; existing binary retained' >&2; exit 1; fi; mv -f -- \"$tmp\" " + shellQuote(m.Agent)
+	script := "set -eu; umask 077; mkdir -p " + shellQuote(filepath.Dir(m.Agent)) + "; tmp=$(mktemp " + shellQuote(m.Agent+".XXXXXXXX") + "); trap 'rm -f -- \"$tmp\"' EXIT HUP INT TERM; cat > \"$tmp\"; [ \"$(wc -c < \"$tmp\")\" -eq " + strconv.FormatInt(info.Size(), 10) + " ] || { echo 'dibs: incomplete binary upload; existing binary retained' >&2; exit 1; }; chmod 700 \"$tmp\"; actual=$(\"$tmp\" --version); if [ \"$actual\" != " + shellQuote(version) + " ]; then echo 'dibs: agent version mismatch; existing binary retained' >&2; exit 1; fi; mv -f -- \"$tmp\" " + shellQuote(m.Agent)
 	cmd := m.command(ctx, script)
 	cmd.Stdin, cmd.Stderr = binary, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return emitError(out, jsonOutput, 1, "remote installation failed; check SSH diagnostics and binary OS/architecture/version", help("machine"))
 	}
-	emit(out, jsonOutput, map[string]any{"machine": fs.Arg(0), "version": version, "status": "installed", "help": []string{"Run berth ps --machine " + fs.Arg(0)}})
+	emit(out, jsonOutput, map[string]any{"machine": fs.Arg(0), "version": version, "status": "installed", "help": []string{"Run dibs ps --machine " + fs.Arg(0)}})
 	return 0
 }

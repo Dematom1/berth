@@ -12,7 +12,7 @@ A user creates an attributed stack or throwaway Kubernetes cluster, uses the ser
 
 ## How to get to it (user POV)
 
-Run `berth create --adapter compose --file <compose.yaml>`, `berth create --adapter kind`, or `berth create --adapter k3d`, with a live `--owner` and positive `--ttl`. Inspect via `berth ps`, Docker, HTTP, and `kubectl`; release via `berth release <id> --confirm`.
+Run `dibs create --adapter compose --file <compose.yaml>`, `dibs create --adapter kind`, or `dibs create --adapter k3d`, with a live `--owner` and positive `--ttl`. Inspect via `dibs ps`, Docker, HTTP, and `kubectl`; release via `dibs release <id> --confirm`.
 
 ## Driving it with verify.py
 
@@ -23,12 +23,12 @@ Preconditions: Docker, Compose, kind, k3d, and kubectl all pass the skill's doct
 - **Release:** remove the original Compose file, preview release, and verify both containers still run. Confirm release, then query Docker by the lease label; no container, volume, or network may remain.
 - **Clusters:** create each adapter, then run `kubectl --kubeconfig <state>/resources/<id>/kubeconfig get nodes -o json` for kind and the corresponding `.../<id>/k3d` path for k3d. Require nonempty nodes with Ready=True.
 - **Isolation:** compare a disposable caller kubeconfig before and after create and release. Require byte-for-byte equality.
-- **Deletion:** release through berth, then require the unique name to be absent from `kind get clusters` or `k3d cluster list -o json`. Require zero final leases.
+- **Deletion:** release through dibs, then require the unique name to be absent from `kind get clusters` or `k3d cluster list -o json`. Require zero final leases.
 - **Proof:** retain HTTP content, Docker inspections, node responses, commands, and cleanup observations in `events.jsonl`.
 
 ## Gotchas
 
 - Do not use a shared fixed port or a developer's kubeconfig. The helper uses an ephemeral loopback port and its own sentinel file.
-- Docker context selection remains the caller's choice. The helper does not switch contexts or restart the engine. `DOCKER_HOST` is removed inside the helper because berth requires a named context.
+- Docker context selection remains the caller's choice. The helper does not switch contexts or restart the engine. `DOCKER_HOST` is removed inside the helper because dibs requires a named context.
 - Managed volumes are deleted. Never supply a real Compose file containing valuable data.
 - Existing `make integration` additionally tests cleanup retry after external deletion; CI keeps that target too.

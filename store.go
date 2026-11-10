@@ -25,7 +25,7 @@ type Store struct {
 }
 
 func stateDir() (string, error) {
-	if dir := os.Getenv("BERTH_STATE"); dir != "" {
+	if dir := os.Getenv("DIBS_STATE"); dir != "" {
 		return filepath.Abs(dir)
 	}
 	base := os.Getenv("XDG_STATE_HOME")
@@ -36,7 +36,7 @@ func stateDir() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Abs(filepath.Join(base, "berth"))
+	return filepath.Abs(filepath.Join(base, "dibs"))
 }
 
 func openStore(ctx context.Context, dir string) (*Store, error) {
@@ -125,9 +125,9 @@ func (s *Store) validate() error {
 		if l.Resource.Adapter != "none" && l.Resource.Adapter != "kind" && l.Resource.Adapter != "k3d" && l.Resource.Adapter != "compose" {
 			return errors.New("unsupported resource adapter")
 		}
-		resourceName := "berth-" + id
+		resourceName := "dibs-" + id
 		if l.Resource.Adapter == "k3d" {
-			resourceName = "berth-" + id[:26]
+			resourceName = "dibs-" + id[:26]
 		}
 		if l.Resource.Adapter != "none" && (l.Resource.Name != resourceName || l.Resource.Context == "") {
 			return errors.New("invalid managed resource identity")
@@ -143,7 +143,7 @@ func (s *Store) validate() error {
 				name = "k3d"
 			}
 			if l.Resource.File != filepath.Join(s.dir, "resources", id, name) {
-				return errors.New("managed resource file must remain inside its original BERTH_STATE directory")
+				return errors.New("managed resource file must remain inside its original DIBS_STATE directory")
 			}
 		}
 	}
@@ -185,7 +185,7 @@ func atomicWrite(path string, data []byte) error {
 		return readErr
 	}
 	existed := readErr == nil
-	f, err := os.CreateTemp(filepath.Dir(path), ".berth-*")
+	f, err := os.CreateTemp(filepath.Dir(path), ".dibs-*")
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func atomicWrite(path string, data []byte) error {
 		var rollbackErr error
 		if existed {
 			var restore *os.File
-			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".berth-rollback-*")
+			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".dibs-rollback-*")
 			if rollbackErr == nil {
 				_, rollbackErr = restore.Write(previous)
 				if rollbackErr == nil {

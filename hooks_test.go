@@ -64,7 +64,7 @@ func TestSetupHooksLifecycle(t *testing.T) {
 		t.Fatalf("wrong destinations: %v", first)
 	}
 	for path, data := range first {
-		if !strings.Contains(data, "berth-axi") {
+		if !strings.Contains(data, "dibs-axi") {
 			t.Fatalf("missing marker: %s", path)
 		}
 	}
@@ -83,7 +83,7 @@ func TestSetupHooksLifecycle(t *testing.T) {
 	}
 	invoke(t, 0, "setup", "hooks", "--remove")
 	removed := hookFiles(t, home)
-	if len(removed) != 3 || strings.Contains(removed[claude], "berth-axi") || !strings.Contains(removed[claude], "echo other") || strings.Contains(removed[codex], "berth-axi") || !strings.Contains(removed[codex], "hooks = false # user choice") {
+	if len(removed) != 3 || strings.Contains(removed[claude], "dibs-axi") || !strings.Contains(removed[claude], "echo other") || strings.Contains(removed[codex], "dibs-axi") || !strings.Contains(removed[codex], "hooks = false # user choice") {
 		t.Fatalf("bad removal: %v", removed)
 	}
 	if invoke(t, 0, "setup", "hooks", "--remove")["status"] != "unchanged (no-op)" {
@@ -115,8 +115,8 @@ func TestSetupRefusesMalformedAndUnmanagedFiles(t *testing.T) {
 		{".codex/config.toml", "[broken"},
 		{".codex/config.toml", "[features]\nhooks = 'yes'\n"},
 		{".codex/config.toml", "text = '''\n[features]\nhooks = false\n'''\n"},
-		{".pi/agent/extensions/berth-axi.ts", "// user code"},
-		{".config/opencode/plugins/berth-axi.js", "// user code"},
+		{".pi/agent/extensions/dibs-axi.ts", "// user code"},
+		{".config/opencode/plugins/dibs-axi.js", "// user code"},
 	} {
 		t.Run(tc.path+tc.content, func(t *testing.T) {
 			home := hookHome(t)
@@ -145,14 +145,14 @@ func TestSessionHookSetsEnvironment(t *testing.T) {
 		if out, err := cmd.CombinedOutput(); err != nil || len(out) != 0 {
 			t.Fatalf("hook: %s %v", out, err)
 		}
-		cmd = exec.Command("sh", "-c", ". "+shellQuote(path)+"; printf '%s' \"$BERTH_AXI\"")
+		cmd = exec.Command("sh", "-c", ". "+shellQuote(path)+"; printf '%s' \"$DIBS_AXI\"")
 		if out, err := cmd.Output(); err != nil || string(out) != "1" {
 			t.Fatalf("env not applied: %q %v", out, err)
 		}
 		t.Setenv(env, "")
 	}
 	out, err := exec.Command("sh", "-c", sessionHook).Output()
-	if err != nil || !strings.Contains(string(out), "berth --axi") {
+	if err != nil || !strings.Contains(string(out), "dibs --axi") {
 		t.Fatalf("missing older-harness fallback: %q %v", out, err)
 	}
 }
@@ -175,7 +175,7 @@ func TestCodexFeaturePreservesConfig(t *testing.T) {
 }
 
 func TestSessionHookDeduplicatesOnlyOwnedEntries(t *testing.T) {
-	input := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"# berth-axi\nold"},{"type":"command","command":"echo berth-axi"}]}]}}`)
+	input := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"# dibs-axi\nold"},{"type":"command","command":"echo dibs-axi"}]}]}}`)
 	data, err := editSessionHook(input, false)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestSessionHookDeduplicatesOnlyOwnedEntries(t *testing.T) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(data, []byte("echo berth-axi")) || bytes.Contains(data, []byte("old")) {
+	if !bytes.Contains(data, []byte("echo dibs-axi")) || bytes.Contains(data, []byte("old")) {
 		t.Fatalf("bad ownership: %s", data)
 	}
 }

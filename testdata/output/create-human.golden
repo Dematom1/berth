@@ -9,7 +9,7 @@ liveness: alive
 machine: lab
 memory: 0 B
 owner: pid:123
-resource: kind:berth-lab
+resource: kind:dibs-lab
 resource_adapter: kind
-resource_name: berth-lab
+resource_name: dibs-lab
 resources: test, lab

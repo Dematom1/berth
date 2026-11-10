@@ -82,10 +82,10 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 		return errors.New("--ttl must be positive")
 	}
 	if l.Machine != host {
-		return errors.New("run berth extend on the lease's machine")
+		return errors.New("run dibs extend on the lease's machine")
 	}
 	if l.Job != nil {
-		return errors.New("job deadlines cannot be extended; start a new berth job with --timeout")
+		return errors.New("job deadlines cannot be extended; start a new dibs job with --timeout")
 	}
 	if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != Alive {
 		return errors.New("lease is expired, dead, or its owner cannot be verified; create a new lease")
@@ -101,11 +101,11 @@ func releaseLease(ctx context.Context, s *Store, id, host string, adapters map[s
 		return false, nil
 	}
 	if l.Machine != host {
-		return false, errors.New("run berth release on the lease's machine")
+		return false, errors.New("run dibs release on the lease's machine")
 	}
 	a, ok := adapters[l.Resource.Adapter]
 	if !ok {
-		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible berth version", l.Resource.Adapter)
+		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible dibs version", l.Resource.Adapter)
 	}
 	if err := a.Destroy(ctx, l); err != nil {
 		return false, err

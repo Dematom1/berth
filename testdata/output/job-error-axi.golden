@@ -1,4 +1,4 @@
 code: VALIDATION_ERROR
 error: requested 999 cores; usable 11 after owner room 3
 exit_code: 2
-help[1]: Try --cores 11 or set BERTH_CONFIG
+help[1]: Try --cores 11 or set DIBS_CONFIG

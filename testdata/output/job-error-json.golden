@@ -1,1 +1,1 @@
-{"code":"VALIDATION_ERROR","error":"requested 999 cores; usable 11 after owner room 3","exit_code":2,"help":["Try --cores 11 or set BERTH_CONFIG"]}
+{"code":"VALIDATION_ERROR","error":"requested 999 cores; usable 11 after owner room 3","exit_code":2,"help":["Try --cores 11 or set DIBS_CONFIG"]}

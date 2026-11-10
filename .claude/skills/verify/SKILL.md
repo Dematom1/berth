@@ -1,9 +1,9 @@
 ---
 name: verify
-description: Drive berth's real CLI to verify leases, sweep, heartbeat owners, FIFO jobs, Docker Compose, kind, k3d, and SSH machines. Use after behavior changes or to reproduce a demo failure.
+description: Drive dibs's real CLI to verify leases, sweep, heartbeat owners, FIFO jobs, Docker Compose, kind, k3d, and SSH machines. Use after behavior changes or to reproduce a demo failure.
 ---
 
-# Verify berth
+# Verify dibs
 
 Read [the feature map](features/README.md), then select a flow. This is behavioral verification, not a formal proof.
 
@@ -12,7 +12,7 @@ Read [the feature map](features/README.md), then select a flow. This is behavior
 Run from the checkout root with Go 1.26+, Python 3, and a POSIX shell:
 
 ```sh
-PROOF=$(mktemp -d "${TMPDIR:-/tmp}/berth-proof.XXXXXX")
+PROOF=$(mktemp -d "${TMPDIR:-/tmp}/dibs-proof.XXXXXX")
 .claude/skills/verify/verify.py local --evidence "$PROOF/local"
 ```
 
@@ -24,7 +24,7 @@ For external flows, install Docker with Compose, kind, k3d, kubectl, OpenSSH, an
 
 Use the **read-only** version probe for the binary path recorded in `events.jsonl`: `<recorded-binary-path> --version`. Confirm that path is inside this run's scratch directory, not an installed release. The helper executes this probe before driving each flow. Once cleanup removes that binary, there is no instance to inspect: start a new run.
 
-Before external flows, run `docker info`, `docker compose version`, `kind --version`, `k3d version`, and `kubectl version --client`. A failed prerequisite is a failed verification, not proof about berth. Never change or restart a shared Docker engine to repair a run.
+Before external flows, run `docker info`, `docker compose version`, `kind --version`, `k3d version`, and `kubectl version --client`. A failed prerequisite is a failed verification, not proof about dibs. Never change or restart a shared Docker engine to repair a run.
 
 ## Drive
 
@@ -46,11 +46,11 @@ Keep `$PROOF` outside the checkout. Each flow writes `events.jsonl` with argv, s
 
 Exercise public CLI commands; do not call Go internals, edit lease records, or substitute fake tools. The sole queue-state read observes waiter registration so launch timing cannot masquerade as FIFO. Check action and result: preview must retain a lease, HTTP must reach Compose, nodes must be Ready, cleanup must remove resources, and jobs must return actual child/deadline/admission/transport codes. The harness observes preview side effects instead of trusting the word "preview".
 
-The SSH container is a real protocol target, not evidence of a Lenovo rollout. Its setup installs OpenSSH/procps, provisions fixture keys and host trust, creates a quoted workdir, installs a Linux berth binary, and supplies a remote budget and sshd keepalives. Those provisioning steps on an actual machine, its checkout/dependencies, and its sweep timer remain unverified until tested there. No source or credentials are synchronized.
+The SSH container is a real protocol target, not evidence of a Lenovo rollout. Its setup installs OpenSSH/procps, provisions fixture keys and host trust, creates a quoted workdir, installs a Linux dibs binary, and supplies a remote budget and sshd keepalives. Those provisioning steps on an actual machine, its checkout/dependencies, and its sweep timer remain unverified until tested there. No source or credentials are synchronized.
 
 ## Cleanup
 
-The helper terminates only PIDs it started, releases its own leases through berth, verifies an empty listing, and removes scratch state. The SSH fixture removes only its uniquely named container. Evidence survives teardown. If cleanup fails, `events.jsonl` names `retained_state`; keep that directory and use its binary and `BERTH_STATE` to retry `release <id> --confirm`. Never delete a cleanup record while a resource remains. Never kill by process name or prune Docker resources.
+The helper terminates only PIDs it started, releases its own leases through dibs, verifies an empty listing, and removes scratch state. The SSH fixture removes only its uniquely named container. Evidence survives teardown. If cleanup fails, `events.jsonl` names `retained_state`; keep that directory and use its binary and `DIBS_STATE` to retry `release <id> --confirm`. Never delete a cleanup record while a resource remains. Never kill by process name or prune Docker resources.
 
 After any failure, inspect `result.json` and the final cleanup event before retrying. Verify that `$PROOF/<flow>/events.jsonl` still exists after cleanup. Report failures with the command, output, expected result, and evidence path; do not weaken a journey to pass it.
 

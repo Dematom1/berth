@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// A real OpenSSH server, real client, and cross-built berth binary. No missing
+// A real OpenSSH server, real client, and cross-built dibs binary. No missing
 // prerequisite skips: this target must fail if Docker/SSH/Go are unavailable.
 func TestSSHIntegration(t *testing.T) {
 	for _, tool := range []string{"docker", "ssh", "ssh-keygen", "go"} {
@@ -45,7 +45,7 @@ func TestSSHIntegration(t *testing.T) {
 	}
 	run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", filepath.Join(dir, "client"))
 	run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", filepath.Join(dir, "host"))
-	binary := filepath.Join(dir, "berth")
+	binary := filepath.Join(dir, "dibs")
 	run("go", "build", "-o", binary, ".")
 	arch := runtime.GOARCH
 	buildRemote := func(output, remoteVersion string) {
@@ -56,18 +56,18 @@ func TestSSHIntegration(t *testing.T) {
 			t.Fatalf("remote build: %v %s", err, out)
 		}
 	}
-	remoteBinary := filepath.Join(dir, "berth-linux")
+	remoteBinary := filepath.Join(dir, "dibs-linux")
 	buildRemote(remoteBinary, version)
 	buildRemote(filepath.Join(dir, "wrong-version"), "incompatible-test-version")
 	// The fixture has two usable cores. Local config below has only one, proving
 	// admission and class lookup use the remote machine, not client defaults.
 	write(filepath.Join(dir, "remote-config.json"), `{"cores":3,"room_cores":1,"memory":"4GiB","room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"20s"},"remote-short":{"cores":1,"memory":"1GiB","timeout":"1s"}}}`, 0600)
-	name := "berth-ssh-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	name := "dibs-ssh-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	script := `apk add --no-cache openssh-server procps >/dev/null
-mkdir -p /root/.ssh /root/.config/berth "/lab/work 'quoted'"
+mkdir -p /root/.ssh /root/.config/dibs "/lab/work 'quoted'"
 cp /fixture/client.pub /root/.ssh/authorized_keys
 chmod 700 /root/.ssh; chmod 600 /root/.ssh/authorized_keys
-cp /fixture/remote-config.json /root/.config/berth/config.json
+cp /fixture/remote-config.json /root/.config/dibs/config.json
 echo 'root:unused-fixture-password' | chpasswd
 exec /usr/sbin/sshd -D -e -h /fixture/host -o PermitRootLogin=prohibit-password -o PasswordAuthentication=no -o ClientAliveInterval=2 -o ClientAliveCountMax=2`
 	run("docker", "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::22", "--mount", "type=bind,src="+dir+",dst=/fixture", "alpine:3.23", "sh", "-ec", script)
@@ -103,7 +103,7 @@ exec /usr/sbin/sshd -D -e -h /fixture/host -o PermitRootLogin=prohibit-password 
 	}
 	write(filepath.Join(wrapper, "ssh"), "#!/bin/sh\nexec "+shellQuote(ssh)+" -F "+shellQuote(filepath.Join(dir, "ssh_config"))+" \"$@\"\n", 0700)
 	t.Setenv("PATH", wrapper+string(os.PathListSeparator)+os.Getenv("PATH"))
-	m := SSHMachine{Host: "127.0.0.1", User: "root", Workdir: "/lab/work 'quoted'", Agent: "/root/bin/berth 'quoted'", Port: portNumber, IdentityFile: filepath.Join(dir, "client")}
+	m := SSHMachine{Host: "127.0.0.1", User: "root", Workdir: "/lab/work 'quoted'", Agent: "/root/bin/dibs 'quoted'", Port: portNumber, IdentityFile: filepath.Join(dir, "client")}
 	ready := false
 	until := time.Now().Add(time.Minute)
 	for time.Now().Before(until) {
@@ -125,8 +125,8 @@ exec /usr/sbin/sshd -D -e -h /fixture/host -o PermitRootLogin=prohibit-password 
 		t.Fatal(err)
 	}
 	write(filepath.Join(dir, "client-config.json"), string(encoded), 0600)
-	t.Setenv("BERTH_CONFIG", filepath.Join(dir, "client-config.json"))
-	t.Setenv("BERTH_STATE", filepath.Join(dir, "local-state-must-stay-absent"))
+	t.Setenv("DIBS_CONFIG", filepath.Join(dir, "client-config.json"))
+	t.Setenv("DIBS_STATE", filepath.Join(dir, "local-state-must-stay-absent"))
 	command := func(args ...string) *exec.Cmd { return exec.Command(binary, args...) }
 	job := func(args ...string) *exec.Cmd {
 		return command(append([]string{"job", "--machine", "fixture"}, args...)...)
@@ -197,7 +197,7 @@ exec /usr/sbin/sshd -D -e -h /fixture/host -o PermitRootLogin=prohibit-password 
 		t.Cleanup(func() { _ = queued.Process.Kill() })
 		waiters := func() int {
 			var state Store
-			data := run("docker", "exec", name, "cat", "/root/.local/state/berth/state.json")
+			data := run("docker", "exec", name, "cat", "/root/.local/state/dibs/state.json")
 			if err := json.Unmarshal([]byte(data), &state); err != nil {
 				t.Fatal(err)
 			}
@@ -287,7 +287,7 @@ exec /usr/sbin/sshd -D -e -h /fixture/host -o PermitRootLogin=prohibit-password 
 		run("docker", "exec", name, "mv", m.Agent+".saved", m.Agent)
 	})
 	empty()
-	if _, err := os.Stat(os.Getenv("BERTH_STATE")); !os.IsNotExist(err) {
+	if _, err := os.Stat(os.Getenv("DIBS_STATE")); !os.IsNotExist(err) {
 		t.Fatalf("remote invocation touched local state: %v", err)
 	}
 }
