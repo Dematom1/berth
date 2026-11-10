@@ -53,7 +53,7 @@ func runSetup(args []string, out io.Writer, mode outputMode) int {
 	wantHelp := fs.Bool("help", false, "help")
 	outputFlags(fs, &mode)
 	if len(args) == 1 && args[0] == "--help" {
-		fmt.Fprint(out, help("setup"))
+		emitHelp(out, mode, "setup")
 		return 0
 	}
 	if len(args) == 0 || args[0] != "hooks" {
@@ -63,7 +63,7 @@ func runSetup(args []string, out io.Writer, mode outputMode) int {
 		return emitError(out, mode, 2, err.Error(), help("setup"))
 	}
 	if *wantHelp {
-		fmt.Fprint(out, help("setup"))
+		emitHelp(out, mode, "setup")
 		return 0
 	}
 	if fs.NArg() != 0 {

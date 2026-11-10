@@ -382,7 +382,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 		return usageError(err)
 	}
 	if *wantHelp {
-		fmt.Fprint(out, help("job"))
+		emitHelp(out, jsonOutput, "job")
 		return 0
 	}
 	if fs.NArg() != 0 || split < 0 || split == len(args)-1 || *wait < 0 {

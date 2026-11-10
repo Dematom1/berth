@@ -28,10 +28,18 @@ memory units. `berth ps` and the no-args home view show job usage, usable capaci
 and the cores and memory kept free for you. Usage errors have one error line and
 one short hint, not a help dump.
 
-Use `--axi` or `BERTH_AXI=1` for agent output in TOON. Use `--json` for stable JSON
-with the same lease records and budget fields, suitable for `jq` and scripts.
-Both flags work before or after the command. They are mutually exclusive, and
-an explicit flag overrides `BERTH_AXI`. There is no `--human` flag.
+Use `--axi` or `BERTH_AXI=1` for agent output in TOON. Use `--json` for complete,
+stable JSON suitable for `jq` and scripts. Both flags work before or after the
+command. They are mutually exclusive, and an explicit flag overrides `BERTH_AXI`.
+There is no `--human` flag.
+
+AXI is a first-class agent view, not a debug format. Lists default to 100 compact
+rows with `total` for all matching leases and `shown` when the list is truncated.
+Descriptions and detail label values have 500-character previews. Truncated text
+states the full character count. Help lines carry the filters and remote machine
+needed to fetch the complete result. `--full` on lease commands removes these
+bounds and restores complete records. **AXI with `--full` has the same fields and
+data as `--json`**, which never truncates. Canonical state is never shortened.
 
 When stdout is not a TTY and neither output flag is present, berth emits AXI as
 a safety net for agents and pipes. **Human default means terminal output**, not
@@ -39,7 +47,8 @@ redirected output. Use `--json` explicitly for scripts that need JSON.
 
 ```sh
 berth ps                              # human on a terminal
-berth --axi ps                        # agent output
+berth --axi ps                        # bounded agent view
+berth --axi ps --full                 # complete records, same data as --json
 BERTH_AXI=1 berth ps                   # agent session environment
 berth ps --json | jq '.budget.used_cores'
 ```
@@ -340,9 +349,16 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 
 Commands accept `--help`, `--axi`, and `--json`, except the internal `agent`
 protocol. Human output is the terminal default. AXI and JSON have explicit empty
-states and structured errors on stdout with short help pointers. AXI label cells
-contain compact JSON, with `"{}"` for empty labels. JSON keeps labels as native
-objects. Both include full lease records and numeric budget fields in bytes.
+states and structured errors on stdout with short help pointers. Structured errors
+include a symbolic `code` and the numeric `exit_code`. Codes are
+`VALIDATION_ERROR`, `COMMAND_FAILED`, and `NO_CAPACITY`; actual exit codes do not
+change. Explicit help requests also use structured output in these modes.
+
+AXI's compact list includes lease identity, owner/liveness, machine/expiry,
+resource description, exact job cores/memory bytes, and the kubeconfig path.
+`--full` restores labels, class, and full records. Labels remain native objects
+in both complete formats. JSON always includes the complete records. Both modes
+include numeric machine-budget fields in bytes.
 `leases[].memory` retains its byte-string representation for scripts;
 `leases[].memory_bytes` provides the same value as an integer. Human output uses
 GiB, MiB, or smaller readable units. Budget usage includes all retained local job
@@ -406,9 +422,11 @@ Error: requested 999 cores; usable 11 after owner room 3
 Try --cores 11 or set BERTH_CONFIG
 ```
 
-AXI keeps the same message under `error:` and a short `help` array. Piped
+AXI keeps the same message under `error:`, `code: VALIDATION_ERROR`,
+`exit_code: 2`, and a short `help` array. Piped
 `berth ps` uses AXI; `berth ps --json` remains JSON. Byte-for-byte expectations
-for list, ps, who, lease records, budget summaries, and errors are in
+for list, ps, who, full lease records, truncated lists with counts, structured
+help, budget summaries, and errors are in
 [`testdata/output`](testdata/output). `go test ./...` also checks real PTY output,
 child stdout/stderr passthrough, quiet IDs, shell exports, and setup/removal under
 a temporary HOME. To update snapshots after an intentional format change, run
