@@ -4,7 +4,7 @@ buildGoModule {
   pname = "berth";
   inherit version;
   src = lib.cleanSource ./.;
-  vendorHash = "sha256-Gi8iVf7n95HhpGaBzECenSiEcWsUNWwE+Hvr4bZ30Nw=";
+  vendorHash = "sha256-9cmLdpULRzacfwiOrAGhvgcWHnJYEbIt9Mtb0BViU0w=";
   subPackages = [ "." ];
   env.CGO_ENABLED = 0;
   ldflags = [ "-s" "-w" "-X main.version=${version}" ];
