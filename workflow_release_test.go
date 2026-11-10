@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -66,22 +69,22 @@ func TestReleaseWorkflowLifecycle(t *testing.T) {
 	require(t, build["needs"] == "release-please", "asset build must depend on release creation")
 	require(t, build["if"] == "needs.release-please.outputs.release_created == 'true'", "assets may build only for a created release")
 	var taggedCheckout bool
-	var buildCommands []string
 	for _, raw := range list(build["steps"]) {
 		step := object(raw)
 		if with := object(step["with"]); with["ref"] == "${{ needs.release-please.outputs.tag_name }}" {
 			taggedCheckout = true
 		}
-		if run, ok := step["run"].(string); ok {
-			buildCommands = append(buildCommands, run)
-		}
 	}
 	require(t, taggedCheckout, "build must check out the release tag")
-	commands := strings.Join(buildCommands, "\n")
-	for _, want := range []string{"test \"${#archives[@]}\" -eq 4", "sha256sum --check checksums.txt", "gh release upload"} {
-		require(t, strings.Contains(commands, want), "missing release asset operation: "+want)
+	releaseScript := ""
+	for _, raw := range list(build["steps"]) {
+		step := object(raw)
+		if step["name"] == "Upload complete asset set to draft" {
+			releaseScript, _ = step["run"].(string)
+		}
 	}
-	require(t, strings.Index(commands, "sha256sum --check") >= 0 && strings.Index(commands, "sha256sum --check") < strings.Index(commands, "gh release upload"), "checksums must be verified before upload")
+	require(t, releaseScript != "", "release upload step must have an executable script")
+	testReleaseUploadScript(t, releaseScript)
 	var skipPublish bool
 	for _, raw := range list(build["steps"]) {
 		with := object(object(raw)["with"])
@@ -97,9 +100,69 @@ func TestReleaseWorkflowLifecycle(t *testing.T) {
 	}
 	condition, _ := finalize["if"].(string)
 	require(t, len(gotNeeds) == 2 && gotNeeds["release-please"] && gotNeeds["build-and-upload"], "publication must depend on release creation and assets")
-	require(t, strings.Contains(condition, "!cancelled()") && strings.Contains(condition, "needs.release-please.result == 'success'") && strings.Contains(condition, "needs.build-and-upload.result == 'success'") && strings.Contains(condition, "release_created == 'true'"), "publication must require successful complete release")
-	finalRuns := strings.Join(runs(finalize), "\n")
-	require(t, strings.Contains(finalRuns, "--draft=false --prerelease=true --latest=false"), "complete draft must be published as prerelease, not latest")
+	require(t, condition == "!cancelled() && needs.release-please.result == 'success' && needs.build-and-upload.result == 'success' && needs.release-please.outputs.release_created == 'true'", "publication must require successful complete release")
+	require(t, hasRun(finalize, `gh release edit "$TAG" --draft=false --prerelease=true --latest=false`), "complete draft must be published as prerelease, not latest")
+}
+
+func testReleaseUploadScript(t *testing.T, script string) {
+	t.Helper()
+	for _, tc := range []struct {
+		name  string
+		files int
+		valid bool
+	}{
+		{"complete assets upload", 4, true},
+		{"missing archive blocks upload", 3, false},
+		{"corrupt checksum blocks upload", 4, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			bin, dist := filepath.Join(dir, "bin"), filepath.Join(dir, "dist")
+			if err := os.MkdirAll(bin, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(dist, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			ghLog := filepath.Join(dir, "uploads")
+			if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$UPLOAD_LOG\"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			var sums strings.Builder
+			for i := 0; i < tc.files; i++ {
+				name := fmt.Sprintf("asset-%d.tar.gz", i)
+				if err := os.WriteFile(filepath.Join(dist, name), []byte(name), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				cmd := exec.Command("sha256sum", name)
+				cmd.Dir = dist
+				out, err := cmd.Output()
+				if err != nil {
+					t.Fatal(err)
+				}
+				sums.Write(out)
+			}
+			if err := os.WriteFile(filepath.Join(dist, "checksums.txt"), []byte(sums.String()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tc.name == "corrupt checksum blocks upload" {
+				if err := os.WriteFile(filepath.Join(dist, "checksums.txt"), []byte(strings.Repeat("0", 64)+"  asset-0.tar.gz\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("bash", "-e", "-c", script)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "UPLOAD_LOG="+ghLog, "TAG=v1.2.3", "GH_REPO=example/berth", "GH_TOKEN=test")
+			err := cmd.Run()
+			if (err == nil) != tc.valid {
+				t.Fatalf("script error = %v, want success %v", err, tc.valid)
+			}
+			_, statErr := os.Stat(ghLog)
+			if (statErr == nil) != tc.valid {
+				t.Fatalf("upload occurred = %v, want %v", statErr == nil, tc.valid)
+			}
+		})
+	}
 }
 
 func TestGoReleaserArtifactContract(t *testing.T) {

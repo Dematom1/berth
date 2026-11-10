@@ -43,8 +43,10 @@ func runs(job any) []string {
 }
 
 func hasRun(job any, command string) bool {
-	for _, run := range runs(job) {
-		if strings.Contains(run, command) {
+	for _, raw := range list(object(job)["steps"]) {
+		step := object(raw)
+		run, _ := step["run"].(string)
+		if strings.TrimSpace(run) == command && step["if"] == nil {
 			return true
 		}
 	}
@@ -100,7 +102,7 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 	}{
 		{check, "just lint"}, {check, "just cross"}, {check, "just deps-check"}, {check, "just vulncheck"},
 		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"},
-		{integration, ".claude/skills/verify/verify.py local"}, {integration, ".claude/skills/verify/verify.py ssh"}, {integration, ".claude/skills/verify/verify.py adapters"},
+		{integration, ".claude/skills/verify/verify.py local --evidence \"$RUNNER_TEMP/verify/local\""}, {integration, ".claude/skills/verify/verify.py ssh --evidence \"$RUNNER_TEMP/verify/ssh\""}, {integration, ".claude/skills/verify/verify.py adapters --evidence \"$RUNNER_TEMP/verify/adapters\""},
 	} {
 		require(t, hasRun(pair.job, pair.command), "missing CI command: "+pair.command)
 	}
@@ -110,7 +112,7 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 		gotNeeds[need] = true
 	}
 	require(t, len(gotNeeds) == 3 && gotNeeds["check"] && gotNeeds["test"] && gotNeeds["integration"], "required CI gate must depend on all CI jobs")
-	require(t, required["if"] == "${{ always() }}" && hasRun(required, `all(.[]; .result == "success")`), "required CI gate must fail unless every job succeeds")
+	require(t, required["if"] == "${{ always() }}" && hasRun(required, `jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"`), "required CI gate must fail unless every job succeeds")
 }
 
 func TestNoMistakesRequiredWorkflow(t *testing.T) {

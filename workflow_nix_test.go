@@ -18,7 +18,7 @@ func TestNixWorkflowMatrixAndBuildChecks(t *testing.T) {
 		checkoutFull = checkoutFull || object(step["with"])["fetch-depth"] == 0
 	}
 	require(t, installer && checkoutFull, "Nix build requires installer and complete history for flake-compat")
-	for _, command := range []string{"nix flake check --all-systems --no-build", "nix build --print-build-logs", "nix-build default.nix -A"} {
+	for _, command := range []string{"nix flake check --all-systems --no-build", "nix build --print-build-logs", "nix-build default.nix -A \"packages.$(nix eval --impure --raw --expr builtins.currentSystem).default\" --no-out-link"} {
 		require(t, hasRun(job, command), "missing Nix verification command: "+command)
 	}
 	require(t, hasRun(job, `test "$(./result/bin/berth --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"`), "built version must equal the release manifest")
