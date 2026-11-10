@@ -18,7 +18,7 @@ Read `VISION.md` first; it is the accept/resist test for every change.
 
 ## Verify
 
-- `make check` runs gofmt, vet, race tests, and build.
-- `make integration` and `make ssh-integration` drive real kind, k3d, Compose, and SSH; they need Docker and fail rather than skip when a tool is missing.
+- `just check` runs gofmt, vet, race tests, and build.
+- `just integration` and `just ssh-integration` drive real kind, k3d, Compose, and SSH; they need Docker and fail rather than skip when a tool is missing.
   Install the missing tool or report the blocker; never skip a test.
 - Changes reach `main` only through a PR raised via no-mistakes with a conventional PR title.

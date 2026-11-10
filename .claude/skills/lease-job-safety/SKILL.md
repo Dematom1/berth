@@ -12,13 +12,13 @@ Read [the findings](../../../verification/findings.md) first. F1 is resolved by 
 ## Run the checks
 
 1. Install Go as specified by `go.mod`, Python 3, and Java 17 or newer. CI uses Java 21.
-2. From the repository root, run `make formal`.
+2. From the repository root, run `just formal` for the end-to-end checks: tagged Go tests, bounded TLA+ models, and real-code mutation checks.
 3. Read every `PASS`, `COUNTEREXAMPLE`, and `REJECTED real-code mutant` line. Read the TLC logs at the printed path if any result is unexpected.
-4. To require all requested properties to hold, run `python3 verification/check.py --strict`. It currently exits 1 for F2 and F3.
+4. For model-only diagnostics, run `python3 verification/check.py`; add `--strict` to require all requested properties. Strict mode currently exits 1 for F2 and F3.
 
 `check.py` downloads the checksum-pinned `tla2tools.jar` v1.7.4 release. `TLA2TOOLS_JAR` selects an already downloaded copy, which still needs the same checksum. `JAVA` selects the Java executable. `FORMAL_LOG_DIR` selects a directory outside the checkout for configs, traces, and checker state. Without it, the checker creates a temporary directory and prints its path.
 
-CI runs the same command on `ubuntu-24.04` with a five-minute job timeout. The artifact `formal-counterexamples` contains complete TLC traces. Docker, a remote machine, and paid services are not required.
+CI runs `just formal` for these checks. Docker, a remote machine, and paid services are not required.
 
 ## Check the code mapping
 
@@ -60,6 +60,6 @@ A pass covers these finite models, not arbitrary queue lengths or the Go binary.
 
 ## Reject a broken change
 
-`make formal` checks intentionally broken model variants and runs `verification/mutations.py`. The latter copies the Go package into temporary directories and changes real code only in those copies. It removes unknown-owner protection, locking, budget checks, FIFO gating, helper EOF protection, cleanup retention, completion probing, EOF cancellation, and result preservation. Each variant must fail a behavior test, not compilation or source-text matching. The checkout stays unchanged.
+`just formal` checks intentionally broken model variants and runs `verification/mutations.py`. The latter copies the Go package into temporary directories and changes real code only in those copies. It removes unknown-owner protection, locking, budget checks, FIFO gating, helper EOF protection, cleanup retention, completion probing, EOF cancellation, and result preservation. Each variant must fail a behavior test, not compilation or source-text matching. The checkout stays unchanged.
 
 For an unexpected trace, map each action to the named function and check the atomicity boundary first. If the code permits the sequence, record a finding before proposing a product fix. If the model invented a sequence, correct the abstraction and rerun the mutation checks. Never weaken a safety promise to make a failing code path green.

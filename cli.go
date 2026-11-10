@@ -122,7 +122,7 @@ Child stdin/stdout/stderr pass through unchanged, including with --json;
 and retain the lease, never replacing the child's exit code.
 Examples:
   berth job --cores 2 --memory 2GiB --timeout 10m -- go test ./...
-  berth job --class suite --wait 0 -- make check`,
+  berth job --class suite --wait 0 -- just check`,
 }
 
 type labelsFlag map[string]string
