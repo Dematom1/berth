@@ -67,6 +67,8 @@ func TestSSHIntegration(t *testing.T) {
 	write(filepath.Join(dir, "remote-config.json"), `{"cores":3,"room_cores":1,"memory":"4GiB","room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"20s"},"remote-short":{"cores":1,"memory":"1GiB","timeout":"1s"}}}`, 0600)
 	name := "berth-ssh-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	script := `apk add --no-cache openssh-server procps >/dev/null
+# Minimal Alpine has no machine-id; provision this disposable host once.
+tr -d '-' </proc/sys/kernel/random/uuid >/etc/machine-id
 mkdir -p /root/.ssh /root/.config/berth "/lab/work 'quoted'"
 cp /fixture/client.pub /root/.ssh/authorized_keys
 chmod 700 /root/.ssh; chmod 600 /root/.ssh/authorized_keys

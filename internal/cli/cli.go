@@ -43,7 +43,7 @@ func (app application) leaseError(out io.Writer, mode outputpkg.Mode, command st
 		case leasepkg.ReadLedger:
 			hint = "Check BERTH_STATE permissions and state.json; retry berth " + command
 		case leasepkg.ResolveMachine:
-			hint = "Retry berth " + command + " after the hostname is available"
+			hint = "Retry berth " + command + " after the OS machine identity is available"
 		}
 	}
 	return outputpkg.Error(out, mode, 1, err.Error(), hint)
