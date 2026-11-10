@@ -1,0 +1,24 @@
+name: Contribution
+
+# Shared metadata-only guard also supplies PR title and no-mistakes-required
+# checks. Keep one caller rather than duplicate the shared policy jobs.
+# PR title/body edits rerun all checks against live data.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: contribution-${{ github.event.pull_request.number }}-${{ (github.event.action == 'opened' || github.event.action == 'edited') && github.run_id || 'head-change' }}
+  cancel-in-progress: true
+
+jobs:
+  contribution:
+    name: contribution
+    uses: Dematom1/oss-workflows/.github/workflows/contribution-checks.yml@ee220d669cbb1376363825c273291dea4a539847
+    with:
+      # Operations owns this variable. Empty means no release exemption.
+      release-bot-login: ${{ vars.RELEASE_APP_BOT_LOGIN }}
