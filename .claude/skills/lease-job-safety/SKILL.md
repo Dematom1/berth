@@ -16,20 +16,22 @@ Read [the findings](../../../verification/findings.md) first. F1 is resolved by 
 3. Read every `PASS`, `COUNTEREXAMPLE`, and `REJECTED real-code mutant` line. Read the TLC logs at the printed path if any result is unexpected.
 4. `python3 verification/check.py --strict` requires every bounded property to pass, including F2 and F3. The default command has the same contract.
 
+On a host without an installed JDK, run `nix shell nixpkgs#jdk21 -c make formal` to keep the runtime available for the whole check. A bare Nix store path may be garbage-collected between runs.
+
 `check.py` downloads the checksum-pinned `tla2tools.jar` v1.7.4 release. `TLA2TOOLS_JAR` selects an already downloaded copy, which still needs the same checksum. `JAVA` selects the Java executable. `FORMAL_LOG_DIR` selects a directory outside the checkout for configs, traces, and checker state. Without it, the checker creates a temporary directory and prints its path.
 
 CI runs the same command on `ubuntu-24.04` with a five-minute job timeout. The artifact `formal-counterexamples` contains complete TLC traces. Docker, a remote machine, and paid services are not required.
 
 ## Check the code mapping
 
-Last confirmed source commit: `81070056d00383ec40bb8aa1db9b8bc65f3d91db`.
+Last confirmed source commit: `1f110e97bedf91c646f780fee090630b73d3657d`.
 
-Run `git diff 81070056d00383ec40bb8aa1db9b8bc65f3d91db -- lease.go store.go owner.go job.go job_wait_linux.go job_wait_darwin.go ssh.go config.go cli.go adapter.go`. Re-read changed covered functions before trusting a pass.
+Run `git diff 1f110e97bedf91c646f780fee090630b73d3657d -- lease.go store.go owner.go job.go job_wait_linux.go job_wait_darwin.go ssh.go config.go cli.go adapter.go`. Re-read changed covered functions before trusting a pass.
 
 - `verification/Lease.tla` covers `lease.go:reclaimable`, `extendLease`, `releaseLease`, and `sweep`. A sweep uses owner evidence at its eligibility decision. Explicit release may destroy a live resource. Destroy or Save failure retains the cleanup intent. An unverifiable surviving job group is saved as orphan-suspected. Only explicit `release --force --confirm` may forget that reservation before group absence is proved, with a warning.
 - `verification/Admission.tla` covers `job.go:admitJob`, `budgetFits`, `pruneWaiters`, and `removeWaiter`, plus `store.go:openStore`, `Save`, and `Close`. A successful locked store transaction is one model step. This is valid only while read, prune, FIFO check, budget check, insertion, and Save share the same flock. Do not preserve this abstraction if the lock scope changes.
 - `verification/JobSession.tla` covers `job.go:startJob`, `jobExec`, `childCompletion`, `processResource.Destroy`, `runJob`, and `finishJob`; `job_wait_linux.go` and `job_wait_darwin.go` supply unreaped completion observations. The parent arms the timer before starting the helper. Persist, parent deadline check, gate write, and helper deadline decision are separate steps. Time and owner-channel EOF can advance between them. The helper refuses an expired deadline with 124. `Exec` models the helper's last clock observation and exec decision together, not an atomic clock-check-and-kernel-exec operation.
-- The same model covers `ssh.go:runAgent` and `runRemote`. Ready follows version validation, child output cannot create a result frame, delivered stdin EOF cancels the remote context, and a received result is authoritative during transport teardown.
+- The same model covers `ssh.go:runAgent` and `runRemote`. Ready follows version and output-mode validation, child output cannot create a result frame, delivered stdin EOF cancels the remote context, and a received result is authoritative during transport teardown. Display metadata does not change the modeled lifecycle; malformed modes are rejected before Ready.
 - `owner.go:checkOwner` and `processIdentity` supply Alive, Dead, and Unknown evidence. `config.go:available` supplies a common capacity after owner room. The models assume these observations and parsed positive requests are valid. `formal_test.go` and existing tests execute the real functions at these boundaries.
 - `cli.go` and `adapter.go` provide command routing and Destroy semantics. External adapter implementations are not proved. `releaseLease` trusts a successful Destroy.
 
