@@ -118,6 +118,7 @@ func childExit(t *testing.T, cmd *exec.Cmd, want int) string {
 			t.Fatal(err)
 		}
 	}
+	t.Logf("command=%q exit=%d output=%q", cmd.Args, code, out)
 	if code != want {
 		t.Fatalf("%v exited %d want %d: %s", cmd.Args, code, want, out)
 	}
