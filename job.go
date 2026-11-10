@@ -354,11 +354,11 @@ func finishJob(dir string, l Lease, groupCleaned bool) {
 	}
 }
 
-func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool, input io.Reader, ownerKind string) int {
+func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput outputMode, input io.Reader, ownerKind string) int {
 	fs := flag.NewFlagSet("job", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "help")
-	fs.BoolVar(&jsonOutput, "json", jsonOutput, "structured errors; child output is unchanged")
+	outputFlags(fs, &jsonOutput)
 	cores := fs.Int("cores", 0, "requested logical cores")
 	memory := fs.String("memory", "", "requested memory")
 	class := fs.String("class", "default", "resource class")
@@ -401,9 +401,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool, 
 				remoteArgs = append(remoteArgs, "--"+f.Name+"="+f.Value.String())
 			}
 		})
-		if jsonOutput {
-			remoteArgs = append(remoteArgs, "--json")
-		}
+
 		remoteArgs = append(remoteArgs, "--")
 		remoteArgs = append(remoteArgs, args[split+1:]...)
 		return runRemote(ctx, config, *machine, remoteArgs, out, jsonOutput)
@@ -428,8 +426,14 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput bool, 
 	if explicit["timeout"] {
 		duration = *timeout
 	}
-	if request.Cores <= 0 || request.Memory <= 0 || duration <= 0 || request.Cores > capacity.Cores || request.Memory > capacity.Memory {
-		return usageError(errors.New("request must be positive and fit machine budget minus owner room; adjust flags or BERTH_CONFIG"))
+	if request.Cores <= 0 || request.Memory <= 0 || duration <= 0 {
+		return usageError(errors.New("cores, memory and timeout must be positive"))
+	}
+	if request.Cores > capacity.Cores {
+		return emitError(out, jsonOutput, 2, fmt.Sprintf("requested %d cores; usable %d after owner room %d", request.Cores, capacity.Cores, config.RoomCores), fmt.Sprintf("Try --cores %d or set BERTH_CONFIG", capacity.Cores))
+	}
+	if request.Memory > capacity.Memory {
+		return emitError(out, jsonOutput, 2, fmt.Sprintf("requested %d bytes memory; usable %d after owner room %s", request.Memory, capacity.Memory, config.RoomMemory), fmt.Sprintf("Try --memory %d or set BERTH_CONFIG", capacity.Memory))
 	}
 	child := append([]string(nil), args[split+1:]...)
 	child[0], err = exec.LookPath(child[0])

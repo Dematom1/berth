@@ -26,9 +26,21 @@ when one third of its TTL remains. Owner death OR expiry makes a lease
 reclaimable: a live owner missing either cadence loses its resources.`
 
 var commandHelp = map[string]string{
+	"setup": `berth setup hooks [--remove] [--axi | --json]
+Install or remove managed Claude Code, Codex, Pi and OpenCode integrations.
+Sets BERTH_AXI=1 in agent shell environments. Repeated setup is a no-op.
+Examples:
+  berth setup hooks
+  berth setup hooks --remove`,
+	"env": `berth env <id>
+Print a shell-safe export for a kind/k3d lease's private kubeconfig.
+This command always prints shell text, even with --axi or --json.
+Examples:
+  eval "$(berth env <id>)"
+  berth env <id>`,
 	"create": `berth create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
   [--resources TEXT] [--label key=value ...] [--adapter none|kind|k3d|compose]
-  [--file PATH (required for compose)] [--json]
+  [--file PATH (required for compose)] [--quiet | -q] [--axi | --json]
 Owner defaults to BERTH_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
 not a Unix SID. heartbeat:<path> must already be a fresh regular file.
@@ -160,8 +172,11 @@ func help(command string) string {
 	if !ok {
 		body = `berth: owner-and-expiry leases for local resources (macOS and Linux).
 Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job,
-agent (internal SSH protocol), machine install.
-Global flags: --json, --help. Version: --version, -v, -V.
+env, setup hooks, agent (internal SSH protocol), machine install.
+Global flags: --axi (agents), --json (scripts), --help. No --human flag.
+Human output on terminals; AXI when BERTH_AXI=1 or stdout is not a TTY.
+--axi and --json are mutually exclusive; either overrides BERTH_AXI.
+Version: --version, -v, -V.
 Environment: BERTH_OWNER; BERTH_STATE (default $XDG_STATE_HOME/berth or
 ~/.local/state/berth). State is local to one host and one Unix user.
 Examples:
@@ -173,21 +188,43 @@ Run berth <command> --help for command flags.`
 	if command == "create" || command == "extend" {
 		body += "\n\n" + cadence
 	}
+	if command != "agent" {
+		body += "\nOutput: --axi for agents, --json for scripts (mutually exclusive).\nDefault: human on terminals; AXI for pipes or BERTH_AXI=1."
+	}
 	return body + "\n\n" + exitCodes + "\n"
 }
 
 func run(ctx context.Context, args []string, out io.Writer) int {
+	return runWithOutput(ctx, args, out, autoOutput)
+}
+
+func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outputMode) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-v" || args[0] == "-V") {
 		fmt.Fprintln(out, version)
 		return 0
 	}
 	command, home := "list", len(args) == 0
 	topHelp := len(args) == 1 && args[0] == "--help"
-	// --json is global and may precede the command.
-	jsonOutput := false
-	if len(args) > 0 && args[0] == "--json" {
-		jsonOutput, args = true, args[1:]
+	// Global output flags may also precede the command.
+	jsonOutput := autoOutput
+	for len(args) > 0 {
+		name, value, hasValue := strings.Cut(args[0], "=")
+		if name != "--json" && name != "--axi" {
+			break
+		}
+		if !hasValue {
+			value = "true"
+		}
+		if err := (outputFlag{&jsonOutput, outputMode(strings.TrimPrefix(name, "--"))}).Set(value); err != nil {
+			return emitError(out, jsonOutput, 2, err.Error(), "Choose --axi for agents or --json for scripts")
+		}
+		args = args[1:]
 		home = len(args) == 0
+	}
+	topHelp = len(args) == 1 && args[0] == "--help"
+	// Remote sessions carry the caller's resolved display mode, not their pipe's mode.
+	if mode != autoOutput {
+		out = &modeWriter{Writer: out, mode: mode}
 	}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		command, args = args[0], args[1:]
@@ -220,6 +257,9 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	if command == "agent" {
 		return runAgent(ctx, args, os.Stdin, out)
 	}
+	if command == "setup" {
+		return runSetup(args, out, jsonOutput)
+	}
 	if command == "machine" {
 		return runMachine(ctx, args, out, jsonOutput)
 	}
@@ -229,10 +269,10 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "show help")
-	fs.BoolVar(&jsonOutput, "json", jsonOutput, "JSON output")
+	outputFlags(fs, &jsonOutput)
 	var owner, resources, driver, file, machineName string
 	var ttl, stale time.Duration
-	var confirm bool
+	var confirm, quiet bool
 	labels := labelsFlag{}
 	if command == "list" || command == "sweep" {
 		fs.StringVar(&machineName, "machine", "", "SSH machine name")
@@ -241,6 +281,8 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 		fs.StringVar(&owner, "owner", "", "owner selector")
 	}
 	if command == "create" {
+		fs.BoolVar(&quiet, "quiet", false, "print only the new lease id")
+		fs.BoolVar(&quiet, "q", false, "print only the new lease id")
 		fs.DurationVar(&ttl, "ttl", 8*time.Hour, "lease lifetime")
 		fs.DurationVar(&stale, "stale", 15*time.Minute, "heartbeat staleness")
 		fs.StringVar(&resources, "resources", "", "resource description")
@@ -266,7 +308,7 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 		return 0
 	}
 	expected := 0
-	if command == "extend" || command == "release" {
+	if command == "extend" || command == "release" || command == "env" {
 		expected = 1
 	}
 	if fs.NArg() != expected || (expected == 1 && !leaseID.MatchString(fs.Arg(0))) {
@@ -289,9 +331,7 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 				remoteArgs = append(remoteArgs, "--"+f.Name+"="+f.Value.String())
 			}
 		})
-		if jsonOutput {
-			remoteArgs = append(remoteArgs, "--json")
-		}
+
 		return runRemote(ctx, config, machineName, remoteArgs, out, jsonOutput)
 	}
 	now := time.Now().UTC()
@@ -327,6 +367,7 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 	var result map[string]any
 	switch command {
 	case "list":
+		config, configErr := loadJobConfig()
 		if kind, id, ok := strings.Cut(owner, ":"); ok && id != "" {
 			switch kind {
 			case "pid", "session":
@@ -340,7 +381,7 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 			}
 		}
 		views := []map[string]any{}
-		full := []Lease{}
+		full := []map[string]any{}
 		for _, id := range s.IDs() {
 			l := s.Leases[id]
 			if owner != "" && l.Owner.String() != owner {
@@ -348,12 +389,14 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 			}
 			_, live := reclaimable(l, host, now, checkOwner)
 			views = append(views, leaseView(l, live, now))
-			full = append(full, l)
+			full = append(full, leaseRecord(l))
 		}
-		result = map[string]any{"count": len(views), "leases": views, "help": []string{"Run berth create --help to lease a resource", "Run berth sweep to preview reclamation"}}
-		if jsonOutput {
-			result["records"] = full
+		budget := map[string]any{"summary": "jobs: budget unavailable (check BERTH_CONFIG)"}
+		if configErr == nil {
+			budget = budgetView(config, s, host)
 		}
+		result = map[string]any{"budget": budget, "count": len(views), "leases": views, "help": []string{"Run berth create --help to lease a resource", "Run berth sweep to preview reclamation"}}
+		result["records"] = full
 		if home {
 			bin, _ := os.Executable()
 			if homeDir, err := os.UserHomeDir(); err == nil && strings.HasPrefix(bin, homeDir+string(filepath.Separator)) {
@@ -383,9 +426,22 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 			break
 		}
 		result = map[string]any{"lease": leaseView(l, Alive, now), "help": []string{"Run berth extend " + l.ID + " --ttl " + ttl.String(), "Run berth release " + l.ID + " --confirm to reclaim"}}
-		if jsonOutput {
-			result["record"] = l
+		result["record"] = leaseRecord(l)
+		if quiet {
+			fmt.Fprintln(out, l.ID)
+			return 0
 		}
+	case "env":
+		l, exists := s.Leases[fs.Arg(0)]
+		if !exists {
+			return emitError(out, jsonOutput, 2, "lease does not exist", "Run berth ps to find a lease")
+		}
+		path := kubeconfig(l)
+		if path == "" {
+			return emitError(out, jsonOutput, 2, "lease has no kubeconfig", "Create a kind or k3d lease with berth create --adapter kind or --adapter k3d")
+		}
+		fmt.Fprintln(out, "export KUBECONFIG="+shellQuote(path))
+		return 0
 	case "extend":
 		id := fs.Arg(0)
 		l, exists := s.Leases[id]
@@ -433,10 +489,10 @@ func run(ctx context.Context, args []string, out io.Writer) int {
 }
 
 func leaseView(l Lease, live Liveness, now time.Time) map[string]any {
-	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name, "resource_adapter": l.Resource.Adapter, "resource_name": l.Resource.Name, "labels": l.Labels}
-	view["cores"], view["memory"], view["class"] = 0, "0B", ""
+	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name, "resource_adapter": l.Resource.Adapter, "resource_name": l.Resource.Name, "labels": l.Labels, "kubeconfig": kubeconfig(l)}
+	view["cores"], view["memory"], view["memory_bytes"], view["class"] = 0, "0B", int64(0), ""
 	if l.Job != nil {
-		view["cores"], view["memory"], view["class"] = l.Job.Budget.Cores, strconv.FormatInt(l.Job.Budget.Memory, 10)+"B", l.Job.Class
+		view["cores"], view["memory"], view["memory_bytes"], view["class"] = l.Job.Budget.Cores, strconv.FormatInt(l.Job.Budget.Memory, 10)+"B", l.Job.Budget.Memory, l.Job.Class
 	}
 	return view
 }
