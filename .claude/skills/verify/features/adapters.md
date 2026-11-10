@@ -31,4 +31,4 @@ Preconditions: Docker, Compose, kind, k3d, and kubectl all pass the skill's doct
 - Do not use a shared fixed port or a developer's kubeconfig. The helper uses an ephemeral loopback port and its own sentinel file.
 - Docker context selection remains the caller's choice. The helper does not switch contexts or restart the engine. `DOCKER_HOST` is removed inside the helper because berth requires a named context.
 - Managed volumes are deleted. Never supply a real Compose file containing valuable data.
-- Existing `make integration` additionally tests cleanup retry after external deletion; CI keeps that target too.
+- Existing `just integration` additionally tests cleanup retry after external deletion; CI keeps that target too.
