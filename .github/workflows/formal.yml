@@ -24,7 +24,7 @@ jobs:
       - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
       - name: Check models, real-code bindings, and broken variants
         env:
-          FORMAL_LOG_DIR: ${{ runner.temp }}/berth-formal
+          FORMAL_LOG_DIR: ${{ runner.temp }}/dibs-formal
         # ubuntu-24.04 includes Java 21. No Docker, SSH server, or paid service.
         run: |
           export JAVA="$JAVA_HOME_21_X64/bin/java"
@@ -36,8 +36,8 @@ jobs:
         with:
           name: formal-counterexamples
           path: |
-            ${{ runner.temp }}/berth-formal/*.log
-            ${{ runner.temp }}/berth-formal/*.cfg
-            ${{ runner.temp }}/berth-formal/*.tla
+            ${{ runner.temp }}/dibs-formal/*.log
+            ${{ runner.temp }}/dibs-formal/*.cfg
+            ${{ runner.temp }}/dibs-formal/*.tla
           if-no-files-found: warn
           retention-days: 14

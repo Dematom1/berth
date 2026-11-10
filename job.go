@@ -76,7 +76,7 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 			defer s.Close()
 			removeWaiter(s, l.ID)
 			if err := s.Save(); err != nil {
-				fmt.Fprintln(os.Stderr, "berth: waiter cleanup failed; it expires automatically:", err)
+				fmt.Fprintln(os.Stderr, "dibs: waiter cleanup failed; it expires automatically:", err)
 			}
 		}
 	}()
@@ -112,7 +112,7 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 			if existing.Job != nil {
 				if eligible, _ := reclaimable(existing, l.Machine, now, checkOwner); eligible {
 					if _, err := releaseLease(cleanupCtx, s, id, l.Machine, adapters()); err != nil {
-						fmt.Fprintln(os.Stderr, "berth: retaining job reservation after cleanup failure:", err)
+						fmt.Fprintln(os.Stderr, "dibs: retaining job reservation after cleanup failure:", err)
 					}
 				}
 			}
@@ -179,7 +179,7 @@ func jobExec(args []string) int {
 		return 125
 	}
 	if err := syscall.Exec(args[0], args, os.Environ()); err != nil {
-		fmt.Fprintln(os.Stderr, "berth: cannot execute child:", err)
+		fmt.Fprintln(os.Stderr, "dibs: cannot execute child:", err)
 		return 126
 	}
 	return 126
@@ -211,7 +211,7 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	cmd := exec.Command(bin, append([]string{"__job_exec"}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.ExtraFiles = []*os.File{gate}
-	cmd.Env = append(os.Environ(), "BERTH_LEASE="+l.ID)
+	cmd.Env = append(os.Environ(), "DIBS_LEASE="+l.ID, "BERTH_LEASE="+l.ID)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, out, os.Stderr
 	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
@@ -293,7 +293,7 @@ func (processResource) Destroy(ctx context.Context, l Lease) error {
 		return errors.New("job group identity cannot be verified; lease retained")
 	}
 	if live == Dead && identity == "" {
-		fmt.Fprintln(os.Stderr, "berth: job leader is gone; releasing lease without signaling an unverifiable process group")
+		fmt.Fprintln(os.Stderr, "dibs: job leader is gone; releasing lease without signaling an unverifiable process group")
 		return nil
 	}
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
@@ -324,7 +324,7 @@ func stopJob(l Lease, cmd *exec.Cmd) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := (processResource{}).Destroy(ctx, l); err != nil {
-		fmt.Fprintln(os.Stderr, "berth: group cleanup incomplete; sweep will retry:", err)
+		fmt.Fprintln(os.Stderr, "dibs: group cleanup incomplete; sweep will retry:", err)
 		cmd.Process.Kill()
 		return err
 	}
@@ -350,7 +350,7 @@ func finishJob(dir string, l Lease, groupCleaned bool) {
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "berth: job cleanup incomplete; retry berth sweep --confirm:", err)
+		fmt.Fprintln(os.Stderr, "dibs: job cleanup incomplete; retry dibs sweep --confirm:", err)
 	}
 }
 
@@ -386,7 +386,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 		return 0
 	}
 	if fs.NArg() != 0 || split < 0 || split == len(args)-1 || *wait < 0 {
-		return usageError(errors.New("use berth job [flags] -- <cmd>; --wait must be nonnegative"))
+		return usageError(errors.New("use dibs job [flags] -- <cmd>; --wait must be nonnegative"))
 	}
 	explicit := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
@@ -430,29 +430,29 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 		return usageError(errors.New("cores, memory and timeout must be positive"))
 	}
 	if request.Cores > capacity.Cores {
-		return emitError(out, jsonOutput, 2, fmt.Sprintf("requested %d cores; usable %d after owner room %d", request.Cores, capacity.Cores, config.RoomCores), fmt.Sprintf("Try --cores %d or set BERTH_CONFIG", capacity.Cores))
+		return emitError(out, jsonOutput, 2, fmt.Sprintf("requested %d cores; usable %d after owner room %d", request.Cores, capacity.Cores, config.RoomCores), fmt.Sprintf("Try --cores %d or set DIBS_CONFIG", capacity.Cores))
 	}
 	if request.Memory > capacity.Memory {
-		return emitError(out, jsonOutput, 2, fmt.Sprintf("requested %d bytes memory; usable %d after owner room %s", request.Memory, capacity.Memory, config.RoomMemory), fmt.Sprintf("Try --memory %d or set BERTH_CONFIG", capacity.Memory))
+		return emitError(out, jsonOutput, 2, fmt.Sprintf("requested %d bytes memory; usable %d after owner room %s", request.Memory, capacity.Memory, config.RoomMemory), fmt.Sprintf("Try --memory %d or set DIBS_CONFIG", capacity.Memory))
 	}
 	child := append([]string(nil), args[split+1:]...)
 	child[0], err = exec.LookPath(child[0])
 	if err != nil {
-		return emitError(out, jsonOutput, 1, "child executable not found; no child started", "Check the command and PATH, then retry berth job")
+		return emitError(out, jsonOutput, 1, "child executable not found; no child started", "Check the command and PATH, then retry dibs job")
 	}
 	owner, err := parseOwner(ownerKind+":"+strconv.Itoa(os.Getpid()), 0, time.Now())
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job when the process is inspectable")
+		return emitError(out, jsonOutput, 1, err.Error(), "Retry dibs job when the process is inspectable")
 	}
 	l, err := newLease(owner, duration, filepath.Base(child[0]), nil, time.Now().UTC())
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Retry berth job")
+		return emitError(out, jsonOutput, 1, err.Error(), "Retry dibs job")
 	}
 	l.Resource.Adapter = "process"
 	l.Job = &JobResource{Budget: request, Class: *class}
 	dir, err := stateDir()
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Set BERTH_STATE to a private writable directory")
+		return emitError(out, jsonOutput, 1, err.Error(), "Set DIBS_STATE to a private writable directory")
 	}
 	l, err = admitJob(ctx, dir, l, capacity, *wait)
 	if err != nil {
@@ -460,7 +460,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 		if errors.Is(err, errNoCapacity) {
 			code = 75
 		}
-		return emitError(out, jsonOutput, code, err.Error(), "Run berth ps to inspect reservations; retry berth job with --wait")
+		return emitError(out, jsonOutput, code, err.Error(), "Run dibs ps to inspect reservations; retry dibs job with --wait")
 	}
 	finish, groupCleaned := true, false
 	defer func() {
@@ -470,7 +470,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 	}()
 	cmd, observed, err := startJob(ctx, dir, &l, child, out, input)
 	if err != nil {
-		return emitError(out, jsonOutput, 1, err.Error(), "Run berth ps to inspect retained reservations")
+		return emitError(out, jsonOutput, 1, err.Error(), "Run dibs ps to inspect retained reservations")
 	}
 	timer := time.NewTimer(time.Until(l.Expires))
 	defer timer.Stop()
@@ -485,7 +485,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 	select {
 	case err := <-observed:
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "berth: cannot observe job exit without reaping; sweep will retry:", err)
+			fmt.Fprintln(os.Stderr, "dibs: cannot observe job exit without reaping; sweep will retry:", err)
 			finish = false
 			cmd.Process.Kill()
 		} else {
@@ -495,7 +495,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 	case <-timer.C:
 		completed, err := childCompletion(observed, cmd.Process.Pid)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "berth: cannot verify job completion at deadline; sweep will retry:", err)
+			fmt.Fprintln(os.Stderr, "dibs: cannot verify job completion at deadline; sweep will retry:", err)
 			finish = false
 			cmd.Process.Kill()
 			waitErr = cmd.Wait()

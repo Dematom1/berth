@@ -6,6 +6,6 @@ budget:
   usable_memory_bytes: 25769803776
   used_cores: 0
   used_memory_bytes: 0
-help[2]: Run berth create --help to lease a resource,Run berth sweep to preview reclamation
+help[2]: Run dibs create --help to lease a resource,Run dibs sweep to preview reclamation
 leases: []
 total: 0

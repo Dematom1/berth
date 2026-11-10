@@ -34,6 +34,6 @@ jobs:
       - name: Build flake
         run: nix build --print-build-logs
       - name: Check stamped version
-        run: test "$(./result/bin/berth --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"
+        run: test "$(./result/bin/dibs --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"
       - name: Build through flake-compat
         run: nix-build default.nix -A "packages.$(nix eval --impure --raw --expr builtins.currentSystem).default" --no-out-link

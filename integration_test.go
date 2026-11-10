@@ -30,12 +30,12 @@ func integrationReady(t *testing.T, driver string) {
 			t.Fatalf("Docker Compose required for integration: %v", err)
 		}
 	}
-	dir, err := os.MkdirTemp("", "berth-integration-*")
+	dir, err := os.MkdirTemp("", "dibs-integration-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BERTH_STATE", dir)
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", dir)
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	t.Cleanup(func() {
 		s, err := openStore(context.Background(), dir)
 		if err != nil {
@@ -56,10 +56,10 @@ func integrationReady(t *testing.T, driver string) {
 	})
 }
 
-// Remove the real resource while its lease remains, then let berth retry cleanup.
+// Remove the real resource while its lease remains, then let dibs retry cleanup.
 func removeIntegrationResource(t *testing.T, id string) {
 	t.Helper()
-	s, err := openStore(context.Background(), os.Getenv("BERTH_STATE"))
+	s, err := openStore(context.Background(), os.Getenv("DIBS_STATE"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestIntegrationCompose(t *testing.T) {
 	}
 	created := invoke(t, 0, "create", "--adapter", "compose", "--file", file, "--ttl", "15m")
 	id := created["record"].(map[string]any)["id"].(string)
-	out, err := runCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.berth.lease="+id)
+	out, err := runCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.dibs.lease="+id)
 	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
 		t.Fatalf("stack not attributed to its lease: %s, %v", out, err)
 	}
@@ -142,7 +142,7 @@ func TestIntegrationCompose(t *testing.T) {
 	removeIntegrationResource(t, id)
 	invoke(t, 0, "release", id, "--confirm")
 	invoke(t, 0, "release", id, "--confirm")
-	out, err = runCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.berth.lease="+id)
+	out, err = runCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.dibs.lease="+id)
 	if err != nil || len(strings.TrimSpace(string(out))) != 0 {
 		t.Fatalf("stack survived cleanup: %s, %v", out, err)
 	}

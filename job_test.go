@@ -67,7 +67,7 @@ func TestJobBudgetAndConfig(t *testing.T) {
 		t.Fatal("reduced capacity freed resources held by stale reservations")
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
-	t.Setenv("BERTH_CONFIG", path)
+	t.Setenv("DIBS_CONFIG", path)
 	for _, data := range []string{`null`, `[]`, `{"classes":{"":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`, `{"typo":1}`, `{"cores":0}`, `{"room_memory":"999999GiB"}`, `{"classes":{"suite":{"cores":1,"memory":"1MiB","timeout":"0s"}}}`, `{} {}`} {
 		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 			t.Fatal(err)
@@ -83,7 +83,7 @@ func TestPartialConfigKeepsDefaultClass(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"classes":{"suite":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BERTH_CONFIG", path)
+	t.Setenv("DIBS_CONFIG", path)
 	config, err := loadJobConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func jobTestConfig(t *testing.T) string {
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BERTH_CONFIG", path)
+	t.Setenv("DIBS_CONFIG", path)
 	return path
 }
 
@@ -199,24 +199,25 @@ func startJobCommand(t *testing.T, binary string, args ...string) *exec.Cmd {
 }
 
 func TestJobsRealProcesses(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "berth")
+	t.Setenv("DIBS_AXI", "") // Isolate child-output assertions from deprecated ambient aliases.
+	binary := filepath.Join(t.TempDir(), "dibs")
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
 	developerConfig := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(developerConfig, "berth"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(developerConfig, "dibs"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(developerConfig, "berth", "config.json"), []byte(`{"cores":0}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(developerConfig, "dibs", "config.json"), []byte(`{"cores":0}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_CONFIG_HOME", developerConfig)
-	t.Setenv("BERTH_CONFIG", filepath.Join(developerConfig, "missing.json"))
+	t.Setenv("DIBS_CONFIG", filepath.Join(developerConfig, "missing.json"))
 	t.Run("command metadata excludes arguments", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-		t.Setenv("BERTH_CONFIG", "")
+		t.Setenv("DIBS_CONFIG", "")
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		marker := filepath.Join(t.TempDir(), "started")
 		secret := "private-argument-do-not-display"
 		holder := startJobCommand(t, binary, "--", "sh", "-c", `touch "$1"; exec sleep 30`, "_", marker, secret)
@@ -242,14 +243,14 @@ func TestJobsRealProcesses(t *testing.T) {
 		if err := os.WriteFile(config, []byte(`{"classes":{"suite":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`), 0600); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("BERTH_CONFIG", config)
-		t.Setenv("BERTH_STATE", t.TempDir())
+		t.Setenv("DIBS_CONFIG", config)
+		t.Setenv("DIBS_STATE", t.TempDir())
 		childExit(t, exec.Command(binary, "job", "--", "true"), 0)
 	})
 	jobTestConfig(t)
 	t.Run("exit codes and transparent argv", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		for _, code := range []int{0, 1, 2, 37, 75, 124, 255} {
 			childExit(t, exec.Command(binary, "job", "--", "sh", "-c", "exit "+strconv.Itoa(code)), code)
 		}
@@ -267,24 +268,24 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("usage and prestart errors", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "untouched")
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		for _, args := range [][]string{{"--cores", "0", "--", "true"}, {"--memory", "3GiB", "--", "true"}, {"--cores", "3", "--", "true"}, {"--timeout", "0s", "--", "true"}, {"--wait", "-1s", "--", "true"}, {"--class", "missing", "--", "true"}, {"--typo", "--", "true"}, {"true"}} {
 			childExit(t, exec.Command(binary, append([]string{"job"}, args...)...), 2)
 		}
-		childExit(t, exec.Command(binary, "job", "--", "berth-missing-child-executable"), 1)
+		childExit(t, exec.Command(binary, "job", "--", "dibs-missing-child-executable"), 1)
 		if _, err := os.Stat(dir); !os.IsNotExist(err) {
 			t.Fatal("invalid usage reached store")
 		}
 	})
 	t.Run("startup keeps admission deadline", func(t *testing.T) {
 		dir, bin := t.TempDir(), t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		realPS, err := exec.LookPath("ps")
 		if err != nil {
 			t.Fatal(err)
 		}
 		// Delay the real external identity probe only after admission is durable.
-		probe := "#!/bin/sh\nif [ -s \"$BERTH_STATE/state.json\" ]; then\n  touch \"$BERTH_STATE/probing\"\n  while [ ! -e \"$BERTH_STATE/resume\" ]; do sleep 0.01; done\nfi\nexec " + shellQuote(realPS) + " \"$@\"\n"
+		probe := "#!/bin/sh\nif [ -s \"$DIBS_STATE/state.json\" ]; then\n  touch \"$DIBS_STATE/probing\"\n  while [ ! -e \"$DIBS_STATE/resume\" ]; do sleep 0.01; done\nfi\nexec " + shellQuote(realPS) + " \"$@\"\n"
 		if err := os.WriteFile(filepath.Join(bin, "ps"), []byte(probe), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -324,7 +325,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	t.Run("deadline flag class and grandchildren", func(t *testing.T) {
 		for _, options := range [][]string{{"--timeout", "1s"}, {"--class", "short"}} {
 			dir := t.TempDir()
-			t.Setenv("BERTH_STATE", dir)
+			t.Setenv("DIBS_STATE", dir)
 			pidfile := filepath.Join(t.TempDir(), "pid")
 			script := `trap '' TERM; sh -c 'trap "" TERM; echo $$ > "$1"; exec sleep 30' _ "$1" & wait`
 			args := append([]string{"job"}, options...)
@@ -351,7 +352,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("FIFO no backfill wait code and ps", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		marker := filepath.Join(t.TempDir(), "started")
 		holder := startJobCommand(t, binary, "--timeout", "30s", "--", "sh", "-c", `touch "$1"; exec sleep 30`, "_", marker)
 		awaitJob(t, func() bool { _, err := os.Stat(marker); return err == nil })
@@ -400,7 +401,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("wait exhaustion does not start child", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		marker := filepath.Join(t.TempDir(), "holder")
 		holder := startJobCommand(t, binary, "--cores", "2", "--memory", "2GiB", "--timeout", "30s", "--", "sh", "-c", `touch "$1"; exec sleep 30`, "_", marker)
 		awaitJob(t, func() bool { _, err := os.Stat(marker); return err == nil })
@@ -417,7 +418,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("sweep owner death and stale waiter", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		marker := filepath.Join(t.TempDir(), "holder")
 		holder := startJobCommand(t, binary, "--cores", "2", "--memory", "2GiB", "--timeout", "30s", "--", "sh", "-c", `touch "$1"; exec sleep 30`, "_", marker)
 		awaitJob(t, func() bool { _, err := os.Stat(marker); return err == nil })
@@ -447,7 +448,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("normal completion cleans descendants", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		pidfile := filepath.Join(t.TempDir(), "child-pid")
 		script := `sh -c 'echo $$ > "$1"; trap "" TERM; exec sleep 30' _ "$1" & while ! test -s "$1"; do sleep 0.01; done; exit 37`
 		childExit(t, exec.Command(binary, "job", "--", "sh", "-c", script, "_", pidfile), 37)
@@ -467,7 +468,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("timeout cleanup failure retains reservation", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		ps, err := exec.LookPath("ps")
 		if err != nil {
 			t.Fatal(err)
@@ -501,7 +502,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("cleanup failure retains child code and lease", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		ps, err := exec.LookPath("ps")
 		if err != nil {
 			t.Fatal(err)
@@ -529,7 +530,7 @@ func TestJobsRealProcesses(t *testing.T) {
 	})
 	t.Run("cancel cleans group", func(t *testing.T) {
 		dir := t.TempDir()
-		t.Setenv("BERTH_STATE", dir)
+		t.Setenv("DIBS_STATE", dir)
 		marker := filepath.Join(t.TempDir(), "started")
 		cmd := startJobCommand(t, binary, "--", "sh", "-c", `touch "$1"; exec sleep 30`, "_", marker)
 		awaitJob(t, func() bool { _, err := os.Stat(marker); return err == nil })
@@ -788,7 +789,7 @@ func TestJobQueuePrunesExpiredButKeepsUnknown(t *testing.T) {
 
 func TestJobHelperEOFDoesNotRun(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "must-not-run")
-	binary := filepath.Join(t.TempDir(), "berth")
+	binary := filepath.Join(t.TempDir(), "dibs")
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %s %v", out, err)
 	}

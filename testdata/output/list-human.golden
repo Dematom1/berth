@@ -1,2 +1,2 @@
-ID                                OWNER    LIVENESS  AGE       EXPIRES    MACHINE  RESOURCE        RESOURCES  CORES  MEMORY  CLASS  KUBECONFIG
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  pid:123  alive     5m0s ago  in 1h0m0s  lab      kind:berth-lab  test, lab  0      0 B     -      /tmp/lab's kubeconfig
+ID                                OWNER    LIVENESS  AGE       EXPIRES    MACHINE  RESOURCE       RESOURCES  CORES  MEMORY  CLASS  KUBECONFIG
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  pid:123  alive     5m0s ago  in 1h0m0s  lab      kind:dibs-lab  test, lab  0      0 B     -      /tmp/lab's kubeconfig

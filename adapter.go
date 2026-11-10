@@ -38,7 +38,7 @@ func runCommand(ctx context.Context, env []string, name string, args ...string) 
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Fprint(os.Stderr, diagnostics.String())
-		return nil, errors.New("resource operation failed; check installed resource tools and their connectivity, then retry berth release or berth sweep --confirm")
+		return nil, errors.New("resource operation failed; check installed resource tools and their connectivity, then retry dibs release or dibs sweep --confirm")
 	}
 	return out, nil
 }
@@ -75,7 +75,7 @@ func (a k3dAdapter) Destroy(ctx context.Context, l Lease) error {
 	}
 	for _, cluster := range clusters {
 		if cluster.Name == l.Resource.Name {
-			return errors.New("cluster survived cleanup; retry berth release")
+			return errors.New("cluster survived cleanup; retry dibs release")
 		}
 	}
 	return nil
@@ -100,7 +100,7 @@ func (a kindAdapter) Destroy(ctx context.Context, l Lease) error {
 	}
 	for _, name := range strings.Fields(string(out)) {
 		if name == l.Resource.Name {
-			return errors.New("cluster survived cleanup; retry berth release")
+			return errors.New("cluster survived cleanup; retry dibs release")
 		}
 	}
 	return nil
@@ -123,7 +123,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l Lease) error {
 		return err
 	}
 	if len(bytes.TrimSpace(out)) != 0 {
-		return errors.New("stack containers survived cleanup; retry berth release")
+		return errors.New("stack containers survived cleanup; retry dibs release")
 	}
 	for _, kind := range []string{"volume", "network"} {
 		out, err := a.run(ctx, dockerEnv(l), "docker", "--context", l.Resource.Context, kind, "ls", "-q", "--filter", "label=com.docker.compose.project="+l.Resource.Name)
@@ -131,7 +131,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l Lease) error {
 			return err
 		}
 		if len(bytes.TrimSpace(out)) != 0 {
-			return fmt.Errorf("stack %s survived cleanup; retry berth release", kind)
+			return fmt.Errorf("stack %s survived cleanup; retry dibs release", kind)
 		}
 	}
 	return nil
@@ -148,7 +148,7 @@ func prepareResource(ctx context.Context, s *Store, l *Lease, adapter, file stri
 		return nil
 	}
 	if os.Getenv("DOCKER_HOST") != "" {
-		return errors.New("DOCKER_HOST is unsupported; select a named Docker context before running berth create")
+		return errors.New("DOCKER_HOST is unsupported; select a named Docker context before running dibs create")
 	}
 	out, err := run(ctx, nil, "docker", "context", "show")
 	if err != nil {
@@ -156,7 +156,7 @@ func prepareResource(ctx context.Context, s *Store, l *Lease, adapter, file stri
 	}
 	contextName := strings.TrimSpace(string(out))
 	if contextName == "" {
-		return errors.New("no Docker context selected; select a context before berth create")
+		return errors.New("no Docker context selected; select a context before dibs create")
 	}
 	dir := filepath.Join(s.dir, "resources", l.ID)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -166,9 +166,9 @@ func prepareResource(ctx context.Context, s *Store, l *Lease, adapter, file stri
 	if adapter == "k3d" {
 		resourceFile = "k3d"
 	}
-	resourceName := "berth-" + l.ID
+	resourceName := "dibs-" + l.ID
 	if adapter == "k3d" {
-		resourceName = "berth-" + l.ID[:26]
+		resourceName = "dibs-" + l.ID[:26]
 	}
 	l.Resource = Resource{Adapter: adapter, Name: resourceName, Context: contextName, File: filepath.Join(dir, resourceFile)}
 	if adapter == "k3d" {
@@ -190,13 +190,13 @@ func prepareResource(ctx context.Context, s *Store, l *Lease, adapter, file stri
 	}
 	var config map[string]any
 	if err := json.Unmarshal(out, &config); err != nil {
-		return errors.New("cannot resolve stack configuration; check the file passed to berth create --file")
+		return errors.New("cannot resolve stack configuration; check the file passed to dibs create --file")
 	}
 	services, ok := config["services"].(map[string]any)
 	if !ok || len(services) == 0 {
-		return errors.New("stack must define services; check berth create --file")
+		return errors.New("stack must define services; check dibs create --file")
 	}
-	tags := map[string]string{"io.berth.lease": l.ID, "io.berth.owner": l.Owner.String(), "io.berth.expires": l.Expires.Format(time.RFC3339Nano), "io.berth.machine": l.Machine}
+	tags := map[string]string{"io.dibs.lease": l.ID, "io.dibs.owner": l.Owner.String(), "io.dibs.expires": l.Expires.Format(time.RFC3339Nano), "io.dibs.machine": l.Machine}
 	for _, section := range []string{"services", "volumes", "networks"} {
 		entries, _ := config[section].(map[string]any)
 		for key, entry := range entries {
@@ -208,7 +208,7 @@ func prepareResource(ctx context.Context, s *Store, l *Lease, adapter, file stri
 				continue
 			}
 			if section == "services" && object["container_name"] != nil {
-				return errors.New("fixed container_name is unsupported; remove it so berth owns a unique project")
+				return errors.New("fixed container_name is unsupported; remove it so dibs owns a unique project")
 			}
 			if section != "services" {
 				if name, _ := object["name"].(string); name != "" && name != l.Resource.Name+"_"+key {

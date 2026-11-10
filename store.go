@@ -25,7 +25,7 @@ type Store struct {
 }
 
 func stateDir() (string, error) {
-	if dir := os.Getenv("BERTH_STATE"); dir != "" {
+	if dir := dibsEnv("STATE"); dir != "" {
 		return filepath.Abs(dir)
 	}
 	base := os.Getenv("XDG_STATE_HOME")
@@ -36,7 +36,41 @@ func stateDir() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Abs(filepath.Join(base, "berth"))
+	return migrateStateDir(base)
+}
+
+// Keep the old ledger, lock inode and absolute snapshot paths in place. Publishing
+// a directory alias is atomic even while an old berth process holds the lock.
+func migrateStateDir(base string) (string, error) {
+	base, err := filepath.Abs(base)
+	if err != nil {
+		return "", err
+	}
+	preferred, legacy := filepath.Join(base, "dibs"), filepath.Join(base, "berth")
+	oldReal, err := filepath.EvalSymlinks(legacy)
+	if errors.Is(err, os.ErrNotExist) {
+		return preferred, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	newReal, err := filepath.EvalSymlinks(preferred)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Symlink(legacy, preferred); err != nil && !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+		newReal, err = filepath.EvalSymlinks(preferred)
+	}
+	if err != nil {
+		return "", err
+	}
+	if newReal != oldReal {
+		return "", errors.New("both dibs and berth state directories exist; keep both and select the ledger explicitly with DIBS_STATE")
+	}
+	if err := syncDirectory(base); err != nil {
+		return "", err
+	}
+	return legacy, nil
 }
 
 func openStore(ctx context.Context, dir string) (*Store, error) {
@@ -125,11 +159,11 @@ func (s *Store) validate() error {
 		if l.Resource.Adapter != "none" && l.Resource.Adapter != "kind" && l.Resource.Adapter != "k3d" && l.Resource.Adapter != "compose" {
 			return errors.New("unsupported resource adapter")
 		}
-		resourceName := "berth-" + id
+		suffix := id
 		if l.Resource.Adapter == "k3d" {
-			resourceName = "berth-" + id[:26]
+			suffix = id[:26]
 		}
-		if l.Resource.Adapter != "none" && (l.Resource.Name != resourceName || l.Resource.Context == "") {
+		if l.Resource.Adapter != "none" && ((l.Resource.Name != "dibs-"+suffix && l.Resource.Name != "berth-"+suffix) || l.Resource.Context == "") {
 			return errors.New("invalid managed resource identity")
 		}
 		if l.Resource.Adapter == "k3d" && l.Resource.DockerHost == "" {
@@ -143,7 +177,14 @@ func (s *Store) validate() error {
 				name = "k3d"
 			}
 			if l.Resource.File != filepath.Join(s.dir, "resources", id, name) {
-				return errors.New("managed resource file must remain inside its original BERTH_STATE directory")
+				// A renamed directory may be an alias, but snapshots must still
+				// belong to this exact ledger, never to another state directory.
+				root := filepath.Dir(filepath.Dir(filepath.Dir(l.Resource.File)))
+				original, oldErr := filepath.EvalSymlinks(root)
+				current, newErr := filepath.EvalSymlinks(s.dir)
+				if oldErr != nil || newErr != nil || original != current || l.Resource.File != filepath.Join(root, "resources", id, name) {
+					return errors.New("managed resource file must remain inside its original DIBS_STATE directory")
+				}
 			}
 		}
 	}
@@ -185,7 +226,7 @@ func atomicWrite(path string, data []byte) error {
 		return readErr
 	}
 	existed := readErr == nil
-	f, err := os.CreateTemp(filepath.Dir(path), ".berth-*")
+	f, err := os.CreateTemp(filepath.Dir(path), ".dibs-*")
 	if err != nil {
 		return err
 	}
@@ -207,7 +248,7 @@ func atomicWrite(path string, data []byte) error {
 		var rollbackErr error
 		if existed {
 			var restore *os.File
-			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".berth-rollback-*")
+			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".dibs-rollback-*")
 			if rollbackErr == nil {
 				_, rollbackErr = restore.Write(previous)
 				if rollbackErr == nil {

@@ -40,7 +40,7 @@ func (mode outputMode) effective(w io.Writer) outputMode {
 	if writer, ok := w.(*modeWriter); ok {
 		return writer.mode
 	}
-	if os.Getenv("BERTH_AXI") == "1" {
+	if dibsEnv("AXI") == "1" {
 		return axiOutput
 	}
 	if file, ok := w.(*os.File); ok {
@@ -77,9 +77,9 @@ func outputFlags(fs *flag.FlagSet, mode *outputMode) {
 func emitError(w io.Writer, mode outputMode, code int, message, hint string) int {
 	if strings.Contains(hint, "\n") {
 		command := strings.Fields(strings.SplitN(hint, "\n", 2)[0])
-		hint = "Run berth --help for usage"
-		if len(command) > 1 && command[0] == "berth" {
-			hint = "Run berth " + command[1] + " --help for options"
+		hint = "Run dibs --help for usage"
+		if len(command) > 1 && command[0] == "dibs" {
+			hint = "Run dibs " + command[1] + " --help for options"
 		}
 	}
 	if mode.effective(w) == humanOutput {
@@ -104,7 +104,7 @@ func emit(w io.Writer, mode outputMode, value map[string]any) {
 		json.NewEncoder(w).Encode(value)
 	case humanOutput:
 		if message, ok := value["error"].(string); ok {
-			hint := "Run berth ps to inspect retained leases"
+			hint := "Run dibs ps to inspect retained leases"
 			if hints, ok := value["help"].([]string); ok && len(hints) > 0 {
 				hint = hints[0]
 			}
@@ -115,7 +115,7 @@ func emit(w io.Writer, mode outputMode, value map[string]any) {
 	default:
 		writer, _ := w.(*modeWriter)
 		if writer == nil || !writer.full {
-			command := "berth --axi ps --full"
+			command := "dibs --axi ps --full"
 			if writer != nil && writer.fullCommand != "" {
 				command = writer.fullCommand
 			}

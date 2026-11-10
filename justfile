@@ -3,7 +3,7 @@ default:
     @just --list
 
 build:
-    go build -o bin/berth .
+    go build -o bin/dibs .
 
 cross:
     #!/usr/bin/env bash

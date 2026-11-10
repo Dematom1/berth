@@ -1,4 +1,4 @@
-module github.com/Dematom1/berth
+module github.com/Dematom1/dibs
 
 go 1.26.0
 

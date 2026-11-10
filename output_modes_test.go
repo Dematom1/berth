@@ -42,7 +42,7 @@ func fixedBudget(t *testing.T) {
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BERTH_CONFIG", path)
+	t.Setenv("DIBS_CONFIG", path)
 }
 
 func TestOutputSelection(t *testing.T) {
@@ -54,20 +54,20 @@ func TestOutputSelection(t *testing.T) {
 		{"", autoOutput, axiOutput}, {"1", autoOutput, axiOutput},
 		{"0", autoOutput, axiOutput}, {"1", jsonOutput, jsonOutput}, {"1", axiOutput, axiOutput},
 	} {
-		t.Setenv("BERTH_AXI", tc.env)
+		t.Setenv("DIBS_AXI", tc.env)
 		if got := tc.mode.effective(&bytes.Buffer{}); got != tc.want {
 			t.Fatalf("mode %q env %q: %q", tc.mode, tc.env, got)
 		}
 	}
 	// The same resolved mode is carried over SSH rather than redetected on its pipe.
-	t.Setenv("BERTH_AXI", "1")
+	t.Setenv("DIBS_AXI", "1")
 	if got := autoOutput.effective(&modeWriter{Writer: &bytes.Buffer{}, mode: humanOutput}); got != humanOutput {
 		t.Fatal(got)
 	}
 }
 
 func TestOutputCLIGoldens(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("DIBS_STATE", t.TempDir())
 	fixedBudget(t)
 	for _, mode := range []string{"axi", "json"} {
 		for _, alias := range []string{"list", "ps", "who"} {
@@ -91,7 +91,7 @@ func TestOutputCLIGoldens(t *testing.T) {
 }
 
 func TestHomeOutputSnapshots(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("DIBS_STATE", t.TempDir())
 	fixedBudget(t)
 	bin, _ := os.Executable()
 	for _, mode := range []outputMode{humanOutput, axiOutput, jsonOutput} {
@@ -99,13 +99,13 @@ func TestHomeOutputSnapshots(t *testing.T) {
 		if code := runWithOutput(context.Background(), nil, &out, mode); code != 0 {
 			t.Fatal(code, out.String())
 		}
-		snapshot(t, "home-"+string(mode), strings.ReplaceAll(out.String(), bin, "<berth>"))
+		snapshot(t, "home-"+string(mode), strings.ReplaceAll(out.String(), bin, "<dibs>"))
 	}
 }
 
 func TestLeaseOutputSnapshots(t *testing.T) {
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
-	l := Lease{ID: strings.Repeat("a", 32), Machine: "lab", Owner: Owner{Kind: "pid", ID: "123"}, Created: now.Add(-5 * time.Minute), Expires: now.Add(time.Hour), TTL: time.Hour, Resources: "test, lab", Labels: map[string]string{"task": "lab"}, Resource: Resource{Adapter: "kind", Name: "berth-lab", File: "/tmp/lab's kubeconfig"}}
+	l := Lease{ID: strings.Repeat("a", 32), Machine: "lab", Owner: Owner{Kind: "pid", ID: "123"}, Created: now.Add(-5 * time.Minute), Expires: now.Add(time.Hour), TTL: time.Hour, Resources: "test, lab", Labels: map[string]string{"task": "lab"}, Resource: Resource{Adapter: "kind", Name: "dibs-lab", File: "/tmp/lab's kubeconfig"}}
 	value := map[string]any{"count": 1, "leases": []map[string]any{leaseView(l, Alive, now)}, "records": []map[string]any{leaseRecord(l)}}
 	for _, mode := range []outputMode{axiOutput, jsonOutput} {
 		var out bytes.Buffer
@@ -140,7 +140,7 @@ func TestAXIHelpAndErrors(t *testing.T) {
 	}
 	for _, code := range []int{1, 2, 75} {
 		var out bytes.Buffer
-		if emitError(&out, axiOutput, code, "operation failed", "Run berth ps") != code {
+		if emitError(&out, axiOutput, code, "operation failed", "Run dibs ps") != code {
 			t.Fatal("exit changed")
 		}
 		snapshot(t, "error-code-"+strconv.Itoa(code)+"-axi", out.String())
@@ -148,16 +148,16 @@ func TestAXIHelpAndErrors(t *testing.T) {
 }
 
 func TestAXIBoundedListsAndFull(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("DIBS_STATE", t.TempDir())
 	fixedBudget(t)
-	s, err := openStore(context.Background(), os.Getenv("BERTH_STATE"))
+	s, err := openStore(context.Background(), os.Getenv("DIBS_STATE"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 	host, _ := machine()
 	fixtureMachine := "fixture-" + host
-	owner := Owner{Kind: "heartbeat", ID: "/missing-berth-test-owner"}
+	owner := Owner{Kind: "heartbeat", ID: "/missing-dibs-test-owner"}
 	longText := strings.Repeat("界", 501)
 	for i := 0; i < 101; i++ {
 		id := fmt.Sprintf("%032x", i)
@@ -195,7 +195,7 @@ func TestAXIBoundedListsAndFull(t *testing.T) {
 	}
 	// Presentation must not mutate the canonical view, including labels.
 	data := map[string]any{"lease": map[string]any{"resources": longText, "labels": map[string]string{"long": longText}}}
-	compact := axiView(data, "berth ps --full")
+	compact := axiView(data, "dibs ps --full")
 	if compact["lease"].(map[string]any)["resources"] == longText || data["lease"].(map[string]any)["resources"] != longText || data["lease"].(map[string]any)["labels"].(map[string]string)["long"] != longText {
 		t.Fatal("presentation mutated data or failed to truncate")
 	}
@@ -203,7 +203,7 @@ func TestAXIBoundedListsAndFull(t *testing.T) {
 
 func TestHumanErrorsAreTwoShortLines(t *testing.T) {
 	fixedBudget(t)
-	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("DIBS_STATE", t.TempDir())
 	for _, args := range [][]string{{"job", "--cores", "999", "--", "true"}, {"ps", "--typo"}, {"release"}, {"unknown"}, {"create", "--ttl", "0s"}, {"machine"}, {"setup", "invalid"}, {"env", strings.Repeat("b", 32)}} {
 		var out bytes.Buffer
 		if code := runWithOutput(context.Background(), args, &out, humanOutput); code != 2 {
@@ -219,18 +219,18 @@ func TestHumanErrorsAreTwoShortLines(t *testing.T) {
 }
 
 func TestConflictingOutputFlags(t *testing.T) {
-	t.Setenv("BERTH_STATE", filepath.Join(t.TempDir(), "unused"))
+	t.Setenv("DIBS_STATE", filepath.Join(t.TempDir(), "unused"))
 	for _, args := range [][]string{{"--json", "--axi", "ps"}, {"ps", "--axi", "--json"}, {"--json", "job", "--axi", "--", "true"}, {"machine", "install", "--axi", "--json"}, {"setup", "hooks", "--axi", "--json"}} {
 		var out bytes.Buffer
 		if code := run(context.Background(), args, &out); code != 2 || !strings.Contains(out.String(), "mutually exclusive") {
 			t.Fatalf("%v: %d %s", args, code, &out)
 		}
 	}
-	if _, err := os.Stat(os.Getenv("BERTH_STATE")); !os.IsNotExist(err) {
+	if _, err := os.Stat(os.Getenv("DIBS_STATE")); !os.IsNotExist(err) {
 		t.Fatal("flag conflict reached state")
 	}
 	// Explicit JSON overrides the hook's ambient AXI selection.
-	t.Setenv("BERTH_AXI", "1")
+	t.Setenv("DIBS_AXI", "1")
 	var out bytes.Buffer
 	if run(context.Background(), []string{"--json", "release", strings.Repeat("b", 32)}, &out) != 0 || !json.Valid(out.Bytes()) {
 		t.Fatal(out.String())
@@ -247,12 +247,12 @@ func shellExport(t *testing.T, script string) string {
 }
 
 func TestOutputProcessesAndTTY(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "berth")
+	binary := filepath.Join(t.TempDir(), "dibs")
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %s %v", out, err)
 	}
-	t.Setenv("BERTH_STATE", t.TempDir())
-	t.Setenv("BERTH_AXI", "")
+	t.Setenv("DIBS_STATE", t.TempDir())
+	t.Setenv("DIBS_AXI", "")
 	fixedBudget(t)
 	out, err := exec.Command(binary, "ps").Output()
 	if err != nil {
@@ -310,16 +310,16 @@ func TestBudgetSummary(t *testing.T) {
 		snapshot(t, "budget-"+string(mode), out.String())
 	}
 	// Listing leases must remain available even when job configuration is broken.
-	t.Setenv("BERTH_STATE", t.TempDir())
-	t.Setenv("BERTH_CONFIG", filepath.Join(t.TempDir(), "missing"))
-	if invoke(t, 0, "ps")["budget"].(map[string]any)["summary"] != "jobs: budget unavailable (check BERTH_CONFIG)" {
+	t.Setenv("DIBS_STATE", t.TempDir())
+	t.Setenv("DIBS_CONFIG", filepath.Join(t.TempDir(), "missing"))
+	if invoke(t, 0, "ps")["budget"].(map[string]any)["summary"] != "jobs: budget unavailable (check DIBS_CONFIG)" {
 		t.Fatal("lost budget warning")
 	}
 }
 
 func TestQuietAndKubeconfig(t *testing.T) {
-	t.Setenv("BERTH_STATE", filepath.Join(t.TempDir(), "space ' quote $(touch never)\nstate"))
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", filepath.Join(t.TempDir(), "space ' quote $(touch never)\nstate"))
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	for i, flag := range []string{"--quiet", "-q"} {
 		var out bytes.Buffer
 		if code := run(context.Background(), []string{"create", flag, []string{"--axi", "--json"}[i]}, &out); code != 0 {
@@ -334,17 +334,17 @@ func TestQuietAndKubeconfig(t *testing.T) {
 			t.Fatal(code, out.String())
 		}
 	}
-	s, err := openStore(context.Background(), os.Getenv("BERTH_STATE"))
+	s, err := openStore(context.Background(), os.Getenv("DIBS_STATE"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i, adapter := range []string{"kind", "k3d"} {
 		id := strings.Repeat(strconv.Itoa(i+1), 32)
-		file, name := "kubeconfig", "berth-"+id
+		file, name := "kubeconfig", "dibs-"+id
 		if adapter == "k3d" {
-			file, name = "k3d", "berth-"+id[:26]
+			file, name = "k3d", "dibs-"+id[:26]
 		}
-		path := filepath.Join(os.Getenv("BERTH_STATE"), "resources", id, file)
+		path := filepath.Join(os.Getenv("DIBS_STATE"), "resources", id, file)
 		l, err := newLease(Owner{Kind: "pid", ID: strconv.Itoa(os.Getpid())}, time.Hour, "", nil, time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -367,7 +367,7 @@ func TestQuietAndKubeconfig(t *testing.T) {
 		if leaseView(l, Alive, time.Now())["kubeconfig"] != path || leaseRecord(l)["kubeconfig"] != path {
 			t.Fatal("missing kubeconfig")
 		}
-		s, err = openStore(context.Background(), os.Getenv("BERTH_STATE"))
+		s, err = openStore(context.Background(), os.Getenv("DIBS_STATE"))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -10,7 +10,7 @@ A user keeps a lease alive by refreshing an existing regular file. Stale or miss
 
 ## How to get to it (user POV)
 
-Create a file with `touch`, then run `berth create --owner heartbeat:<absolute-file> --stale 1s --ttl 1h`. Use `berth sweep` and `berth sweep --confirm` to inspect and reclaim.
+Create a file with `touch`, then run `dibs create --owner heartbeat:<absolute-file> --stale 1s --ttl 1h`. Use `dibs sweep` and `dibs sweep --confirm` to inspect and reclaim.
 
 ## Driving it with verify.py
 

@@ -141,7 +141,7 @@ func TestFormalEOF(t *testing.T) {
 	// Block list on a real flock. Delivered stdin EOF must cancel its context
 	// and exit without waiting for the lock; the invoking process stays alive.
 	dir := t.TempDir()
-	t.Setenv("BERTH_STATE", dir)
+	t.Setenv("DIBS_STATE", dir)
 	s, err := openStore(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +191,7 @@ func TestFormalAuthoritativeResult(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-		config := JobConfig{Machines: map[string]SSHMachine{"test": {Host: "test", User: "test", Workdir: "/tmp", Agent: "/tmp/berth"}}}
+		config := JobConfig{Machines: map[string]SSHMachine{"test": {Host: "test", User: "test", Workdir: "/tmp", Agent: "/tmp/dibs"}}}
 		var out bytes.Buffer
 		if got := runRemote(context.Background(), config, "test", []string{"job", "--", "true"}, &out, axiOutput); got != code {
 			t.Fatalf("authoritative result %d became %d", code, got)
