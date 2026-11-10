@@ -34,7 +34,7 @@ An extension that cannot pass the conformance kit does not ship as conforming.
 
 ## Extensions cannot weaken the guarantees
 
-Every adapter and owner call runs under a timeout.
+Every adapter and owner call runs under a timeout, with optional path and checksum pinning for exec files and plugins.
 Plugins never write berth state; berth alone records and forgets leases, and a plugin may receive only a read-only view of related leases through the protocol.
 Secrets never appear in arguments, labels, logs, or that view.
 A plugin that times out, crashes, or answers ambiguously yields unknown or a retained lease, never a reclaim.
