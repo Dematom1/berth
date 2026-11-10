@@ -125,7 +125,7 @@ func testReleaseUploadScript(t *testing.T, script string) {
 				t.Fatal(err)
 			}
 			ghLog := filepath.Join(dir, "uploads")
-			if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$UPLOAD_LOG\"\n"), 0o755); err != nil {
+			if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$UPLOAD_LOG\"\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			var sums strings.Builder
@@ -160,6 +160,16 @@ func testReleaseUploadScript(t *testing.T, script string) {
 			_, statErr := os.Stat(ghLog)
 			if (statErr == nil) != tc.valid {
 				t.Fatalf("upload occurred = %v, want %v", statErr == nil, tc.valid)
+			}
+			if tc.valid {
+				got, err := os.ReadFile(ghLog)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := "release\nupload\nv1.2.3\ndist/asset-0.tar.gz\ndist/asset-1.tar.gz\ndist/asset-2.tar.gz\ndist/asset-3.tar.gz\ndist/checksums.txt\n--clobber\n"
+				if string(got) != want {
+					t.Fatalf("gh upload arguments = %q, want %q", got, want)
+				}
 			}
 		})
 	}
