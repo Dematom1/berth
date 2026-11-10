@@ -2,7 +2,7 @@
 
 Source reviewed: `17c0265225197abd1010bec959eed501be5cc02f`.
 Tool: TLA+ TLC 1.7.4 (tla2tools release), bounded exhaustive exploration.
-Run `make formal` to generate full machine traces `F1-live-expiry.log`, `F2-orphan-group.log`, and `F3-late-start.log` in the printed log directory. CI publishes them in the `formal-counterexamples` artifact.
+Run `just formal` to generate full machine traces `F1-live-expiry.log`, `F2-orphan-group.log`, and `F3-late-start.log` in the printed log directory. CI publishes them in the `formal-counterexamples` artifact.
 
 ## F1: resolved by policy
 
