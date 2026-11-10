@@ -18,7 +18,7 @@ ssh-integration:
 # Java 17+, Python 3, and Go. TLC is checksum-pinned by verification/check.py.
 formal:
 	go test -race -tags formal -count=1 -timeout 1m .
-	python3 verification/check.py
+	python3 verification/check.py --strict
 	python3 verification/mutations.py
 
 check:

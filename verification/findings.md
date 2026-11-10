@@ -1,31 +1,81 @@
-# Formal verification findings
+# Formal verification findings and fixes
 
-Source reviewed: `17c0265225197abd1010bec959eed501be5cc02f`.
-Tool: TLA+ TLC 1.7.4 (tla2tools release), bounded exhaustive exploration.
-Run `make formal` to generate full machine traces `F1-live-expiry.log`, `F2-orphan-group.log`, and `F3-late-start.log` in the printed log directory. CI publishes them in the `formal-counterexamples` artifact.
+The original review covered `17c0265225197abd1010bec959eed501be5cc02f` with
+TLA+ TLC 1.7.4. The counterexamples below described that source, not measured
+production incidents. The follow-up fixes retain the TTL-wins policy and make
+F2 and F3 passing checks. `make formal` requires all bounded properties to pass
+and reproduces each former failure with deliberately broken variants.
 
-## F1: resolved by policy
+## F1: TTL wins, including for live owners
 
-Authorized policy clarification R-B3: TTL expiry permits reclaim even when the owner is Alive. The verified safety property is therefore narrower: never reclaim a live owner before expiry. `NeverReclaimLive` checks that boundary. Real-code tests `TestReclaimAndExtend/expired_live_owner` and `TestSweepDecisions` retain coverage of the documented expiry behavior. No product-code change was needed.
+R-B3 says: "A lease is reclaimable when its owner is dead or when it has
+expired. A live owner that misses either cadence loses its resources."
 
-## F2: reaped leader permits forgetting a surviving group (confirmed limitation)
+The original stronger property, never reclaim an Alive owner even after
+expiry, conflicted with this requirement. The accepted property is that a sweep
+never reclaims an unexpired live-owned lease. `lease.go:reclaimable` still
+implements owner death OR expiry. No policy change was made.
 
-Property: successful cleanup does not delete the only reservation while its workload group still lives.
-Harm: an orphan consumes CPU/memory after the reservation is deleted; subsequent admissions can exceed the intended workload budget even though reservation arithmetic is correct.
-Code: `job.go:processResource.Destroy`, `live == Dead && identity == ""` branch; `releaseLease` then deletes and saves the lease.
-Trace: reserve -> start gated child with durable identity -> parent dies -> group leader exits but descendant survives -> OS reaps leader -> sweep -> Destroy returns nil without signaling unverifiable group -> lease removed, descendant/group still alive.
-The existing real-process test `TestDestroyDoesNotSignalGroupAfterLeaderReaped` explicitly demonstrates both durable lease deletion and a surviving group. Avoiding a signal to a potentially reused PGID is deliberate and safe; forgetting the reservation is the budget/cleanup limitation. No fix here.
+`cli.go:leaseView` exposes `expiring_soon` for live-owned leases in their last
+third of TTL. The warning says to extend before reclamation. Jobs instead warn
+that their deadlines cannot be extended. README and `extend --help` explain
+TTL-wins. `TestLeaseExpiryWarnings`, `TestReclaimAndExtend`, and
+`TestCLIExpiredLiveOwnerAndFailure` bind the warning boundary and policy to Go.
 
-## F3: final deadline check and gate write are not atomic (model counterexample)
+## F2: retain reservations for unverifiable surviving groups
 
-Property: user code never starts after its absolute job deadline.
-Harm: under descheduling, a job can start after timeout and briefly execute side effects before the timer cleanup branch runs.
-Code: `job.go:startJob`, final `!time.Now().Before(current.Expires)` check, then creation of observation goroutine and `start.Write([]byte{1})`; `jobExec` checks only gate byte, not deadline. `runJob` starts its timer after `startJob` returns.
-Trace: reserve -> helper waits -> persist group identity -> final deadline check succeeds -> parent descheduled, deadline expires -> parent resumes and writes gate -> helper may exec user code -> timer/cleanup is only installed afterward.
-This is a faithful split at real instructions, not a reproduced timing failure against an unmodified binary. Treat it as a hard-deadline design limitation needing review, not evidence of a measured timing incident. A hard wall-clock guarantee across exec/scheduling needs a precisely stated contract. No fix here.
+Original counterexample: reserve, start with durable identity, parent dies,
+leader exits, OS reaps leader, sweep forgets the lease while descendants survive.
+Avoiding a signal to a potentially reused PGID was safe. Forgetting its budget
+reservation was not.
 
-## Passing scope
+`job.go:processResource.Destroy` now scans for live members of the recorded
+process group without signaling when the leader is missing or unverifiable.
+A failed scan also retains the reservation. `lease.go:releaseLease` saves
+`orphan_suspected` so `ps` shows it and later admissions still count the budget.
+Subsequent cleanup never signals a marked group. The record is removed only
+when an inspection proves group absence, or an explicit
+`release --force --confirm` forgets it with a warning about budget overcommit.
+Force never signals an unverifiable group and does not bypass foreign-host or
+other adapter failures.
 
-Unknown owners are retained before expiry; foreign leases cannot be swept; failed cleanup retains intent; FIFO admission has no backfill and both reservation dimensions stay within a common capacity under one Store flock; helper exec requires durable identity; completion probe preserves an already-completed child's status; authoritative SSH result survives teardown; delivered owner-channel EOF eventually cancels under weak scheduling fairness.
+`NoUnrecordedGroup` now passes for automatic cleanup. Explicit forced release
+is an intentional operator override outside that property. `ForgetOrphan`
+restores the old behavior and must fail. Real-code tests include
+`TestDestroyDoesNotSignalGroupAfterLeaderReaped`, with normal and forced
+release, `TestUnverifiableGroupScanRetainsReservation`, and reused-leader
+safety checks. The orphan mutation must fail the real-process regression.
 
-These are finite-model results, not a proof of the Go binary, arbitrary queue lengths, crash durability, kernel process identity, real network partition detection, external adapters, or heterogeneous BERTH_CONFIG capacities. Real-code bindings and deliberately broken model/code variants guard drift. Known failing properties remain failing; default CI reproduces them explicitly, while `python3 verification/check.py --strict` exits nonzero.
+## F3: check the absolute deadline in the helper
+
+Original counterexample: parent checks the deadline, is descheduled past it,
+then opens the gate. The helper used to exec without a deadline check, before
+the parent installed its timer.
+
+`runJob` now arms the timer before `startJob` can open the gate. `startJob`
+passes the absolute deadline to `jobExec`. After reading the gate, the helper
+refuses to exec at or after that deadline and exits 124. An already-expired
+helper deadline is tested directly by `TestJobHelperRefusesExpiredDeadline`.
+Malformed deadlines and gate EOF still refuse execution.
+
+`TimerBeforeGate` and `NoLateStart` now pass. The latter describes the helper's
+final clock observation and exec decision. It does not claim an atomic
+wall-clock check plus kernel exec: the OS can deschedule the helper between
+those instructions or delay the user's first instruction. `IgnoreHelperDeadline`
+and the real-code late-start mutation must both fail their checks.
+
+## Passing scope and limits
+
+Unknown owners are retained before expiry. Foreign leases cannot be swept.
+Failed cleanup retains intent. FIFO admission has no backfill and both budget
+dimensions fit a common capacity under one Store flock. Helper exec requires
+durable identity. Completion probing preserves an already-completed child's
+status. Authoritative SSH results survive teardown. Delivered owner-channel
+EOF eventually cancels under weak scheduling fairness.
+
+These are finite-model results, not proof of the Go binary, arbitrary queue
+lengths, crash durability, kernel process identity, real network partition
+detection, external adapters, or heterogeneous `BERTH_CONFIG` capacities.
+Real-code bindings and deliberately broken model and code variants guard
+mapping drift. `python3 verification/check.py --strict` and the default command
+now have the same passing contract.

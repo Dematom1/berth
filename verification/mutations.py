@@ -19,14 +19,18 @@ MUTATIONS = [
      "first = true", "^TestJobsRealProcesses$/^FIFO"),
     ("gate", "job.go", "if err != nil || n != 1 || b[0] != 1 {",
      "if n == 99 && err == nil && b[0] == 1 {", "^TestJobHelperEOFDoesNotRun$"),
-    ("cleanup", "lease.go", "if err := a.Destroy(ctx, l); err != nil {\n\t\treturn false, err",
-     "if err := a.Destroy(ctx, l); err != nil {\n\t\tdelete(s.Leases, id)\n\t\treturn false, err",
+    ("cleanup", "lease.go", "if err := a.Destroy(ctx, l); err != nil {",
+     "if err := a.Destroy(ctx, l); err != nil {\n\t\tdelete(s.Leases, id)",
      "^TestSweepPreviewRetryAndIdempotence$"),
     ("deadline", "job.go", "return childExited(pid)", "return false, nil",
      "^TestDeadlineProbeSeesCompletedUnreapedChild$"),
     ("eof", "ssh.go", "_, _ = readFrame(scanner)\n\t\tcancel()",
      "_, _ = readFrame(scanner)", "^TestFormalEOF$"),
     ("result", "ssh.go", "return f.Code", "return 76", "^TestFormalAuthoritativeResult$"),
+    ("orphan", "job.go", "if alive {\n\t\t\treturn errOrphanSuspected",
+     "if alive {\n\t\t\treturn nil", "^TestDestroyDoesNotSignalGroupAfterLeaderReaped$"),
+    ("late-start", "job.go", "if !time.Now().Before(deadline) {",
+     "if false && !time.Now().Before(deadline) {", "^TestJobHelperRefusesExpiredDeadline$"),
 ]
 
 

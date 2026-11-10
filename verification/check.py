@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded TLC checks; expected counterexamples are findings, not proofs."""
+"""Bounded TLC safety/liveness checks and deliberately broken variants."""
 import hashlib
 import os
 from pathlib import Path
@@ -62,11 +62,11 @@ def main():
 
     lease = {"UnsafeUnknown": False}
     admission = {"BypassFIFO": False, "IgnoreBudget": False}
-    job = dict.fromkeys(["SkipDurableGate", "DropOnFailure", "OverwriteResult", "WrongDeadline", "IgnoreEOF"], False)
+    job = dict.fromkeys(["SkipDurableGate", "DropOnFailure", "OverwriteResult", "WrongDeadline", "IgnoreEOF", "ForgetOrphan", "IgnoreHelperDeadline"], False)
     check("lease", "Lease", lease, ["ForeignSafe", "UnknownSafe", "FailureRetains"])
     check("admission", "Admission", admission, ["BudgetSafe", "NoBackfill", "QueueUnique"])
     check("job-session", "JobSession", job,
-          ["DurableBeforeExec", "FailureRetains", "CleanupBeforeDelete", "CompletionWins", "ReceivedResult"])
+          ["TimerBeforeGate", "DurableBeforeExec", "FailureRetains", "CleanupBeforeDelete", "CompletionWins", "ReceivedResult"])
     check("ssh-eof-liveness", "JobSession", job, ["EOFEventuallyCancels"], temporal=True)
     check("mutant-eof", "JobSession", {**job, "IgnoreEOF": True},
           ["EOFEventuallyCancels"], "EOFEventuallyCancels", temporal=True)
@@ -76,7 +76,7 @@ def main():
         ("F2-orphan-group", "JobSession", job, "NoUnrecordedGroup"),
         ("F3-late-start", "JobSession", job, "NoLateStart"),
     ]:
-        check(name, module, constants, [invariant], invariant)
+        check(name, module, constants, [invariant])
     # Sensitivity checks: each passing safety family must reject a broken model.
     for name, module, constants, flag, invariant in [
         ("unknown", "Lease", lease, "UnsafeUnknown", "UnknownSafe"),
@@ -86,12 +86,14 @@ def main():
         ("cleanup", "JobSession", job, "DropOnFailure", "CleanupBeforeDelete"),
         ("deadline", "JobSession", job, "WrongDeadline", "CompletionWins"),
         ("result", "JobSession", job, "OverwriteResult", "ReceivedResult"),
+        ("orphan", "JobSession", job, "ForgetOrphan", "NoUnrecordedGroup"),
+        ("late-start", "JobSession", job, "IgnoreHelperDeadline", "NoLateStart"),
     ]:
         check(f"mutant-{name}", module, {**constants, flag: True}, [invariant], invariant)
     print(f"TLC logs and counterexample traces: {logs}")
-    print("NOT VERIFIED: F2 cleanup without orphan; F3 no start after deadline.")
-    print("Known counterexamples reproduced; no product fixes applied. See verification/findings.md.")
-    return 1 if "--strict" in sys.argv else 0
+    print("All bounded properties pass; broken variants reproduce their violations.")
+    print("NoLateStart covers the helper's exec decision, not subsequent CPU scheduling.")
+    return 0
 
 
 if __name__ == "__main__":
