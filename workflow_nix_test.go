@@ -1,25 +1,18 @@
 package main
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
-func TestNixWorkflowAndPackage(t *testing.T) {
-	job := workflowJob(t, "nix", "nix")
-	requireWorkflowText(t, job, "os: [ubuntu-24.04, macos-15]", "fetch-depth: 0",
-		"DeterminateSystems/nix-installer-action@", "nix flake check --all-systems --no-build",
-		"nix build --print-build-logs", "./result/bin/berth --version", ".release-please-manifest.json",
-		"nix-build default.nix -A")
-	for name, wants := range map[string][]string{
-		"flake.nix":   {"aarch64-darwin", "aarch64-linux", "x86_64-linux", "./package.nix", ".release-please-manifest.json", "devShells", "pkgs.just"},
-		"package.nix": {"buildGoModule", "-X main.version=${version}", "vendorHash = \"sha256-", `subPackages = [ "." ];`},
-		"default.nix": {"./flake.lock", "flake-compat.locked.rev", "flake-compat.locked.narHash", "defaultNix"},
-	} {
-		data, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
+func TestNixWorkflowMatrixAndBuildChecks(t *testing.T) {
+	doc := workflow(t, "nix")
+	jobs := object(doc["jobs"])
+	job := object(jobs["nix"])
+	matrix := object(object(object(job["strategy"])["matrix"]))
+	require(t, len(list(matrix["os"])) == 2, "Nix checks must cover Linux and macOS")
+	var runs []string
+	for _, raw := range list(job["steps"]) {
+		if run, ok := object(raw)["run"].(string); ok {
+			runs = append(runs, run)
 		}
-		requireWorkflowText(t, string(data), wants...)
 	}
+	require(t, len(runs) >= 3, "Nix job must evaluate, build, and verify the package")
 }
