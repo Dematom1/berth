@@ -6,5 +6,6 @@ budget:
   usable_memory_bytes: 25769803776
   used_cores: 9
   used_memory_bytes: 1073741824
-leases[1]{age,class,cores,expires,id,kubeconfig,labels,liveness,machine,memory,memory_bytes,owner,resource,resource_adapter,resource_name,resources}:
-  0s,suite,9,"2026-11-09T13:00:00Z",job,"","{}",alive,lab,1073741824B,1073741824,":","process:",process,"",""
+help[1]: "Run berth --axi ps --full for all fields, complete text and all matching leases"
+leases[1]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,resource,resources}:
+  9,"2026-11-09T13:00:00Z",job,"",alive,lab,1073741824,":","process:",""

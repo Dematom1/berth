@@ -52,9 +52,11 @@ Examples:
   berth create --owner pid:1234 --ttl 2h --resources '2 CPUs, test lab'
   berth create --adapter kind --owner session:1234 --ttl 1h
   berth create --adapter compose --file compose.yaml --label task=lab`,
-	"list": `berth list [--owner KIND:ID] [--machine NAME] [--json]
+	"list": `berth list [--owner KIND:ID] [--machine NAME] [--full] [--axi | --json]
 List every recorded lease with owner liveness, age, expiry, machine, resource
-identity, and description. --json includes full records and labels.
+identity, and description. --json is always complete. AXI defaults to 100
+compact rows and 500-character text previews; --full shows all fields, records,
+text and matching leases. Counts and --full hints identify truncated output.
 Aliases: ls, ps, who. No arguments shows the live home view.
 Examples:
   berth ps
@@ -189,7 +191,7 @@ Run berth <command> --help for command flags.`
 		body += "\n\n" + cadence
 	}
 	if command != "agent" {
-		body += "\nOutput: --axi for agents, --json for scripts (mutually exclusive).\nDefault: human on terminals; AXI for pipes or BERTH_AXI=1."
+		body += "\nOutput: --axi for agents, --json for scripts (mutually exclusive).\nDefault: human on terminals; AXI for pipes or BERTH_AXI=1.\nLease commands: --full restores complete AXI records/text; JSON is always complete."
 	}
 	return body + "\n\n" + exitCodes + "\n"
 }
@@ -245,9 +247,9 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 			if _, ok := commandHelp[args[0]]; !ok {
 				return emitError(out, jsonOutput, 2, "unknown command", help(""))
 			}
-			fmt.Fprint(out, help(args[0]))
+			emitHelp(out, jsonOutput, args[0])
 		} else {
-			fmt.Fprint(out, help(""))
+			emitHelp(out, jsonOutput, "")
 		}
 		return 0
 	}
@@ -270,6 +272,7 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 	fs.SetOutput(io.Discard)
 	wantHelp := fs.Bool("help", false, "show help")
 	outputFlags(fs, &jsonOutput)
+	full := fs.Bool("full", false, "complete AXI records, text and list (JSON is always complete)")
 	var owner, resources, driver, file, machineName string
 	var ttl, stale time.Duration
 	var confirm, quiet bool
@@ -301,9 +304,9 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 	}
 	if *wantHelp {
 		if topHelp {
-			fmt.Fprint(out, help(""))
+			emitHelp(out, jsonOutput, "")
 		} else {
-			fmt.Fprint(out, help(command))
+			emitHelp(out, jsonOutput, command)
 		}
 		return 0
 	}
@@ -320,6 +323,19 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 	if command == "create" && ((driver != "none" && driver != "kind" && driver != "k3d" && driver != "compose") || (driver == "compose" && file == "") || (driver != "compose" && file != "")) {
 		return emitError(out, jsonOutput, 2, "use --adapter none, kind, k3d, or compose; --file is required only for compose", help(command))
 	}
+	fullCommand := "berth --axi ps"
+	hintMachine := machineName
+	if hintMachine == "" {
+		hintMachine = writerMachine(out)
+	}
+	if hintMachine != "" {
+		fullCommand += " --machine " + shellQuote(hintMachine)
+	}
+	if owner != "" {
+		fullCommand += " --owner " + shellQuote(owner)
+	}
+	fullCommand += " --full"
+	out = &modeWriter{Writer: out, mode: jsonOutput.effective(out), full: *full, fullCommand: fullCommand}
 	if machineName != "" {
 		config, err := loadJobConfig()
 		if err != nil {
@@ -395,7 +411,11 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 		if configErr == nil {
 			budget = budgetView(config, s, host)
 		}
-		result = map[string]any{"budget": budget, "count": len(views), "leases": views, "help": []string{"Run berth create --help to lease a resource", "Run berth sweep to preview reclamation"}}
+		hints := []string{"Run berth create --help to lease a resource", "Run berth sweep to preview reclamation"}
+		if hintMachine != "" {
+			hints = []string{"Run berth job --machine " + shellQuote(hintMachine) + " -- <cmd> to reserve resources", "Run berth sweep --machine " + shellQuote(hintMachine) + " to preview reclamation"}
+		}
+		result = map[string]any{"budget": budget, "count": len(views), "leases": views, "help": hints}
 		result["records"] = full
 		if home {
 			bin, _ := os.Executable()
@@ -477,6 +497,12 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 		if len(r.Failures) > 0 {
 			result["failures"] = r.Failures
 			result["error"] = "cleanup failed; leases retained; retry berth sweep --confirm"
+			result["code"], result["exit_code"] = "COMMAND_FAILED", 1
+			retry := "Run berth sweep"
+			if hintMachine != "" {
+				retry += " --machine " + shellQuote(hintMachine)
+			}
+			result["help"] = []string{retry + " --confirm to retry retained leases"}
 			emit(out, jsonOutput, result)
 			return 1
 		}

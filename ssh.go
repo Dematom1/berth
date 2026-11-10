@@ -69,6 +69,7 @@ type agentFrame struct {
 	Code    int        `json:"code,omitempty"`
 	Error   string     `json:"error,omitempty"`
 	Output  outputMode `json:"output,omitempty"`
+	Machine string     `json:"machine,omitempty"`
 }
 
 func frameScanner(r io.Reader) *bufio.Scanner {
@@ -143,7 +144,7 @@ func runRemote(ctx context.Context, config JobConfig, name string, args []string
 		fmt.Fprintln(os.Stderr, "berth: SSH transport/protocol failed; remote result unknown (code 76):", err)
 		return 76
 	}
-	if err := writer.send(agentFrame{Type: "request", Version: version, Args: args, Output: jsonOutput.effective(out)}); err != nil {
+	if err := writer.send(agentFrame{Type: "request", Version: version, Args: args, Output: jsonOutput.effective(out), Machine: name}); err != nil {
 		return transportError(err)
 	}
 	scanner := frameScanner(stdout)
@@ -242,7 +243,7 @@ func runAgent(ctx context.Context, args []string, input io.Reader, out io.Writer
 	if request.Args[0] == "job" {
 		code = runJob(ctx, request.Args[1:], &modeWriter{Writer: w, mode: request.Output.effective(w)}, autoOutput, null, "session")
 	} else {
-		code = runWithOutput(ctx, request.Args, w, request.Output)
+		code = runWithOutput(ctx, request.Args, &modeWriter{Writer: w, mode: request.Output.effective(w), machine: request.Machine}, request.Output)
 	}
 	if w.send(agentFrame{Type: "result", Code: code}) != nil {
 		return 1
@@ -257,7 +258,7 @@ func runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput ou
 	wantHelp := fs.Bool("help", false, "help")
 	outputFlags(fs, &jsonOutput)
 	if len(args) == 1 && args[0] == "--help" {
-		fmt.Fprint(out, help("machine"))
+		emitHelp(out, jsonOutput, "machine")
 		return 0
 	}
 	if len(args) < 1 || args[0] != "install" {
@@ -267,7 +268,7 @@ func runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput ou
 		return emitError(out, jsonOutput, 2, err.Error(), help("machine"))
 	}
 	if *wantHelp {
-		fmt.Fprint(out, help("machine"))
+		emitHelp(out, jsonOutput, "machine")
 		return 0
 	}
 	if fs.NArg() != 1 || *file == "" {
