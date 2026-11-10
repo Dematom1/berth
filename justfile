@@ -5,6 +5,15 @@ default:
 build:
     go build -o bin/berth .
 
+cross:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for os in linux darwin; do
+        for arch in amd64 arm64; do
+            GOOS=$os GOARCH=$arch go build -o /dev/null .
+        done
+    done
+
 install:
     go install .
 
