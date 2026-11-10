@@ -7,7 +7,7 @@ It owns exactly one thing: the lease lifecycle and its guarantees.
 ## Berth owns the lease, not the thing
 
 Berth owns the lease ledger and its state machine: owner, expiry, labels, and budget.
-It owns owner liveness, judged alive, dead, or unknown against a recorded identity so a recycled PID or replaced file never passes as the original owner.
+It owns owner liveness, judged alive, dead, or unknown against a recorded identity so a recycled PID never passes as the original owner.
 It owns expiry and extend; expiry is a hard backstop even for a live owner, and `extend` refuses dead, unknown, or expired owners.
 It owns admission: per-machine core and memory budgets that always leave owner room, admitted FIFO by default.
 It owns accounting and audit: who held what, for how long, and how it ended.
@@ -42,7 +42,7 @@ A plugin that times out, crashes, or answers ambiguously yields unknown or a ret
 ## Growth is opt-in, contracts are stable
 
 New behavior ships in the binary and is opt-in by default: it stays off until a named setting in the user's berth config or a `BERTH_*` environment variable turns it on, never by installing something, and with the setting absent berth behaves exactly as before.
-Opt-ins never live in a project file or anything else a leased job could edit.
+Opt-ins never live in a project file or other repository input a leased job controls; the user config is trusted under the same-user cooperation model below.
 Anything that adds significant latency or cost, or expands what berth decides on its own, is opt-in and never a silent default flip.
 Existing behavior changes only through a manual review by the maintainer.
 Opt-in, non-breaking changes merge once the automated review process approves them.
