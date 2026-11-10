@@ -115,6 +115,21 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 	require(t, required["if"] == "${{ always() }}" && hasRun(required, `jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"`), "required CI gate must fail unless every job succeeds")
 }
 
+func TestFormalWorkflowInstallsJustBeforeUse(t *testing.T) {
+	steps := list(object(object(workflow(t, "formal")["jobs"])["formal"])["steps"])
+	setup, invocation := -1, -1
+	for i, raw := range steps {
+		step := object(raw)
+		if step["uses"] == "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b" {
+			setup = i
+		}
+		if run, ok := step["run"].(string); ok && strings.Contains(run, "just formal") {
+			invocation = i
+		}
+	}
+	require(t, setup >= 0 && invocation > setup, "formal workflow must install just before invoking its recipe")
+}
+
 func TestNoMistakesRequiredWorkflow(t *testing.T) {
 	doc, _ := contribution(t)
 	pullRequest := object(object(doc["on"])["pull_request"])
