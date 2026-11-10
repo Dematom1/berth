@@ -1,3 +1,3 @@
 exit: 2
 stdout:
-{"code":"VALIDATION_ERROR","error":"use berth machine install \u003cname\u003e --file \u003cbinary\u003e","exit_code":2,"help":["Run berth machine --help for options"]}
+{"code":"VALIDATION_ERROR","error":"use dibs machine install \u003cname\u003e --file \u003cbinary\u003e","exit_code":2,"help":["Run dibs machine --help for options"]}

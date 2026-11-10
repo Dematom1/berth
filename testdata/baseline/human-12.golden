@@ -1,4 +1,4 @@
 exit: 2
 stdout:
 Error: unknown command unknown
-Run berth --help for usage
+Run dibs --help for usage

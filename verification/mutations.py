@@ -32,7 +32,7 @@ MUTATIONS = [
 
 def main():
     for name, file, old, new, test in MUTATIONS:
-        with tempfile.TemporaryDirectory(prefix=f"berth-mutant-{name}-") as tmp:
+        with tempfile.TemporaryDirectory(prefix=f"dibs-mutant-{name}-") as tmp:
             dest = Path(tmp)
             for source in [*ROOT.rglob("*.go"), *ROOT.glob("go.*"), *ROOT.rglob("*.golden")]:
                 relative = source.relative_to(ROOT)

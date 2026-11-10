@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	atomicfilepkg "github.com/Dematom1/berth/internal/atomicfile"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	atomicfilepkg "github.com/Dematom1/dibs/internal/atomicfile"
 )
 
 type composeAdapter struct{ run adapterpkg.CommandRunner }
@@ -31,7 +31,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l adapterpkg.Target) error 
 		return err
 	}
 	if len(bytes.TrimSpace(out)) != 0 {
-		return errors.New("stack containers survived cleanup; retry berth release")
+		return errors.New("stack containers survived cleanup; retry dibs release")
 	}
 	for _, kind := range []string{"volume", "network"} {
 		out, err := a.run(ctx, adapterpkg.DockerEnv(l.Ref), "docker", "--context", l.Ref.Context, kind, "ls", "-q", "--filter", "label=com.docker.compose.project="+l.Ref.Name)
@@ -39,7 +39,7 @@ func (a composeAdapter) Destroy(ctx context.Context, l adapterpkg.Target) error 
 			return err
 		}
 		if len(bytes.TrimSpace(out)) != 0 {
-			return fmt.Errorf("stack %s survived cleanup; retry berth release", kind)
+			return fmt.Errorf("stack %s survived cleanup; retry dibs release", kind)
 		}
 	}
 	return nil
@@ -63,7 +63,7 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 	}
 	resourceFile := "kubeconfig"
 
-	resourceName := "berth-" + request.Metadata.LeaseID
+	resourceName := "dibs-" + request.Metadata.LeaseID
 
 	ref = adapterpkg.ResourceRef{Adapter: "compose", Name: resourceName, Context: contextName, File: filepath.Join(dir, resourceFile)}
 	if request.Existing.Adopted {
@@ -78,13 +78,13 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 	}
 	var config map[string]any
 	if err := json.Unmarshal(out, &config); err != nil {
-		return ref, errors.New("cannot resolve stack configuration; check the file passed to berth create --file")
+		return ref, errors.New("cannot resolve stack configuration; check the file passed to dibs create --file")
 	}
 	services, ok := config["services"].(map[string]any)
 	if !ok || len(services) == 0 {
-		return ref, errors.New("stack must define services; check berth create --file")
+		return ref, errors.New("stack must define services; check dibs create --file")
 	}
-	tags := map[string]string{"io.berth.lease": request.Metadata.LeaseID, "io.berth.owner": request.Metadata.Owner, "io.berth.expires": request.Metadata.Expires.Format(time.RFC3339Nano), "io.berth.machine": request.Metadata.Machine}
+	tags := map[string]string{"io.dibs.lease": request.Metadata.LeaseID, "io.dibs.owner": request.Metadata.Owner, "io.dibs.expires": request.Metadata.Expires.Format(time.RFC3339Nano), "io.dibs.machine": request.Metadata.Machine}
 	for _, section := range []string{"services", "volumes", "networks"} {
 		entries, _ := config[section].(map[string]any)
 		for key, entry := range entries {
@@ -96,7 +96,7 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 				continue
 			}
 			if section == "services" && object["container_name"] != nil && !ref.Adopted {
-				return ref, errors.New("fixed container_name is unsupported; remove it so berth owns a unique project")
+				return ref, errors.New("fixed container_name is unsupported; remove it so dibs owns a unique project")
 			}
 			if section != "services" {
 				if name, _ := object["name"].(string); name != "" && name != ref.Name+"_"+key {
@@ -130,11 +130,11 @@ func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceR
 	if ref.Adopted && (!adapterpkg.ValidResourceName(ref.Name) || ref.DockerHost == "") {
 		return errors.New("invalid adopted resource identity")
 	}
-	if (!ref.Adopted && ref.Name != "berth-"+metadata.LeaseID) || ref.Context == "" {
+	if (!ref.Adopted && ref.Name != "dibs-"+metadata.LeaseID && ref.Name != "berth-"+metadata.LeaseID) || ref.Context == "" {
 		return errors.New("invalid managed resource identity")
 	}
-	if ref.File != filepath.Join(dir, "compose.json") {
-		return errors.New("managed resource file must remain inside its original BERTH_STATE directory")
+	if !adapterpkg.SnapshotMatches(ref.File, filepath.Join(dir, "compose.json")) {
+		return errors.New("managed resource file must remain inside its original DIBS_STATE directory")
 	}
 	return nil
 }

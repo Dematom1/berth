@@ -1,4 +1,4 @@
 exit: 2
 stdout:
 Error: invalid or unexpected arguments
-Run berth release --help for options
+Run dibs release --help for options

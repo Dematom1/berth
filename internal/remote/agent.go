@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	outputpkg "github.com/Dematom1/berth/internal/output"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
 type Handler func(context.Context, []string, io.Reader, io.Writer, outputpkg.Mode) int

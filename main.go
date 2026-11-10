@@ -8,8 +8,9 @@ import (
 	"strings"
 	"syscall"
 
-	clipkg "github.com/Dematom1/berth/internal/cli"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
+	clipkg "github.com/Dematom1/dibs/internal/cli"
+	"github.com/Dematom1/dibs/internal/compat"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
 )
 
 var version string
@@ -52,6 +53,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "__job_exec" {
 		os.Exit(leasepkg.Exec(os.Args[2:]))
 	}
+	compat.WarnLegacyEnv(os.Stderr)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	os.Exit(clipkg.Run(ctx, os.Args[1:], os.Stdout, version))

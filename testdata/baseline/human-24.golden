@@ -1,4 +1,4 @@
 exit: 2
 stdout:
 Error: requested 1072668082176 bytes memory; usable 25769803776 after owner room 8GiB
-Try --memory 25769803776 or set BERTH_CONFIG
+Try --memory 25769803776 or set DIBS_CONFIG

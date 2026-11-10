@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	"strings"
 )
 

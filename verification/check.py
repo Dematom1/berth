@@ -17,7 +17,7 @@ SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 def main():
     if sys.argv[1:] not in ([], ["--strict"]):
         raise SystemExit("usage: python3 verification/check.py [--strict]")
-    logs = Path(os.environ.get("FORMAL_LOG_DIR") or tempfile.mkdtemp(prefix="berth-formal-")).resolve()
+    logs = Path(os.environ.get("FORMAL_LOG_DIR") or tempfile.mkdtemp(prefix="dibs-formal-")).resolve()
     logs.mkdir(parents=True, exist_ok=True)
     jar = Path(os.environ.get("TLA2TOOLS_JAR", logs / "tla2tools.jar")).resolve()
     if not jar.exists():

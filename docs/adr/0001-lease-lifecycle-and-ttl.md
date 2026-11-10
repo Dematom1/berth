@@ -10,4 +10,4 @@ R-B3 requires touching a heartbeat file at most every staleness/3 and extending 
 
 Expiry marks eligibility, not immediate deletion. Sweep runs only when invoked, commonly by a host timer. Explicit confirmed release does not require owner death or expiry. Foreign-machine leases are never reclaimed locally, even after expiry. Cleanup failure keeps the record for retry, as detailed in [reclaim with proof](0002-reclaim-with-proof.md).
 
-Evidence: [lease decisions](../../internal/lease/lease.go), [durable creation](../../internal/lease/manager.go), [R-B3 in the original lease change](https://github.com/Dematom1/berth/pull/1), and [renewal guidance](../../README.md#owners-and-renewal).
+Evidence: [lease decisions](../../internal/lease/lease.go), [durable creation](../../internal/lease/manager.go), [R-B3 in the original lease change](https://github.com/Dematom1/dibs/pull/1), and [renewal guidance](../../README.md#owners-and-renewal).

@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	composepkg "github.com/Dematom1/berth/internal/adapter/compose"
-	k3dpkg "github.com/Dematom1/berth/internal/adapter/k3d"
-	kindpkg "github.com/Dematom1/berth/internal/adapter/kind"
-	nonepkg "github.com/Dematom1/berth/internal/adapter/none"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	composepkg "github.com/Dematom1/dibs/internal/adapter/compose"
+	k3dpkg "github.com/Dematom1/dibs/internal/adapter/k3d"
+	kindpkg "github.com/Dematom1/dibs/internal/adapter/kind"
+	nonepkg "github.com/Dematom1/dibs/internal/adapter/none"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 const gib = int64(1 << 30)

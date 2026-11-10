@@ -6,9 +6,9 @@ import (
 	"io"
 	"os"
 
-	configpkg "github.com/Dematom1/berth/internal/config"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	remotepkg "github.com/Dematom1/berth/internal/remote"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	remotepkg "github.com/Dematom1/dibs/internal/remote"
 )
 
 func (app application) runMachine(ctx context.Context, args []string, out io.Writer, jsonOutput outputpkg.Mode) int {
@@ -22,7 +22,7 @@ func (app application) runMachine(ctx context.Context, args []string, out io.Wri
 		return 0
 	}
 	if len(args) < 1 || args[0] != "install" {
-		return outputpkg.Error(out, jsonOutput, 2, "use berth machine install <name> --file <binary>", help("machine"))
+		return outputpkg.Error(out, jsonOutput, 2, "use dibs machine install <name> --file <binary>", help("machine"))
 	}
 	if err := parseFlags(fs, args[1:]); err != nil {
 		return outputpkg.Error(out, jsonOutput, 2, err.Error(), help("machine"))
@@ -54,6 +54,6 @@ func (app application) runMachine(ctx context.Context, args []string, out io.Wri
 	if err := remotepkg.Install(ctx, app.version, m, binary); err != nil {
 		return outputpkg.Error(out, jsonOutput, 1, "remote installation failed; check SSH diagnostics and binary OS/architecture/version", help("machine"))
 	}
-	outputpkg.Emit(out, jsonOutput, map[string]any{"machine": fs.Arg(0), "version": app.version, "status": "installed", "help": []string{"Run berth ps --machine " + fs.Arg(0)}})
+	outputpkg.Emit(out, jsonOutput, map[string]any{"machine": fs.Arg(0), "version": app.version, "status": "installed", "help": []string{"Run dibs ps --machine " + fs.Arg(0)}})
 	return 0
 }

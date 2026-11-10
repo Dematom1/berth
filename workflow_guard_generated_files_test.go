@@ -3,7 +3,7 @@ package main
 import "testing"
 
 // This published workflow owns title, attestation, release identity, and
-// generated-file verdicts. Berth tests its caller, not a second implementation.
+// generated-file verdicts. Dibs tests its caller, not a second implementation.
 const contributionWorkflow = "Dematom1/oss-workflows/.github/workflows/contribution-checks.yml@ee220d669cbb1376363825c273291dea4a539847"
 
 func contribution(t *testing.T) (map[string]any, map[string]any) {

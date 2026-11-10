@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	remotepkg "github.com/Dematom1/berth/internal/remote"
+	remotepkg "github.com/Dematom1/dibs/internal/remote"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +23,7 @@ func TestReleasePleaseDraftConfiguration(t *testing.T) {
 	var config struct {
 		Packages map[string]struct {
 			ReleaseType      string `json:"release-type"`
+			PackageName      string `json:"package-name"`
 			Draft            bool   `json:"draft"`
 			ForceTagCreation bool   `json:"force-tag-creation"`
 		} `json:"packages"`
@@ -31,7 +32,7 @@ func TestReleasePleaseDraftConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := config.Packages["."]
-	if pkg.ReleaseType != "go" || !pkg.Draft || !pkg.ForceTagCreation {
+	if pkg.PackageName != "dibs" || pkg.ReleaseType != "go" || !pkg.Draft || !pkg.ForceTagCreation {
 		t.Fatalf("release-please must create tagged Go draft releases: %+v", pkg)
 	}
 	data, err = os.ReadFile(".release-please-manifest.json")
@@ -162,7 +163,7 @@ func testReleaseUploadScript(t *testing.T, script string) {
 			}
 			cmd := exec.Command("bash", "-e", "-c", script)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "UPLOAD_LOG="+ghLog, "TAG=v1.2.3", "GH_REPO=example/berth", "GH_TOKEN=test")
+			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "UPLOAD_LOG="+ghLog, "TAG=v1.2.3", "GH_REPO=example/dibs", "GH_TOKEN=test")
 			err := cmd.Run()
 			if (err == nil) != tc.valid {
 				t.Fatalf("script error = %v, want success %v", err, tc.valid)
@@ -195,6 +196,9 @@ func TestGoReleaserArtifactContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	build := object(list(cfg["builds"])[0])
+	require(t, cfg["project_name"] == "dibs" && build["binary"] == "dibs", "release identity must not depend on the checkout directory name")
+	repository := object(object(cfg["release"])["github"])
+	require(t, repository["owner"] == "Dematom1" && repository["name"] == "dibs", "release must target the renamed repository")
 	gotOS, gotArch := map[any]bool{}, map[any]bool{}
 	for _, v := range list(build["goos"]) {
 		gotOS[v] = true

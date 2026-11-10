@@ -1,5 +1,5 @@
 {
-  description = "berth: daemonless resource leases and budgeted jobs";
+  description = "dibs: daemonless resource leases and budgeted jobs";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -17,10 +17,10 @@
     in {
       packages = forAllSystems (system:
         let
-          berth = nixpkgs.legacyPackages.${system}.callPackage ./package.nix { inherit version; };
+          dibs = nixpkgs.legacyPackages.${system}.callPackage ./package.nix { inherit version; };
         in {
-          inherit berth;
-          default = berth;
+          inherit dibs;
+          default = dibs;
         });
       devShells = forAllSystems (system:
         let pkgs = nixpkgs.legacyPackages.${system};

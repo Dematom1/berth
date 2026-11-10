@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	configpkg "github.com/Dematom1/berth/internal/config"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	remotepkg "github.com/Dematom1/berth/internal/remote"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	remotepkg "github.com/Dematom1/dibs/internal/remote"
 )
 
 // Block list on a real flock. Delivered stdin EOF must cancel its context
@@ -24,7 +24,7 @@ import (
 func TestFormalEOF(t *testing.T) {
 
 	dir := t.TempDir()
-	t.Setenv("BERTH_STATE", dir)
+	t.Setenv("DIBS_STATE", dir)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestFormalAuthoritativeResult(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-		config := configpkg.Config{Machines: map[string]configpkg.Target{"test": {Host: "test", User: "test", Workdir: "/tmp", Agent: "/tmp/berth"}}}
+		config := configpkg.Config{Machines: map[string]configpkg.Target{"test": {Host: "test", User: "test", Workdir: "/tmp", Agent: "/tmp/dibs"}}}
 		var out bytes.Buffer
 		if got := remotepkg.Run(context.Background(), version, config, "test", []string{"job", "--", "true"}, &out, outputpkg.AXI); got != code {
 			t.Fatalf("authoritative result %d became %d", code, got)

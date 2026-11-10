@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 )
 
 type kindAdapter struct{ run adapterpkg.CommandRunner }
@@ -29,7 +29,7 @@ func (a kindAdapter) Destroy(ctx context.Context, l adapterpkg.Target) error {
 	}
 	for _, name := range strings.Fields(string(out)) {
 		if name == l.Ref.Name {
-			return errors.New("cluster survived cleanup; retry berth release")
+			return errors.New("cluster survived cleanup; retry dibs release")
 		}
 	}
 	return nil
@@ -50,7 +50,7 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 	}
 	resourceFile := "kubeconfig"
 
-	resourceName := "berth-" + request.Metadata.LeaseID
+	resourceName := "dibs-" + request.Metadata.LeaseID
 
 	ref = adapterpkg.ResourceRef{Adapter: "kind", Name: resourceName, Context: contextName, File: filepath.Join(dir, resourceFile)}
 	if request.Existing.Adopted {
@@ -76,11 +76,11 @@ func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceR
 	if ref.Adopted && (!adapterpkg.ValidResourceName(ref.Name) || ref.DockerHost == "") {
 		return errors.New("invalid adopted resource identity")
 	}
-	if (!ref.Adopted && ref.Name != "berth-"+metadata.LeaseID) || ref.Context == "" {
+	if (!ref.Adopted && ref.Name != "dibs-"+metadata.LeaseID && ref.Name != "berth-"+metadata.LeaseID) || ref.Context == "" {
 		return errors.New("invalid managed resource identity")
 	}
-	if ref.File != filepath.Join(dir, "kubeconfig") {
-		return errors.New("managed resource file must remain inside its original BERTH_STATE directory")
+	if !adapterpkg.SnapshotMatches(ref.File, filepath.Join(dir, "kubeconfig")) {
+		return errors.New("managed resource file must remain inside its original DIBS_STATE directory")
 	}
 	return nil
 }

@@ -3,4 +3,4 @@ stdout:
 code: VALIDATION_ERROR
 error: "use --adapter none, kind, k3d, or compose; --file is required only for compose"
 exit_code: 2
-help[1]: Run berth create --help for options
+help[1]: Run dibs create --help for options

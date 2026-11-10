@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 )
 
 type k3dAdapter struct{ run adapterpkg.CommandRunner }
@@ -39,7 +39,7 @@ func (a k3dAdapter) Destroy(ctx context.Context, l adapterpkg.Target) error {
 	}
 	for _, cluster := range clusters {
 		if cluster.Name == l.Ref.Name {
-			return errors.New("cluster survived cleanup; retry berth release")
+			return errors.New("cluster survived cleanup; retry dibs release")
 		}
 	}
 	return nil
@@ -57,7 +57,7 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return ref, err
 	}
-	ref = adapterpkg.ResourceRef{Adapter: "k3d", Name: "berth-" + request.Metadata.LeaseID[:26], Context: contextName, File: filepath.Join(dir, "k3d")}
+	ref = adapterpkg.ResourceRef{Adapter: "k3d", Name: "dibs-" + request.Metadata.LeaseID[:26], Context: contextName, File: filepath.Join(dir, "k3d")}
 	out, err := run(ctx, nil, "docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}", contextName)
 	if err != nil {
 		return ref, err
@@ -89,14 +89,14 @@ func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceR
 	if ref.Adopted && (!adapterpkg.ValidResourceName(ref.Name) || ref.DockerHost == "") {
 		return errors.New("invalid adopted resource identity")
 	}
-	if (!ref.Adopted && ref.Name != "berth-"+metadata.LeaseID[:26]) || ref.Context == "" {
+	if (!ref.Adopted && ref.Name != "dibs-"+metadata.LeaseID[:26] && ref.Name != "berth-"+metadata.LeaseID[:26]) || ref.Context == "" {
 		return errors.New("invalid managed resource identity")
 	}
 	if ref.DockerHost == "" {
 		return errors.New("k3d resource is missing its captured Docker endpoint")
 	}
-	if ref.File != filepath.Join(dir, "k3d") {
-		return errors.New("managed resource file must remain inside its original BERTH_STATE directory")
+	if !adapterpkg.SnapshotMatches(ref.File, filepath.Join(dir, "k3d")) {
+		return errors.New("managed resource file must remain inside its original DIBS_STATE directory")
 	}
 	return nil
 }

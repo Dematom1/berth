@@ -3,4 +3,4 @@ stdout:
 code: VALIDATION_ERROR
 error: unknown command unknown
 exit_code: 2
-help[1]: Run berth --help for usage
+help[1]: Run dibs --help for usage

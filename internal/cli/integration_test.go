@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
 )
 
 func integrationReady(t *testing.T, driver string) {
@@ -36,12 +36,12 @@ func integrationReady(t *testing.T, driver string) {
 			t.Fatalf("Docker Compose required for integration: %v", err)
 		}
 	}
-	dir, err := os.MkdirTemp("", "berth-integration-*")
+	dir, err := os.MkdirTemp("", "dibs-integration-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BERTH_STATE", dir)
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", dir)
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	t.Cleanup(func() {
 		manager := testApplication().leases
 		listing, err := manager.List(context.Background(), leasepkg.Filter{})
@@ -63,7 +63,7 @@ func integrationReady(t *testing.T, driver string) {
 	})
 }
 
-// Remove the real resource while its lease remains, then let berth retry cleanup.
+// Remove the real resource while its lease remains, then let dibs retry cleanup.
 func removeIntegrationResource(t *testing.T, id string) {
 	t.Helper()
 	l, exists, err := testApplication().leases.Get(context.Background(), id)
@@ -124,10 +124,10 @@ func TestIntegrationAdoptAndOrphans(t *testing.T) {
 			if !find(invoke(t, 0, "orphans")) {
 				t.Fatal("unleased fixture missing from inventory")
 			}
-			if _, err := os.Stat(filepath.Join(os.Getenv("BERTH_STATE"), "state.json")); !os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(os.Getenv("DIBS_STATE"), "state.json")); !os.IsNotExist(err) {
 				t.Fatal("orphan view wrote lease state")
 			}
-			args := []string{"adopt", driver, name, "--owner", os.Getenv("BERTH_OWNER"), "--ttl", "1ms", "--context", ref.Context}
+			args := []string{"adopt", driver, name, "--owner", os.Getenv("DIBS_OWNER"), "--ttl", "1ms", "--context", ref.Context}
 			if file != "" {
 				args = append(args, "--file", file)
 			}
@@ -239,7 +239,7 @@ func TestIntegrationCompose(t *testing.T) {
 	}
 	created := invoke(t, 0, "create", "--adapter", "compose", "--file", file, "--ttl", "15m")
 	id := created["record"].(map[string]any)["id"].(string)
-	out, err := adapterpkg.RunCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.berth.lease="+id)
+	out, err := adapterpkg.RunCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.dibs.lease="+id)
 	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
 		t.Fatalf("stack not attributed to its lease: %s, %v", out, err)
 	}
@@ -248,7 +248,7 @@ func TestIntegrationCompose(t *testing.T) {
 	removeIntegrationResource(t, id)
 	invoke(t, 0, "release", id, "--confirm")
 	invoke(t, 0, "release", id, "--confirm")
-	out, err = adapterpkg.RunCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.berth.lease="+id)
+	out, err = adapterpkg.RunCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.dibs.lease="+id)
 	if err != nil || len(strings.TrimSpace(string(out))) != 0 {
 		t.Fatalf("stack survived cleanup: %s, %v", out, err)
 	}

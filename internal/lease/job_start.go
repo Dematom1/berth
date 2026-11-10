@@ -26,7 +26,7 @@ func Exec(args []string) int {
 		return 125
 	}
 	if err := syscall.Exec(args[0], args, os.Environ()); err != nil {
-		fmt.Fprintln(os.Stderr, "berth: cannot execute child:", err)
+		fmt.Fprintln(os.Stderr, "dibs: cannot execute child:", err)
 		return 126
 	}
 	return 126
@@ -58,7 +58,7 @@ func (m *Manager) startJob(ctx context.Context, dir string, l *Lease, args []str
 	cmd := exec.Command(bin, append([]string{"__job_exec"}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.ExtraFiles = []*os.File{gate}
-	cmd.Env = append(os.Environ(), "BERTH_LEASE="+l.ID)
+	cmd.Env = append(os.Environ(), "DIBS_LEASE="+l.ID, "BERTH_LEASE="+l.ID)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, out, os.Stderr
 	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {

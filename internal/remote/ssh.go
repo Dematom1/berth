@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	configpkg "github.com/Dematom1/berth/internal/config"
-	outputpkg "github.com/Dematom1/berth/internal/output"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
 func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
@@ -20,7 +20,7 @@ func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'
 func LookupTarget(config configpkg.Config, name string) (configpkg.Target, error) {
 	m, ok := config.Machines[name]
 	if !ok {
-		return m, fmt.Errorf("unknown SSH machine %q; define machines.%s in BERTH_CONFIG", name, name)
+		return m, fmt.Errorf("unknown SSH machine %q; define machines.%s in DIBS_CONFIG", name, name)
 	}
 	return m, m.Validate()
 }
@@ -28,32 +28,32 @@ func LookupTarget(config configpkg.Config, name string) (configpkg.Target, error
 func Run(ctx context.Context, version string, config configpkg.Config, name string, args []string, out io.Writer, jsonOutput outputpkg.Mode) int {
 	m, err := LookupTarget(config, name)
 	if err != nil {
-		return outputpkg.Error(out, jsonOutput, 2, err.Error(), "Run berth "+args[0]+" --help; configure the SSH machine before retrying")
+		return outputpkg.Error(out, jsonOutput, 2, err.Error(), "Run dibs "+args[0]+" --help; configure the SSH machine before retrying")
 	}
 	mismatch, _ := json.Marshal(agentFrame{Type: "error", Error: "agent version mismatch; no child started (expected " + version + ")"})
-	// Probe first so older berth versions without the agent command also get a
+	// Probe first so older dibs versions without the agent command also get a
 	// clear refusal rather than being mistaken for a broken protocol.
 	script := "actual=$(" + ShellQuote(m.Agent) + " --version) || exit 1; if [ \"$actual\" != " + ShellQuote(version) + " ]; then printf '%s\\n' " + ShellQuote(string(mismatch)) + "; exit 0; fi; cd " + ShellQuote(m.Workdir) + " && exec " + ShellQuote(m.Agent) + " agent"
 	cmd := sshCommand(ctx, m, script)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry berth "+args[0]+" --machine "+name)
+		return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry dibs "+args[0]+" --machine "+name)
 	}
 	defer stdin.Close()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry berth "+args[0]+" --machine "+name)
+		return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry dibs "+args[0]+" --machine "+name)
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return outputpkg.Error(out, jsonOutput, 1, "cannot start SSH; no child started", "Install SSH and retry berth "+args[0]+" --machine "+name)
+		return outputpkg.Error(out, jsonOutput, 1, "cannot start SSH; no child started", "Install SSH and retry dibs "+args[0]+" --machine "+name)
 	}
 	writer := &frameWriter{enc: json.NewEncoder(stdin)}
 	transportError := func(err error) int {
 		stdin.Close()
 		cmd.Process.Kill()
 		cmd.Wait()
-		fmt.Fprintln(os.Stderr, "berth: SSH transport/protocol failed; remote result unknown (code 76):", err)
+		fmt.Fprintln(os.Stderr, "dibs: SSH transport/protocol failed; remote result unknown (code 76):", err)
 		return 76
 	}
 	if err := writer.send(agentFrame{Type: "request", Version: version, Args: args, Output: jsonOutput.Effective(out), Machine: name}); err != nil {
@@ -67,7 +67,7 @@ func Run(ctx context.Context, version string, config configpkg.Config, name stri
 	if first.Type == "error" {
 		stdin.Close()
 		cmd.Wait()
-		return outputpkg.Error(out, jsonOutput, 1, first.Error, "Install the matching binary with berth machine install "+name+" --file <binary>")
+		return outputpkg.Error(out, jsonOutput, 1, first.Error, "Install the matching binary with dibs machine install "+name+" --file <binary>")
 	}
 	if first.Type != "ready" || first.Version != version {
 		return transportError(errors.New("invalid agent handshake"))

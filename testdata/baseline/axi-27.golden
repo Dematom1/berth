@@ -3,4 +3,4 @@ stdout:
 code: VALIDATION_ERROR
 error: expected setup hooks
 exit_code: 2
-help[1]: "Run berth setup hooks [--remove]"
+help[1]: "Run dibs setup hooks [--remove]"

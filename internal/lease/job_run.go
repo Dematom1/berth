@@ -40,7 +40,7 @@ func (m *Manager) RunJob(ctx context.Context, reservation Reservation, child []s
 		select {
 		case err := <-observed:
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "berth: cannot observe job exit without reaping; sweep will retry:", err)
+				fmt.Fprintln(os.Stderr, "dibs: cannot observe job exit without reaping; sweep will retry:", err)
 				finish = false
 				cmd.Process.Kill()
 			} else {
@@ -50,7 +50,7 @@ func (m *Manager) RunJob(ctx context.Context, reservation Reservation, child []s
 		case <-timer.C:
 			completed, err := childCompletion(observed, cmd.Process.Pid)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "berth: cannot verify job completion at deadline; sweep will retry:", err)
+				fmt.Fprintln(os.Stderr, "dibs: cannot verify job completion at deadline; sweep will retry:", err)
 				finish = false
 				cmd.Process.Kill()
 				waitErr = cmd.Wait()

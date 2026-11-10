@@ -1,4 +1,4 @@
-# berth
+# dibs
 
 Owner-and-expiry leases for local stacks and clusters. One Go binary, no daemon.
 Supports leases, kind and k3d clusters, Docker Compose projects, and local jobs
@@ -10,8 +10,8 @@ SSH machines.
 Requires Go 1.26 or later.
 
 ```sh
-go install github.com/Dematom1/berth@latest
-berth --version
+go install github.com/Dematom1/dibs@latest
+dibs --version
 ```
 
 `--version` reports the installed module version without the leading `v` (for
@@ -19,23 +19,55 @@ example, `0.2.0`). Checkout builds report `devel-<12-character-commit>`, with
 `-dirty` for local changes, or `devel` when VCS metadata is unavailable.
 Release builds can override this with `-ldflags '-X main.version=0.2.0'`.
 
-The module path is case-sensitive; `github.com/dematom1/berth` fails. Prebuilt
-Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/berth/releases) page.
+The module path is case-sensitive; `github.com/dematom1/dibs` fails. Prebuilt
+Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/dibs/releases) page.
 
 From a checkout, `just install` installs to Go's binary directory. `just build`
-writes `bin/berth`. Installing with `go install` does not require just. Resource adapters also require `kind`, `k3d`, `docker`,
+writes `bin/dibs`. Installing with `go install` does not require just. Resource adapters also require `kind`, `k3d`, `docker`,
 and Docker Compose, plus a running Docker engine.
+
+## Upgrade from berth
+
+Dibs is the new name for berth. Update install commands, sweep timers, scripts,
+and remote binary paths to `dibs`. See the [rename release notes](docs/releases/rename-to-dibs.md)
+for compatibility and repository-rename ordering.
+
+For one minor release, `BERTH_*` environment variables remain deprecated aliases
+for `DIBS_*`. New variables win even when explicitly empty. Legacy alias use
+prints one warning on stderr, without values or changes to JSON or AXI stdout.
+Job children receive both `DIBS_LEASE` and `BERTH_LEASE` during this window.
+This includes `DIBS_LEGACY_MACHINE` and its legacy alias for machine migration.
+
+When the preferred default config is absent, dibs reads the old
+`$XDG_CONFIG_HOME/berth/config.json` or `~/.config/berth/config.json` without
+moving it. Invalid preferred config remains an error. Explicit config and state
+paths keep their meaning.
+
+When legacy default state exists, dibs atomically creates a sibling `dibs` symlink
+to the `berth` directory. The ledger, lock inode, and absolute snapshot paths
+stay in place. Keep both the old directory and its alias until all leases are
+released. Independent old and new directories cause an error; select each ledger
+with `DIBS_STATE` rather than deleting or combining them. Read-only `orphans`
+uses legacy state without creating the alias or migrating the ledger.
+
+Existing `berth-` resources and `io.berth.*` labels remain listable, adoptable,
+and reclaimable through their leases, including after the environment-alias
+window ends. New resources use `dibs-` and `io.dibs.*`. Inventory preserves
+both label namespaces and never authorizes cleanup of unleased resources.
+`dibs setup hooks` upgrades managed berth hooks and plugins while preserving
+unrelated settings and unmanaged files. Install matching client and remote
+versions before SSH jobs.
 
 ## Output for people, agents, and scripts
 
-On a terminal, berth prints aligned tables, relative expiry times, and readable
-memory units. `berth ps` and the no-args home view show job usage, usable capacity,
+On a terminal, dibs prints aligned tables, relative expiry times, and readable
+memory units. `dibs ps` and the no-args home view show job usage, usable capacity,
 and the cores and memory kept free for you. Usage errors have one error line and
 one short hint, not a help dump.
 
-Use `--axi` or `BERTH_AXI=1` for agent output in TOON. Use `--json` for complete,
+Use `--axi` or `DIBS_AXI=1` for agent output in TOON. Use `--json` for complete,
 stable JSON suitable for `jq` and scripts. Both flags work before or after the
-command. They are mutually exclusive, and an explicit flag overrides `BERTH_AXI`.
+command. They are mutually exclusive, and an explicit flag overrides `DIBS_AXI`.
 There is no `--human` flag.
 
 AXI is a first-class agent view, not a debug format. Lists default to 100 compact
@@ -46,23 +78,23 @@ needed to fetch the complete result. `--full` on lease commands removes these
 bounds and restores complete records. **AXI with `--full` has the same fields and
 data as `--json`**, which never truncates. Canonical state is never shortened.
 
-When stdout is not a TTY and neither output flag is present, berth emits AXI as
+When stdout is not a TTY and neither output flag is present, dibs emits AXI as
 a safety net for agents and pipes. **Human default means terminal output**, not
 redirected output. Use `--json` explicitly for scripts that need JSON.
 
 ```sh
-berth ps                              # human on a terminal
-berth --axi ps                        # bounded agent view
-berth --axi ps --full                 # complete records, same data as --json
-BERTH_AXI=1 berth ps                   # agent session environment
-berth ps --json | jq '.budget.used_cores'
+dibs ps                              # human on a terminal
+dibs --axi ps                        # bounded agent view
+dibs --axi ps --full                 # complete records, same data as --json
+DIBS_AXI=1 dibs ps                   # agent session environment
+dibs ps --json | jq '.budget.used_cores'
 ```
 
 ### Install agent integrations
 
 ```sh
-berth setup hooks
-berth setup hooks --remove
+dibs setup hooks
+dibs setup hooks --remove
 ```
 
 Setup reports the files it changed. Repeating either command is a no-op.
@@ -71,19 +103,19 @@ at its plugin paths. Only this explicit setup command edits agent configuration.
 Restart agent sessions after installation or removal.
 
 - Claude Code uses a managed `SessionStart` hook in `~/.claude/settings.json`.
-  The hook appends `export BERTH_AXI=1` to `CLAUDE_ENV_FILE`.
+  The hook appends `export DIBS_AXI=1` to `CLAUDE_ENV_FILE`.
 - Codex uses `SessionStart` in `~/.codex/hooks.json` and enables `features.hooks`
   in `~/.codex/config.toml`. It uses `CODEX_ENV_FILE`, with `CLAUDE_ENV_FILE` as a
   compatibility fallback. Removal restores a `false` toggle changed by setup,
   or removes the toggle if setup added it. Existing enabled hooks stay enabled.
-- Pi loads `~/.pi/agent/extensions/berth-axi.ts`, which sets the environment at
+- Pi loads `~/.pi/agent/extensions/dibs-axi.ts`, which sets the environment at
   `session_start`.
-- OpenCode loads `~/.config/opencode/plugins/berth-axi.js`, which sets the
+- OpenCode loads `~/.config/opencode/plugins/dibs-axi.js`, which sets the
   environment through `shell.env`.
 
 Setup respects `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, and
 `XDG_CONFIG_HOME`. Claude Code or Codex versions without an environment-file
-hook receive a short instruction to use `berth --axi` instead. Agents without
+hook receive a short instruction to use `dibs --axi` instead. Agents without
 these integrations still get AXI when they capture stdout through a pipe.
 No shell profile changes or executable shims are installed.
 
@@ -92,23 +124,23 @@ No shell profile changes or executable shims are installed.
 Keep the shell or session that owns the lab alive.
 
 ```sh
- id=$(berth create --adapter kind --owner "pid:$$" --ttl 2h \
+ id=$(dibs create --adapter kind --owner "pid:$$" --ttl 2h \
    --resources '2 CPUs, Kubernetes test lab' --label task=lab --quiet)
- berth ps
- eval "$(berth env "$id")"          # select this lab's private kubeconfig
+ dibs ps
+ eval "$(dibs env "$id")"          # select this lab's private kubeconfig
  kubectl get nodes
- berth extend "$id" --ttl 2h
- berth release "$id"                # preview
- berth release "$id" --confirm      # delete cluster and release lease
+ dibs extend "$id" --ttl 2h
+ dibs release "$id"                # preview
+ dibs release "$id" --confirm      # delete cluster and release lease
 ```
 
-Kind cluster names are `berth-<id>`. K3d names use the first 26 ID characters
+Kind cluster names are `dibs-<id>`. K3d names use the first 26 ID characters
 to fit its 32-character limit. Both use the selected Docker context and private
-kubeconfigs under `$BERTH_STATE/resources/<id>/`: `kubeconfig` for kind and `k3d`
+kubeconfigs under `$DIBS_STATE/resources/<id>/`: `kubeconfig` for kind and `k3d`
 for k3d. Creation and cleanup do not edit the caller's kubeconfig or current
 context. Human create/list output shows the kubeconfig path. JSON and AXI expose
 `kubeconfig` in both the lease view and full record, with an empty string for
-leases without a kubeconfig. `berth env <id>` always prints a shell-safe
+leases without a kubeconfig. `dibs env <id>` always prints a shell-safe
 `export KUBECONFIG=...` line, even under `--axi` or `--json`. It exits 2 for a
 missing lease or a lease without a kubeconfig. It does not read the kubeconfig
 or change your shell itself.
@@ -118,22 +150,22 @@ success, regardless of output mode. Failures retain the usual error format and
 exit code. Without quiet mode, create shows the lease details.
 
 The resources description is metadata, not a CPU or memory limit.
-Create new labs through berth to record cleanup intent before creation. For
-existing labs, explicitly adopt the resource as described below. Berth never
+Create new labs through dibs to record cleanup intent before creation. For
+existing labs, explicitly adopt the resource as described below. Dibs never
 deletes an unleased resource.
 
 To create a Compose stack, pass its file.
 
 ```sh
- berth create --adapter compose --file compose.yaml --owner "pid:$$" --ttl 2h
- berth who --json
- berth sweep                        # preview dead or expired leases
- berth sweep --confirm               # reclaim them
+ dibs create --adapter compose --file compose.yaml --owner "pid:$$" --ttl 2h
+ dibs who --json
+ dibs sweep                        # preview dead or expired leases
+ dibs sweep --confirm               # reclaim them
 ```
 
-Compose projects also use `berth-<id>`. Berth resolves the Compose file once,
+Compose projects also use `dibs-<id>`. Dibs resolves the Compose file once,
 saves a private config snapshot, and labels its services, volumes, and networks
-with `io.berth.lease`, `io.berth.owner`, `io.berth.expires`, and `io.berth.machine`.
+with `io.dibs.lease`, `io.dibs.owner`, `io.dibs.expires`, and `io.dibs.machine`.
 Cleanup does not require the original file, environment, or worktree. Labels
 record creation-time expiry; the lease record is authoritative after `extend`.
 Fixed `container_name` values and nonexternal volume or network names outside
@@ -142,7 +174,7 @@ to keep them out of cleanup. Release runs Compose down with `--volumes` and
 `--remove-orphans`, so data in managed volumes is deleted.
 
 Adapters tolerate already absent resources. Cleanup errors retain the
-lease and exit 1. Berth verifies that managed resources are gone before removing
+lease and exit 1. Dibs verifies that managed resources are gone before removing
 the record. A create that fails after saving its lease also retains the record
 for release or sweep to clean up partial resources.
 
@@ -155,18 +187,18 @@ containers, images, or volumes outside those projects. Unleased does not mean
 unused, and age alone never authorizes cleanup.
 
 ```sh
- berth orphans --context orbstack
- berth orphans --context orbstack --json
- berth adopt kind my-lab --context orbstack --owner "pid:$$" --ttl 2h
- berth adopt k3d my-k3d-lab --owner "pid:$$" --ttl 2h
- berth adopt compose my-stack --file compose.yaml --owner "pid:$$" --ttl 2h
- berth sweep                         # preview dead-owner or expired leases
- berth sweep --confirm               # destroy only eligible leased resources
+ dibs orphans --context orbstack
+ dibs orphans --context orbstack --json
+ dibs adopt kind my-lab --context orbstack --owner "pid:$$" --ttl 2h
+ dibs adopt k3d my-k3d-lab --owner "pid:$$" --ttl 2h
+ dibs adopt compose my-stack --file compose.yaml --owner "pid:$$" --ttl 2h
+ dibs sweep                         # preview dead-owner or expired leases
+ dibs sweep --confirm               # destroy only eligible leased resources
 ```
 
 Both new commands are explicit opt-ins. Existing create, release, and sweep
 behavior is unchanged. `adopt` requires an explicit owner and positive TTL, even
-when `BERTH_OWNER` is set. Supported owners and `--stale` match `create`.
+when `DIBS_OWNER` is set. Supported owners and `--stale` match `create`.
 It refuses missing resources, unknown existence, and resources already leased
 in this ledger, including Docker context aliases with the same endpoint.
 Each successful adoption records a new lease. Release and sweep use the same
@@ -181,8 +213,8 @@ their combined configuration. Fixed nonexternal volume and network names outside
 also carry that project's Compose label. Mark shared resources `external`. Existing fixed
 container names are permitted because adoption explicitly selects their project.
 Cleanup does not require the original file or working directory to survive.
-Existing resource labels are not changed or recreated. Berth records the
-`io.berth.lease`, `io.berth.owner`, `io.berth.expires`, and `io.berth.machine`
+Existing resource labels are not changed or recreated. Dibs records the
+`io.dibs.lease`, `io.dibs.owner`, `io.dibs.expires`, and `io.dibs.machine`
 attribution in the lease's labels instead. The ledger is authoritative.
 
 Inventory includes creation timestamps, container status, and labels reported by Docker, the Compose
@@ -199,20 +231,20 @@ same evidence and command. Unknown flags fail with code 2 before any operations.
 ## Run a local job
 
 ```sh
- berth job --cores 2 --memory 2GiB --timeout 10m -- go test ./...
- berth job --class suite --wait 5m -- just check
- berth ps                           # includes each job's cores, memory and class
+ dibs job --cores 2 --memory 2GiB --timeout 10m -- go test ./...
+ dibs job --class suite --wait 5m -- just check
+ dibs ps                           # includes each job's cores, memory and class
 ```
 
 `job` reserves logical cores and memory on this machine, minus **owner room**
-reserved for interactive work. Reservations coordinate cooperating berth jobs;
+reserved for interactive work. Reservations coordinate cooperating dibs jobs;
 they are not OS CPU or memory caps, and stack leases' resource descriptions do
 not count against them. Configure a static partition if other tools such as
-runner-up also schedule work on the host; berth does not read their ledgers.
+runner-up also schedule work on the host; dibs does not read their ledgers.
 Jobs inherit the working directory and environment, and pass stdin, stdout and
-stderr through unchanged. `BERTH_LEASE` identifies the job.
+stderr through unchanged. `DIBS_LEASE` identifies the job.
 `--axi` and `--json` change only pre-start errors, not child output. Use noninteractive
-commands. Berth does not hand terminal foreground job control to the child.
+commands. Dibs does not hand terminal foreground job control to the child.
 
 Admission is FIFO across classes, with no backfill: a smaller request cannot
 bypass an earlier larger waiter. The default wait is `30m`; `--wait 0` tries
@@ -223,16 +255,16 @@ the reservation. A request larger than the usable budget fails with code 2.
 Queue order is the order requests acquire the state lock, not shell launch time.
 The state lock is released while waiting and while a child runs.
 
-Each job is a lease owned by the `berth job` process, not `BERTH_OWNER` or its
+Each job is a lease owned by the `dibs job` process, not `DIBS_OWNER` or its
 invoking shell. Its deadline starts at admission and is the explicit `--timeout`
 or class timeout. Job deadlines cannot be extended. On timeout or cancellation,
-berth sends TERM to the process group, then KILL after one second if needed.
+dibs sends TERM to the process group, then KILL after one second if needed.
 Normal completion also cleans up remaining group members before releasing the
 reservation. Cleanup failures go to stderr and retain the lease; they never
-replace the child's exit code. If berth itself is killed, `sweep --confirm`
+replace the child's exit code. If dibs itself is killed, `sweep --confirm`
 reclaims the job lease on owner death or expiry. Keep a host sweep timer. A
 matching live leader permits process-group cleanup; if the leader is missing or
-reaped, berth warns and releases the lease without signaling an unverifiable
+reaped, dibs warns and releases the lease without signaling an unverifiable
 group. Orphan descendants may then require manual cleanup.
 
 Process groups are not a security boundary: programs that call `setsid` or
@@ -243,8 +275,8 @@ the leader is present.
 
 ### Machine budget and classes
 
-The optional config is strict JSON at `$XDG_CONFIG_HOME/berth/config.json`, or
-`~/.config/berth/config.json`. `BERTH_CONFIG` selects a different file; an
+The optional config is strict JSON at `$XDG_CONFIG_HOME/dibs/config.json`, or
+`~/.config/dibs/config.json`. `DIBS_CONFIG` selects a different file; an
 explicitly selected missing file is an error. Unknown fields are rejected.
 
 Without a config, totals come from the host's logical CPU count and physical
@@ -293,7 +325,7 @@ connection timeout, and keepalives every 5 seconds with 3 unanswered probes.
       "host": "lenovo",
       "user": "worker",
       "workdir": "/home/worker/src/project",
-      "agent": "/home/worker/.local/bin/berth"
+      "agent": "/home/worker/.local/bin/dibs"
     }
   }
 }
@@ -302,11 +334,11 @@ connection timeout, and keepalives every 5 seconds with 3 unanswered probes.
 Build a trusted binary for the remote OS and architecture, then install it:
 
 ```sh
- GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/berth-linux .
- berth machine install lenovo --file /tmp/berth-linux
- berth job --machine lenovo --class suite -- go test ./...
- berth ps --machine lenovo
- berth sweep --machine lenovo --confirm
+ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/dibs-linux .
+ dibs machine install lenovo --file /tmp/dibs-linux
+ dibs job --machine lenovo --class suite -- go test ./...
+ dibs ps --machine lenovo
+ dibs sweep --machine lenovo --confirm
 ```
 
 Installation streams the binary over SSH, checks its version on the remote,
@@ -316,11 +348,11 @@ keep their executable. Every connection checks the remote version before
 requesting work, and the agent checks the client's version again. Mismatches
 refuse to start a child and explain how to install the matching binary.
 
-The same berth binary runs as `berth agent` on the remote, once per SSH session.
+The same dibs binary runs as `dibs agent` on the remote, once per SSH session.
 It is not a daemon. The remote config decides classes, total budget, owner room,
 and admission across all clients. The client does not forward its budget or
 class defaults. Remote state stays on the remote machine, under that SSH user's
-usual berth state directory. `ps --machine` and `sweep --machine` use that state.
+usual dibs state directory. `ps --machine` and `sweep --machine` use that state.
 Each machine reclaims only its own leases. There is no shared cross-host ledger.
 
 Remote jobs run in the configured workdir with the environment of a
@@ -344,19 +376,19 @@ crashes and failed cleanup. Process-group escape limitations apply remotely too.
 
 A missing or broken transport returns 76 with diagnostics on stderr once SSH
 has started. The remote result is then unknown; do not assume the child did not
-run. This code avoids reporting berth's own 1 or 2 after a child may have started.
+run. This code avoids reporting dibs's own 1 or 2 after a child may have started.
 A completed child can itself return 76, as with any reserved job exit code.
 
 For a Lenovo rollout, provision key-based SSH and trusted host keys, a remote
-checkout and its dependencies, the matching Linux binary, and a remote berth
+checkout and its dependencies, the matching Linux binary, and a remote dibs
 config with a budget partition that leaves owner room and avoids other
 schedulers. Configure an sshd keepalive policy and a per-user sweep timer.
 Kubernetes-backed machines remain deferred.
 
 ## Owners and renewal
 
-`--owner` overrides `BERTH_OWNER`. Without either, berth uses the parent PID,
-usually the invoking shell. A spawner can export `BERTH_OWNER` for all of its
+`--owner` overrides `DIBS_OWNER`. Without either, dibs uses the parent PID,
+usually the invoking shell. A spawner can export `DIBS_OWNER` for all of its
 workers. The supported owner kinds are:
 
 - `pid:<pid>` follows a local process and records its start time to detect PID
@@ -377,9 +409,9 @@ does. `extend` refuses expired leases and owners that are dead or unknown.
 
 ```sh
  touch /tmp/my-lab-heartbeat
- berth create --owner heartbeat:/tmp/my-lab-heartbeat --stale 15m --ttl 1h
+ dibs create --owner heartbeat:/tmp/my-lab-heartbeat --stale 15m --ttl 1h
  # The owner touches the file at least every 5m, and extends before 20m remain.
- berth extend <id> --ttl 1h
+ dibs extend <id> --ttl 1h
 ```
 
 Durations use Go syntax such as `30m`, `2h`, or `1h30m`. Every lease has a positive
@@ -390,19 +422,19 @@ TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
 
 | Command | Behavior |
 | --- | --- |
-| `berth` | Live home view with executable path, description, lease count, and hints |
-| `berth create` or `berth up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose` |
-| `berth adopt <type> <name> --owner KIND:ID --ttl D` | Lease an existing kind, k3d, or Compose resource after verifying existence |
-| `berth orphans [--context NAME]` | Read-only unleased-resource evidence and adoption command templates |
-| `berth list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
-| `berth env <id>` | Print a shell-safe kubeconfig export for a kind or k3d lease |
-| `berth setup hooks [--remove]` | Install or remove managed agent integrations |
-| `berth extend <id> --ttl D` | Renew an unexpired lease with a live owner |
-| `berth release <id>` or `down` | Preview cleanup; `--confirm` performs it |
-| `berth sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
-| `berth job [--machine NAME] [flags] -- <cmd...>` | FIFO machine-budget admission, deadline, and child exit-code passthrough |
-| `berth machine install <name> --file <binary>` | Version-checked SSH agent installation or upgrade |
-| `berth agent` | Internal SSH protocol with session-as-liveness |
+| `dibs` | Live home view with executable path, description, lease count, and hints |
+| `dibs create` or `dibs up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose` |
+| `dibs adopt <type> <name> --owner KIND:ID --ttl D` | Lease an existing kind, k3d, or Compose resource after verifying existence |
+| `dibs orphans [--context NAME]` | Read-only unleased-resource evidence and adoption command templates |
+| `dibs list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
+| `dibs env <id>` | Print a shell-safe kubeconfig export for a kind or k3d lease |
+| `dibs setup hooks [--remove]` | Install or remove managed agent integrations |
+| `dibs extend <id> --ttl D` | Renew an unexpired lease with a live owner |
+| `dibs release <id>` or `down` | Preview cleanup; `--confirm` performs it |
+| `dibs sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
+| `dibs job [--machine NAME] [flags] -- <cmd...>` | FIFO machine-budget admission, deadline, and child exit-code passthrough |
+| `dibs machine install <name> --file <binary>` | Version-checked SSH agent installation or upgrade |
+| `dibs agent` | Internal SSH protocol with session-as-liveness |
 
 `list` and `sweep` also accept `--machine NAME` to operate on that SSH machine.
 
@@ -428,7 +460,7 @@ A broken job config leaves lease listing available with a budget-unavailable not
 diagnostics and resource tool diagnostics go to stderr. Exit codes and stream
 separation do not depend on output mode. `env` and `create --quiet` print shell
 text and an ID respectively, rather than structured success output.
-There are no prompts. Unknown berth arguments
+There are no prompts. Unknown dibs arguments
 and flags fail with code 2 and help before state or resource operations run;
 everything after a job's required `--` belongs to the child.
 
@@ -442,27 +474,27 @@ heartbeat paths and numeric PID spellings without checking owner liveness.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success, including already absent releases and empty sweeps |
-| `1` | Berth operation failed; cleanup records are retained on resource failure |
+| `1` | Dibs operation failed; cleanup records are retained on resource failure |
 | `2` | Invalid command, argument, or flag; no child was started |
-| Child's code | `berth job` when its child runs to completion |
-| `124` | `berth job` deadline killed the child (coreutils `timeout` convention) |
-| `75` | `berth job`: no slot frees within `--wait`, `EX_TEMPFAIL` |
+| Child's code | `dibs job` when its child runs to completion |
+| `124` | `dibs job` deadline killed the child (coreutils `timeout` convention) |
+| `75` | `dibs job`: no slot frees within `--wait`, `EX_TEMPFAIL` |
 | `128 + signal` | Child terminated by a signal, e.g. 143 for SIGTERM |
 | `125` | Job child started, but its wait status could not be obtained |
 | `76` | SSH transport or protocol failed; the remote result is unknown |
 
-`berth job` uses berth's own codes 1 and 2 only when no user child was started.
+`dibs job` uses dibs's own codes 1 and 2 only when no user child was started.
 Child completion passes through the child's code even when it overlaps these
-numbers, including 1, 2, 75, and 124. `berth job --help` documents this contract.
+numbers, including 1, 2, 75, and 124. `dibs job --help` documents this contract.
 After start, cleanup errors never override the child's result. Signals and
 startup failures of the gated execution helper may return 125 or 126; a helper
 execution failure is reported on stderr.
 
 ### Demo expectations
 
-On a terminal, `berth ps` starts with a `jobs:` budget summary and then an aligned
+On a terminal, `dibs ps` starts with a `jobs:` budget summary and then an aligned
 lease table, or `No leases.`. The no-args home view also names the executable and
-describes berth. A kind or k3d lease includes its kubeconfig path. Job rows show
+describes dibs. A kind or k3d lease includes its kubeconfig path. Job rows show
 cores and readable memory, and expiries read `in 1h0m0s` rather than a timestamp.
 
 For a 14-core, 32-GiB configuration with 3 cores and 8 GiB of owner room, an empty
@@ -473,17 +505,17 @@ jobs: 0 of 11 cores, 0 B of 24.0 GiB in use; 3 cores / 8.0 GiB kept free for you
 No leases.
 ```
 
-With the same config, `berth job --cores 999 -- true` exits 2 without starting a
+With the same config, `dibs job --cores 999 -- true` exits 2 without starting a
 child. Its human output is exactly two lines:
 
 ```text
 Error: requested 999 cores; usable 11 after owner room 3
-Try --cores 11 or set BERTH_CONFIG
+Try --cores 11 or set DIBS_CONFIG
 ```
 
 AXI keeps the same message under `error:`, `code: VALIDATION_ERROR`,
 `exit_code: 2`, and a short `help` array. Piped
-`berth ps` uses AXI; `berth ps --json` remains JSON. Byte-for-byte expectations
+`dibs ps` uses AXI; `dibs ps --json` remains JSON. Byte-for-byte expectations
 for list, ps, who, full lease records, truncated lists with counts, structured
 help, budget summaries, and errors are in
 [`testdata/output`](testdata/output). `go test ./...` also checks real PTY output,
@@ -493,16 +525,16 @@ a temporary HOME. To update snapshots after an intentional format change, run
 
 ## Sweep from a host timer
 
-Berth does not sweep by itself. Run `berth sweep --confirm` from cron, a systemd
-timer, launchd, or your session teardown. Set the same absolute `BERTH_STATE`
+Dibs does not sweep by itself. Run `dibs sweep --confirm` from cron, a systemd
+timer, launchd, or your session teardown. Set the same absolute `DIBS_STATE`
 and use an absolute executable path in the timer. Sweep frequency determines
 how long a dead or expired lease can retain resources. Preview first to check
 which resources will be deleted.
 
 ## State and safety
 
-`BERTH_STATE` defaults to `$XDG_STATE_HOME/berth`, or
-`~/.local/state/berth` when XDG is unset. State files and snapshots are private to
+`DIBS_STATE` defaults to `$XDG_STATE_HOME/dibs`, or
+`~/.local/state/dibs` when XDG is unset. State files and snapshots are private to
 the invoking user. State contains resolved Compose values, which may include
 secrets. Keep this directory on a local filesystem, not a network share.
 
@@ -517,18 +549,18 @@ A stable `lock` file serializes ordinary readers and writers through kernel `flo
 point-in-time evidence, not a reservation. `adopt` rechecks ownership under the
 state lock.
 Each state change writes and syncs a temporary file, renames it over `state.json`,
-and syncs the directory. Berth saves cleanup intent **before** starting a
-resource. If berth dies midway through create or delete, the next release or
+and syncs the directory. Dibs saves cleanup intent **before** starting a
+resource. If dibs dies midway through create or delete, the next release or
 eligible sweep retries the same unique resource. Kernel locks end on process
 death. Corrupt or unsupported state is an error, never an empty lease list.
 
 Each new lease records a stable machine identity: `darwin:<IOPlatformUUID>` on
 macOS or `linux:<machine-id>` on Linux, normalized to lowercase hexadecimal
 without hyphens. Hostname changes no longer change lease ownership. An unavailable
-or invalid OS identity is an error; berth never falls back to a hostname.
+or invalid OS identity is an error; dibs never falls back to a hostname.
 Cloned hosts must have distinct OS machine identities. On minimal Linux hosts
-without `/etc/machine-id`, provision a unique persistent ID before running berth
-(for example, `systemd-machine-id-setup` on systemd hosts). Berth does not generate
+without `/etc/machine-id`, provision a unique persistent ID before running dibs
+(for example, `systemd-machine-id-setup` on systemd hosts). Dibs does not generate
 or modify OS identities. Keep state on its original host, and do not copy machine
 IDs between hosts.
 
@@ -536,19 +568,21 @@ Opening existing state migrates schema version 1 to version 2 atomically under
 the state lock, including during previews and listing. Legacy lease and queue
 records with the current hostname receive the stable identity. Other legacy
 hostnames remain foreign until explicitly identified by you. Fully migrated
-version 2 state does not require a hostname lookup. Old berth binaries
-cannot read version 2 state; use the upgraded binary for every invocation.
+version 2 state does not require a hostname lookup. Older berth binaries that
+only support schema version 1 cannot read version 2 state; use a schema-compatible
+binary for every invocation. The naming migration
+does not change the schema or bypass machine-identity migration.
 
 If this machine was renamed before upgrading, first verify that the old hostname
 belongs to this machine and that you are using its original local state directory.
 Then authorize that exact legacy hostname through the invocation's environment:
 
 ```sh
-BERTH_LEGACY_MACHINE=Mac.localdomain berth sweep  # migrate and preview
-berth sweep --confirm                              # separate cleanup decision
+DIBS_LEGACY_MACHINE=Mac.localdomain dibs sweep  # migrate and preview
+dibs sweep --confirm                              # separate cleanup decision
 ```
 
-`BERTH_LEGACY_MACHINE` is an explicit same-user attestation, not automatic proof
+`DIBS_LEGACY_MACHINE` is an explicit same-user attestation, not automatic proof
 from the old ledger. Never set it from a project file or use it for another host.
 The migration persists the stable identity, so later commands need no alias.
 The alias affects only hostname records, never another host's stable identity.
@@ -557,17 +591,17 @@ Unrecognized legacy names remain unknown and cannot be reclaimed, even if expire
 A host never acts on another machine's leases, even after expiry. Expiry overrides
 unknown **owner** liveness only after machine ownership matches. Run cleanup on
 the original machine with its original state path, directly or through
-`berth sweep --machine <name> --confirm`. Human, AXI, and JSON output all use the
+`dibs sweep --machine <name> --confirm`. Human, AXI, and JSON output all use the
 same machine identity and reclamation decisions.
 
 Adapters pin the Docker context selected at creation. `DOCKER_HOST` overrides
 are rejected; select a named context instead. Keep that context's endpoint
-unchanged while leases exist. Berth never sweeps unleased resources. This slice
+unchanged while leases exist. Dibs never sweeps unleased resources. This slice
 does not reconstruct leases after state loss; keep the state directory until
 all managed resources are released. Small resource snapshots remain after
 release for diagnosis and may be removed once their leases are absent.
 
-Berth is a cooperation protocol, not a security boundary for programs with the
+Dibs is a cooperation protocol, not a security boundary for programs with the
 same Unix user. SSH session-as-liveness does not isolate untrusted code.
 Worktree transport and Kubernetes-backed machines are deferred. A resident
 scheduler is not required for these leases; revisit it only when measured queue
@@ -602,12 +636,12 @@ through the real CLI, including Compose HTTP, Ready kind/k3d nodes, FIFO jobs,
 and SSH session cleanup. To run every flow and retain proof outside the checkout:
 
 ```sh
-PROOF=$(mktemp -d "${TMPDIR:-/tmp}/berth-proof.XXXXXX")
+PROOF=$(mktemp -d "${TMPDIR:-/tmp}/dibs-proof.XXXXXX")
 .claude/skills/verify/verify.py all --evidence "$PROOF/all"
 ```
 
 The helper needs Python 3 and the real adapter/SSH tools; missing prerequisites
-fail rather than skip. CI runs these workflows and uploads `berth-verification`
+fail rather than skip. CI runs these workflows and uploads `dibs-verification`
 evidence, including failed runs, for seven days.
 
 `just check` runs formatting checks, vet, race-enabled tests, and build. Unit
@@ -649,14 +683,14 @@ version PRs and creates draft releases after merge. CI uploads all four Linux
 and macOS archives before publishing a prerelease. Stable promotion is manual.
 macOS Developer ID signing is disabled until signing credentials and identity
 are configured. Prebuilt macOS binaries are not Developer ID signed and may be
-quarantined by Gatekeeper. Prefer `go install github.com/Dematom1/berth@latest`;
+quarantined by Gatekeeper. Prefer `go install github.com/Dematom1/dibs@latest`;
 for a downloaded binary, verify its trusted release checksum before removing
-quarantine from that binary with `xattr -d com.apple.quarantine /path/to/berth`.
+quarantine from that binary with `xattr -d com.apple.quarantine /path/to/dibs`.
 Do not disable Gatekeeper globally.
 
 Build with `nix build`, or use
 `nix-build default.nix -A packages.x86_64-linux.default` without flakes.
-The flake provides `packages.<system>.berth` for `x86_64-linux`, `aarch64-linux`,
+The flake provides `packages.<system>.dibs` for `x86_64-linux`, `aarch64-linux`,
 and `aarch64-darwin` for NixOS or home-manager package lists. Its binary reports
 the version in `.release-please-manifest.json`.
 

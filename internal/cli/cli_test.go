@@ -27,8 +27,8 @@ func invoke(t *testing.T, want int, args ...string) map[string]any {
 }
 
 func TestCLILeaseLifecycle(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", t.TempDir())
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	created := invoke(t, 0, "create", "--ttl", "1h", "--resources", "2 CPUs, test lab", "--label", "task=lab")
 	record := created["record"].(map[string]any)
 	id := record["id"].(string)
@@ -42,7 +42,7 @@ func TestCLILeaseLifecycle(t *testing.T) {
 			t.Fatalf("%s missing lease: %+v", alias, list)
 		}
 		l := list["leases"].([]any)[0].(map[string]any)
-		if l["resources"] != "2 CPUs, test lab" || l["age"] == "" || l["owner"] != os.Getenv("BERTH_OWNER") {
+		if l["resources"] != "2 CPUs, test lab" || l["age"] == "" || l["owner"] != os.Getenv("DIBS_OWNER") {
 			t.Fatalf("incomplete listing: %+v", l)
 		}
 		if l["labels"].(map[string]any)["task"] != "lab" || l["resource_adapter"] != "none" || l["resource_name"] != "" {
@@ -68,11 +68,11 @@ func TestCLILeaseLifecycle(t *testing.T) {
 }
 
 func TestCLIReleaseFailureDoesNotReportReleased(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", t.TempDir())
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	created := invoke(t, 0, "create", "--ttl", "1h")
 	id := created["record"].(map[string]any)["id"].(string)
-	s, err := openStore(context.Background(), os.Getenv("BERTH_STATE"))
+	s, err := openStore(context.Background(), os.Getenv("DIBS_STATE"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +94,8 @@ func TestCLIReleaseFailureDoesNotReportReleased(t *testing.T) {
 
 func TestCLIExpiredLiveOwnerAndFailure(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("BERTH_STATE", dir)
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", dir)
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	created := invoke(t, 0, "create", "--ttl", "1ns")
 	id := created["record"].(map[string]any)["id"].(string)
 	invoke(t, 1, "extend", id, "--ttl", "1h")
@@ -117,7 +117,7 @@ func TestCLIExpiredLiveOwnerAndFailure(t *testing.T) {
 
 func TestCLIRejectsUsageBeforeStateAccess(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "must-not-exist")
-	t.Setenv("BERTH_STATE", dir)
+	t.Setenv("DIBS_STATE", dir)
 	for _, args := range [][]string{
 		{"ps", "--typo"}, {"ps", "--human"}, {"ps", "--humans"}, {"ps", "extra"}, {"create", "--ttl", "0s"},
 		{"create", "--ttl", "bad"}, {"create", "--adapter", "unknown"},
@@ -137,8 +137,8 @@ func TestCLIRejectsUsageBeforeStateAccess(t *testing.T) {
 
 func TestCLICreateFailureKeepsDurableCleanupIntent(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("BERTH_STATE", dir)
-	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	t.Setenv("DIBS_STATE", dir)
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	t.Setenv("DOCKER_HOST", "")
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nprintf 'test-context\\n'\n"), 0700); err != nil {
@@ -147,7 +147,7 @@ func TestCLICreateFailureKeepsDurableCleanupIntent(t *testing.T) {
 	kind := `#!/bin/sh
 case "$1" in
 create)
-  test -s "$BERTH_STATE/state.json" && touch "$BERTH_STATE/saw-intent"
+  test -s "$DIBS_STATE/state.json" && touch "$DIBS_STATE/saw-intent"
   printf 'dependency-output-must-not-leak'
   exit 1
   ;;
@@ -178,7 +178,7 @@ esac
 
 func TestCLIOwnerFilterUsesCanonicalIdentity(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("BERTH_STATE", filepath.Join(dir, "state"))
+	t.Setenv("DIBS_STATE", filepath.Join(dir, "state"))
 	pid := strconv.Itoa(os.Getpid())
 	invoke(t, 0, "create", "--owner", "pid:"+pid)
 	if invoke(t, 0, "who", "--owner", "pid:0"+pid)["count"] != float64(1) {
@@ -209,8 +209,8 @@ func TestCLITextListKeepsLabels(t *testing.T) {
 		{"populated", "task=lab", "labels:\n      task: lab"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("BERTH_STATE", t.TempDir())
-			t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+			t.Setenv("DIBS_STATE", t.TempDir())
+			t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 			args := []string{"create"}
 			if tc.label != "" {
 				args = append(args, "--label", tc.label)
@@ -233,7 +233,7 @@ func TestCLITextListKeepsLabels(t *testing.T) {
 }
 
 func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("DIBS_STATE", t.TempDir())
 	var out bytes.Buffer
 	if code := run(context.Background(), nil, &out); code != 0 || !strings.Contains(out.String(), "bin:") || !strings.Contains(out.String(), "leases: []") || !strings.Contains(out.String(), "total: 0") {
 		t.Fatalf("home view: %d, %s", code, out.String())

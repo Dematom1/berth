@@ -12,10 +12,10 @@ import (
 	"sort"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 const version = "restructure-test"

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 func TestManagerListingAccountsForHiddenLocalReservations(t *testing.T) {

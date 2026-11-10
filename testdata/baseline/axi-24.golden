@@ -3,4 +3,4 @@ stdout:
 code: VALIDATION_ERROR
 error: requested 1072668082176 bytes memory; usable 25769803776 after owner room 8GiB
 exit_code: 2
-help[1]: Try --memory 25769803776 or set BERTH_CONFIG
+help[1]: Try --memory 25769803776 or set DIBS_CONFIG

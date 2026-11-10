@@ -11,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	composepkg "github.com/Dematom1/berth/internal/adapter/compose"
-	k3dpkg "github.com/Dematom1/berth/internal/adapter/k3d"
-	kindpkg "github.com/Dematom1/berth/internal/adapter/kind"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	composepkg "github.com/Dematom1/dibs/internal/adapter/compose"
+	k3dpkg "github.com/Dematom1/dibs/internal/adapter/k3d"
+	kindpkg "github.com/Dematom1/dibs/internal/adapter/kind"
 )
 
 func TestAdapterCommandsAndSurvivors(t *testing.T) {
 	l := testLease(t)
-	l.Ref = adapterpkg.ResourceRef{Adapter: "kind", Name: "berth-" + l.Metadata.LeaseID, Context: "test-context", File: "/private/kubeconfig"}
+	l.Ref = adapterpkg.ResourceRef{Adapter: "kind", Name: "dibs-" + l.Metadata.LeaseID, Context: "test-context", File: "/private/kubeconfig"}
 	type invocation struct {
 		name string
 		args []string
@@ -126,7 +126,7 @@ func TestK3dKeepsCallerKubeconfig(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	l := testLease(t)
-	l.Ref = adapterpkg.ResourceRef{Adapter: "k3d", Name: "berth-test", File: filepath.Join(dir, "private-kubeconfig"), DockerHost: "unix:///docker.sock"}
+	l.Ref = adapterpkg.ResourceRef{Adapter: "k3d", Name: "dibs-test", File: filepath.Join(dir, "private-kubeconfig"), DockerHost: "unix:///docker.sock"}
 	a := k3dAdapter{adapterpkg.RunCommand}
 	if err := a.Create(context.Background(), l); err != nil {
 		t.Fatal(err)
@@ -154,8 +154,8 @@ func TestComposeSnapshotAndUnsafeNames(t *testing.T) {
 			}
 			config := map[string]any{
 				"services": map[string]any{"db": map[string]any{"image": "postgres", "labels": map[string]any{"custom": "keep"}}},
-				"volumes":  map[string]any{"data": map[string]any{"name": "berth-" + l.Metadata.LeaseID + "_data"}},
-				"networks": map[string]any{"default": map[string]any{"name": "berth-" + l.Metadata.LeaseID + "_default"}},
+				"volumes":  map[string]any{"data": map[string]any{"name": "dibs-" + l.Metadata.LeaseID + "_data"}},
+				"networks": map[string]any{"default": map[string]any{"name": "dibs-" + l.Metadata.LeaseID + "_default"}},
 			}
 			switch unsafe {
 			case "volume":
@@ -191,7 +191,7 @@ func TestComposeSnapshotAndUnsafeNames(t *testing.T) {
 		}
 		db := config["services"].(map[string]any)["db"].(map[string]any)
 		labels := db["labels"].(map[string]any)
-		if labels["io.berth.lease"] != l.Metadata.LeaseID || labels["custom"] != "keep" || labels["io.berth.owner"] != l.Metadata.Owner {
+		if labels["io.dibs.lease"] != l.Metadata.LeaseID || labels["custom"] != "keep" || labels["io.dibs.owner"] != l.Metadata.Owner {
 			t.Fatalf("snapshot lost attribution: %+v", labels)
 		}
 	}

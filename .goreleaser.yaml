@@ -1,7 +1,9 @@
 version: 2
+project_name: dibs
 
 builds:
   - main: .
+    binary: dibs
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
@@ -19,4 +21,4 @@ checksum:
 release:
   github:
     owner: Dematom1
-    name: berth
+    name: dibs

@@ -67,7 +67,7 @@ func TestOpenMigratedStoreWithoutHostname(t *testing.T) {
 }
 
 func TestMachineMigrationCurrentHostnameAndQueue(t *testing.T) {
-	t.Setenv("BERTH_LEGACY_MACHINE", "")
+	t.Setenv("DIBS_LEGACY_MACHINE", "")
 	dir := t.TempDir()
 	l := testLease(t)
 	stable := l.Machine

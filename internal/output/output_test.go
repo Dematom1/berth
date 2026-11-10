@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 func TestOutputSelection(t *testing.T) {
@@ -20,13 +20,13 @@ func TestOutputSelection(t *testing.T) {
 		{"", Auto, AXI}, {"1", Auto, AXI},
 		{"0", Auto, AXI}, {"1", JSON, JSON}, {"1", AXI, AXI},
 	} {
-		t.Setenv("BERTH_AXI", tc.env)
+		t.Setenv("DIBS_AXI", tc.env)
 		if got := tc.mode.Effective(&bytes.Buffer{}); got != tc.want {
 			t.Fatalf("mode %q env %q: %q", tc.mode, tc.env, got)
 		}
 	}
 	// The same resolved mode is carried over SSH rather than redetected on its pipe.
-	t.Setenv("BERTH_AXI", "1")
+	t.Setenv("DIBS_AXI", "1")
 	if got := Auto.Effective(&Writer{Writer: &bytes.Buffer{}, Mode: Human}); got != Human {
 		t.Fatal(got)
 	}
@@ -34,7 +34,7 @@ func TestOutputSelection(t *testing.T) {
 
 func TestLeaseOutputSnapshots(t *testing.T) {
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
-	l := leasepkg.Lease{ID: strings.Repeat("a", 32), Machine: "lab", Owner: ownerpkg.Reference{Kind: "pid", ID: "123"}, Created: now.Add(-5 * time.Minute), Expires: now.Add(time.Hour), TTL: time.Hour, Description: "test, lab", Labels: map[string]string{"task": "lab"}, ResourceRef: adapterpkg.ResourceRef{Adapter: "kind", Name: "berth-lab", File: "/tmp/lab's kubeconfig"}}
+	l := leasepkg.Lease{ID: strings.Repeat("a", 32), Machine: "lab", Owner: ownerpkg.Reference{Kind: "pid", ID: "123"}, Created: now.Add(-5 * time.Minute), Expires: now.Add(time.Hour), TTL: time.Hour, Description: "test, lab", Labels: map[string]string{"task": "lab"}, ResourceRef: adapterpkg.ResourceRef{Adapter: "kind", Name: "dibs-lab", File: "/tmp/lab's kubeconfig"}}
 	value := map[string]any{"count": 1, "leases": []map[string]any{LeaseView(l, ownerpkg.Alive, now, "/tmp/lab's kubeconfig")}, "records": []map[string]any{LeaseRecord(l, "/tmp/lab's kubeconfig")}}
 	for _, mode := range []Mode{AXI, JSON} {
 		var out bytes.Buffer
@@ -57,7 +57,7 @@ func TestAXIPresentationDoesNotMutate(t *testing.T) {
 	longText := strings.Repeat("界", 501)
 	// Presentation must not mutate the canonical view, including labels.
 	data := map[string]any{"lease": map[string]any{"resources": longText, "labels": map[string]string{"long": longText}}}
-	compact := axiView(data, "berth ps --full")
+	compact := axiView(data, "dibs ps --full")
 	if compact["lease"].(map[string]any)["resources"] == longText || data["lease"].(map[string]any)["resources"] != longText || data["lease"].(map[string]any)["labels"].(map[string]string)["long"] != longText {
 		t.Fatal("presentation mutated data or failed to truncate")
 	}

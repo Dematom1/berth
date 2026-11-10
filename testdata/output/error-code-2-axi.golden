@@ -1,4 +1,4 @@
 code: VALIDATION_ERROR
 error: operation failed
 exit_code: 2
-help[1]: Run berth ps
+help[1]: Run dibs ps

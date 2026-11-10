@@ -11,7 +11,7 @@ A user creates an owner-and-expiry claim, inspects it, renews it, and previews c
 
 ## How to get to it (user POV)
 
-Run `berth`, `berth --help`, `berth create` (alias `up`), `berth list` (aliases `ls`, `ps`, `who`), `berth extend <id> --ttl 30m`, `berth release <id>` (alias `down`), or `berth sweep`.
+Run `dibs`, `dibs --help`, `dibs create` (alias `up`), `dibs list` (aliases `ls`, `ps`, `who`), `dibs extend <id> --ttl 30m`, `dibs release <id>` (alias `down`), or `dibs sweep`.
 
 ## Driving it with verify.py
 

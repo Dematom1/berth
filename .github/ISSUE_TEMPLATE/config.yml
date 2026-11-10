@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Contribution guide
-    url: https://github.com/Dematom1/berth/blob/main/CONTRIBUTING.md
+    url: https://github.com/Dematom1/dibs/blob/main/CONTRIBUTING.md
     about: Read the issue-before-PR, ready-for-pr, no-mistakes, and review requirements before opening a pull request.
   - name: Report a vulnerability privately
-    url: https://github.com/Dematom1/berth/security/advisories/new
+    url: https://github.com/Dematom1/dibs/security/advisories/new
     about: Do not disclose security problems in public issues. See SECURITY.md for reporting details.

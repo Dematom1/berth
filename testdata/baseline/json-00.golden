@@ -1,3 +1,3 @@
 exit: 0
 stdout:
-{"budget":{"room_cores":3,"room_memory_bytes":8589934592,"summary":"jobs: 0 of 11 cores, 0 B of 24.0 GiB in use; 3 cores / 8.0 GiB kept free for you","usable_cores":11,"usable_memory_bytes":25769803776,"used_cores":0,"used_memory_bytes":0},"count":0,"help":["Run berth create --help to lease a resource","Run berth sweep to preview reclamation"],"leases":[],"records":[]}
+{"budget":{"room_cores":3,"room_memory_bytes":8589934592,"summary":"jobs: 0 of 11 cores, 0 B of 24.0 GiB in use; 3 cores / 8.0 GiB kept free for you","usable_cores":11,"usable_memory_bytes":25769803776,"used_cores":0,"used_memory_bytes":0},"count":0,"help":["Run dibs create --help to lease a resource","Run dibs sweep to preview reclamation"],"leases":[],"records":[]}

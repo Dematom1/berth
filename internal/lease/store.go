@@ -13,8 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	atomicfilepkg "github.com/Dematom1/berth/internal/atomicfile"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	atomicfilepkg "github.com/Dematom1/dibs/internal/atomicfile"
+	"github.com/Dematom1/dibs/internal/compat"
 )
 
 var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -28,8 +29,10 @@ type store struct {
 	resources adapterpkg.Registry
 }
 
-func stateDir() (string, error) {
-	if dir := os.Getenv("BERTH_STATE"); dir != "" {
+func stateDir() (string, error) { return resolveStateDir(true) }
+
+func resolveStateDir(publish bool) (string, error) {
+	if dir := compat.Env("STATE"); dir != "" {
 		return filepath.Abs(dir)
 	}
 	base := os.Getenv("XDG_STATE_HOME")
@@ -40,7 +43,55 @@ func stateDir() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Abs(filepath.Join(base, "berth"))
+	return migrateStateDir(base, publish)
+}
+
+var syncStateParent = func(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+// Keep the ledger, lock inode and absolute snapshot paths in place, including
+// while an old berth process holds the lock. Inventory never publishes aliases.
+func migrateStateDir(base string, publish bool) (string, error) {
+	base, err := filepath.Abs(base)
+	if err != nil {
+		return "", err
+	}
+	preferred, legacy := filepath.Join(base, "dibs"), filepath.Join(base, "berth")
+	oldReal, err := filepath.EvalSymlinks(legacy)
+	if errors.Is(err, os.ErrNotExist) {
+		return preferred, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	newReal, err := filepath.EvalSymlinks(preferred)
+	if errors.Is(err, os.ErrNotExist) {
+		if !publish {
+			return legacy, nil
+		}
+		if err := os.Symlink(legacy, preferred); err != nil && !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+		newReal, err = filepath.EvalSymlinks(preferred)
+	}
+	if err != nil {
+		return "", err
+	}
+	if newReal != oldReal {
+		return "", errors.New("both dibs and berth state directories exist; keep both and select the ledger explicitly with DIBS_STATE")
+	}
+	if publish {
+		if err := syncStateParent(base); err != nil {
+			return "", err
+		}
+	}
+	return legacy, nil
 }
 
 func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {

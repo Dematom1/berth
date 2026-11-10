@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 type Options struct {
@@ -98,7 +98,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, error) {
 	}
 	defer s.Close()
 	if m.checkOwner(r.Owner, now) != ownerpkg.Alive {
-		return Lease{}, errors.New("owner became stale or unavailable while waiting; refresh the owner and retry berth create")
+		return Lease{}, errors.New("owner became stale or unavailable while waiting; refresh the owner and retry dibs create")
 	}
 	l, err := newLease(r.Owner, r.TTL, r.Description, r.Labels, now)
 	if err != nil {
@@ -172,7 +172,7 @@ func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lea
 	defer s.Close()
 	l, ok := s.Leases[id]
 	if !ok {
-		return Lease{}, errors.New("lease does not exist; use berth create for a new lease")
+		return Lease{}, errors.New("lease does not exist; use dibs create for a new lease")
 	}
 	if err := extendLease(&l, host, ttl, now, m.checkOwner); err != nil {
 		return Lease{}, err

@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"runtime"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +23,8 @@ func TestCLISweepAfterHostnameChange(t *testing.T) {
 	for _, mode := range []outputpkg.Mode{outputpkg.Human, outputpkg.AXI, outputpkg.JSON} {
 		t.Run(string(mode), func(t *testing.T) {
 			dir := t.TempDir()
-			t.Setenv("BERTH_STATE", dir)
-			t.Setenv("BERTH_LEGACY_MACHINE", "")
+			t.Setenv("DIBS_STATE", dir)
+			t.Setenv("DIBS_LEGACY_MACHINE", "")
 			now := time.Now().UTC()
 			old := "old-hostname.localdomain"
 			expired := leasepkg.Lease{ID: strings.Repeat("a", 32), Machine: old, Owner: ownerpkg.Reference{Kind: "pid", ID: "4299161601", Identity: "unknown"}, Created: now.Add(-18 * time.Hour), Expires: now.Add(-16 * time.Hour), TTL: 2 * time.Hour, ResourceRef: adapterpkg.ResourceRef{Adapter: "none"}}
@@ -73,7 +73,7 @@ func TestCLISweepAfterHostnameChange(t *testing.T) {
 				t.Fatal("unverified legacy machine was reclaimed")
 			}
 			// Explicit user attestation authorizes only this exact old hostname.
-			t.Setenv("BERTH_LEGACY_MACHINE", old)
+			t.Setenv("DIBS_LEGACY_MACHINE", old)
 			preview := call(false)
 			state := read()
 			host := state.Leases[expired.ID].Machine
@@ -84,7 +84,7 @@ func TestCLISweepAfterHostnameChange(t *testing.T) {
 				t.Fatalf("preview missing eligible lease: %s", preview)
 			}
 			// The alias is no longer needed, even with owner liveness still unknown.
-			t.Setenv("BERTH_LEGACY_MACHINE", "")
+			t.Setenv("DIBS_LEGACY_MACHINE", "")
 			confirmed := call(true)
 			state = read()
 			if _, ok := state.Leases[expired.ID]; ok {
@@ -100,7 +100,7 @@ func TestCLISweepAfterHostnameChange(t *testing.T) {
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv("BERTH_LEGACY_MACHINE", foreign.Machine)
+			t.Setenv("DIBS_LEGACY_MACHINE", foreign.Machine)
 			call(true)
 			if read().Leases[foreign.ID].Machine != foreign.Machine {
 				t.Fatal("foreign stable identity was rebound")

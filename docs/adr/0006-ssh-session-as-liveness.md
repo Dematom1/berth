@@ -4,7 +4,7 @@ status: accepted
 
 # SSH session lifetime supplies owner liveness
 
-A remote job belongs to the remote berth agent's `session:<holder-pid>` identity, not to a client PID that the remote cannot verify. One agent runs per SSH session without a resident daemon. The remote machine owns its ledger, budget, classes, deadlines, and cleanup, so a client does not impose its local defaults or act on foreign-machine records.
+A remote job belongs to the remote dibs agent's `session:<holder-pid>` identity, not to a client PID that the remote cannot verify. One agent runs per SSH session without a resident daemon. The remote machine owns its ledger, budget, classes, deadlines, and cleanup, so a client does not impose its local defaults or act on foreign-machine records.
 
 SSH stdin is reserved for session liveness, and remote child stdin is `/dev/null`. EOF or session cancellation cancels a queued or running job and attempts cleanup under the existing process rules. Idle local stdin does not end the session. Lost-network detection on the server depends on sshd's keepalive policy, not only client keepalives. Remote deadlines and a host sweep timer remain necessary for agent crashes and failed cleanup.
 
@@ -12,4 +12,4 @@ The same binary implements a private, version-checked framed protocol that separ
 
 This design provides liveness and cleanup coordination, not isolation for untrusted code. Worktree transfer and Kubernetes-backed machines remain deferred.
 
-Evidence: [SSH transport](../../internal/remote/ssh.go), [session agent](../../internal/remote/agent.go), [session owners](../../internal/owner/reference.go), [remote-placement change](https://github.com/Dematom1/berth/pull/3), and [SSH operations and limitations](../../README.md#run-jobs-over-ssh).
+Evidence: [SSH transport](../../internal/remote/ssh.go), [session agent](../../internal/remote/agent.go), [session owners](../../internal/owner/reference.go), [remote-placement change](https://github.com/Dematom1/dibs/pull/3), and [SSH operations and limitations](../../README.md#run-jobs-over-ssh).
