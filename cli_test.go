@@ -205,8 +205,8 @@ func TestCLITextListKeepsLabels(t *testing.T) {
 	for _, tc := range []struct {
 		name, label, cell string
 	}{
-		{"empty", "", `,"{}",`},
-		{"populated", "task=lab", `,"{\"task\":\"lab\"}",`},
+		{"empty", "", "labels:\n"},
+		{"populated", "task=lab", "labels:\n      task: lab"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("BERTH_STATE", t.TempDir())
@@ -217,7 +217,7 @@ func TestCLITextListKeepsLabels(t *testing.T) {
 			}
 			invoke(t, 0, args...)
 			var out bytes.Buffer
-			if code := run(context.Background(), []string{"ps"}, &out); code != 0 {
+			if code := run(context.Background(), []string{"ps", "--full"}, &out); code != 0 {
 				t.Fatalf("ps failed: %d, %s", code, out.String())
 			}
 			if !strings.Contains(out.String(), tc.cell) || strings.Contains(out.String(), ",null,") {
@@ -235,7 +235,7 @@ func TestCLITextListKeepsLabels(t *testing.T) {
 func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
 	t.Setenv("BERTH_STATE", t.TempDir())
 	var out bytes.Buffer
-	if code := run(context.Background(), nil, &out); code != 0 || !strings.Contains(out.String(), "bin:") || !strings.Contains(out.String(), "leases: []") || !strings.Contains(out.String(), "count: 0") {
+	if code := run(context.Background(), nil, &out); code != 0 || !strings.Contains(out.String(), "bin:") || !strings.Contains(out.String(), "leases: []") || !strings.Contains(out.String(), "total: 0") {
 		t.Fatalf("home view: %d, %s", code, out.String())
 	}
 	for _, flag := range []string{"--version", "-v", "-V"} {
@@ -257,7 +257,7 @@ func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
 		}
 	}
 	var rendered bytes.Buffer
-	emit(&rendered, axiOutput, map[string]any{"leases": []map[string]any{{"id": "abc", "resources": "lab, \"db\"\nnext"}}})
+	toonObject(&rendered, map[string]any{"leases": []map[string]any{{"id": "abc", "resources": "lab, \"db\"\nnext"}}}, "")
 	if rendered.String() != "leases[1]{id,resources}:\n  abc,\"lab, \\\"db\\\"\\nnext\"\n" {
 		t.Fatalf("TOON string escaping changed: %q", rendered.String())
 	}

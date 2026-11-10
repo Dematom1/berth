@@ -27,7 +27,10 @@ const (
 
 type modeWriter struct {
 	io.Writer
-	mode outputMode
+	mode        outputMode
+	full        bool
+	fullCommand string
+	machine     string
 }
 
 func (mode outputMode) effective(w io.Writer) outputMode {
@@ -83,7 +86,14 @@ func emitError(w io.Writer, mode outputMode, code int, message, hint string) int
 		fmt.Fprintln(w, "Error:", humanText(message))
 		fmt.Fprintln(w, humanText(hint))
 	} else {
-		emit(w, mode, map[string]any{"error": message, "help": []string{hint}})
+		kind := "COMMAND_FAILED"
+		if code == 2 {
+			kind = "VALIDATION_ERROR"
+		}
+		if code == 75 {
+			kind = "NO_CAPACITY"
+		}
+		emit(w, mode, map[string]any{"code": kind, "exit_code": code, "error": message, "help": []string{hint}})
 	}
 	return code
 }
@@ -93,10 +103,120 @@ func emit(w io.Writer, mode outputMode, value map[string]any) {
 	case jsonOutput:
 		json.NewEncoder(w).Encode(value)
 	case humanOutput:
+		if message, ok := value["error"].(string); ok {
+			hint := "Run berth ps to inspect retained leases"
+			if hints, ok := value["help"].([]string); ok && len(hints) > 0 {
+				hint = hints[0]
+			}
+			emitError(w, humanOutput, 1, message, hint)
+			return
+		}
 		humanObject(w, value, time.Now())
 	default:
+		writer, _ := w.(*modeWriter)
+		if writer == nil || !writer.full {
+			command := "berth --axi ps --full"
+			if writer != nil && writer.fullCommand != "" {
+				command = writer.fullCommand
+			}
+			value = axiView(value, command)
+		}
 		toonObject(w, value, "")
 	}
+}
+
+func emitHelp(w io.Writer, mode outputMode, command string) {
+	body := help(command)
+	if mode.effective(w) == humanOutput {
+		fmt.Fprint(w, body)
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(body), "\n")
+	emit(w, mode, map[string]any{"usage": lines[0], "reference": lines[1:]})
+}
+
+func writerMachine(w io.Writer) string {
+	if writer, ok := w.(*modeWriter); ok {
+		if writer.machine != "" {
+			return writer.machine
+		}
+		return writerMachine(writer.Writer)
+	}
+	return ""
+}
+
+const axiListLimit = 100
+const axiTextLimit = 500
+
+// Keep canonical JSON untouched. AXI --full bypasses this bounded presentation.
+func axiView(value map[string]any, fullCommand string) map[string]any {
+	view := make(map[string]any, len(value))
+	truncated, detailed := false, false
+	preview := func(text string) string {
+		runes := []rune(text)
+		if len(runes) <= axiTextLimit {
+			return text
+		}
+		truncated = true
+		return string(runes[:axiTextLimit]) + fmt.Sprintf("… (truncated, %d chars total)", len(runes))
+	}
+	for key, item := range value {
+		switch key {
+		case "record", "records":
+			continue
+		case "count":
+			view["total"] = item
+		case "leases":
+			rows := item.([]map[string]any)
+			total := len(rows)
+			shown := make([]map[string]any, 0, min(total, axiListLimit))
+			for _, row := range rows[:min(total, axiListLimit)] {
+				compact := map[string]any{}
+				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
+					compact[field] = row[field]
+				}
+				if text, ok := compact["resources"].(string); ok {
+					compact["resources"] = preview(text)
+				}
+				shown = append(shown, compact)
+			}
+			view[key] = shown
+			detailed = total > 0
+			if total > len(shown) {
+				view["shown"] = len(shown)
+				view["total"] = total
+				truncated = true
+			}
+		case "lease":
+			row := item.(map[string]any)
+			copy := make(map[string]any, len(row))
+			for field, cell := range row {
+				copy[field] = cell
+			}
+			if text, ok := copy["resources"].(string); ok {
+				copy["resources"] = preview(text)
+			}
+			if labels, ok := copy["labels"].(map[string]string); ok {
+				shown := map[string]string{}
+				for label, text := range labels {
+					shown[label] = preview(text)
+				}
+				copy["labels"] = shown
+			}
+			view[key], detailed = copy, true
+		default:
+			view[key] = item
+		}
+	}
+	if truncated || detailed {
+		hints, _ := view["help"].([]string)
+		hints = append(append([]string{}, hints...), "Run "+fullCommand+" for all fields, complete text and all matching leases")
+		if total, ok := view["total"].(int); ok {
+			hints[len(hints)-1] = fmt.Sprintf("Run %s for all %d matching leases and complete records", fullCommand, total)
+		}
+		view["help"] = hints
+	}
+	return view
 }
 
 func humanText(s string) string {
@@ -135,7 +255,7 @@ func humanValue(key string, value any, now time.Time) string {
 func humanObject(w io.Writer, value map[string]any, now time.Time) {
 	for _, key := range keys(value) {
 		switch key {
-		case "records", "record", "count", "memory_bytes", "help":
+		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code":
 			continue
 		case "budget":
 			fmt.Fprintln(w, value[key].(map[string]any)["summary"])
@@ -238,7 +358,8 @@ func toonObject(w io.Writer, object map[string]any, indent string) {
 			nested := false
 			for _, row := range v {
 				for _, cell := range row {
-					if _, ok := cell.(map[string]any); ok {
+					switch cell.(type) {
+					case map[string]any, map[string]string:
 						nested = true
 					}
 				}
@@ -276,6 +397,10 @@ func toonObject(w io.Writer, object map[string]any, indent string) {
 			}
 			fmt.Fprintf(w, "%s%s[%d]: %s\n", indent, quotedKey, len(v), strings.Join(cells, ","))
 		case map[string]string:
+			if v == nil {
+				fmt.Fprintf(w, "%s%s: null\n", indent, quotedKey)
+				continue
+			}
 			fields := map[string]any{}
 			for k, s := range v {
 				fields[k] = s
@@ -310,12 +435,6 @@ func toonScalar(value any) string {
 		return v.String()
 	case int64:
 		return strconv.FormatInt(v, 10)
-	case map[string]string:
-		if len(v) == 0 {
-			return `"{}"`
-		}
-		encoded, _ := json.Marshal(v)
-		return toonString(string(encoded))
 	default:
 		return "null"
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,6 +112,9 @@ func TestLeaseOutputSnapshots(t *testing.T) {
 		emit(&out, mode, value)
 		snapshot(t, "lease-"+string(mode), out.String())
 	}
+	var full bytes.Buffer
+	emit(&modeWriter{Writer: &full, mode: axiOutput, full: true}, axiOutput, value)
+	snapshot(t, "lease-full-axi", full.String())
 	for name, data := range map[string]map[string]any{"list": value, "create": {"lease": leaseView(l, Alive, now), "record": leaseRecord(l)}} {
 		var out bytes.Buffer
 		humanObject(&out, data, now)
@@ -118,6 +122,82 @@ func TestLeaseOutputSnapshots(t *testing.T) {
 		if strings.Contains(out.String(), "1073741824B") || !strings.Contains(out.String(), "lab's kubeconfig") || !strings.Contains(out.String(), "in 1h0m0s") {
 			t.Fatal(out.String())
 		}
+	}
+}
+
+func TestAXIHelpAndErrors(t *testing.T) {
+	for _, command := range []string{"", "create", "list", "extend", "release", "sweep", "job", "machine", "setup", "env"} {
+		var out bytes.Buffer
+		emitHelp(&out, axiOutput, command)
+		name := command
+		if name == "" {
+			name = "home"
+		}
+		snapshot(t, "help-"+name+"-axi", out.String())
+		if !strings.Contains(out.String(), "usage:") || !strings.Contains(out.String(), "reference[") {
+			t.Fatal(out.String())
+		}
+	}
+	for _, code := range []int{1, 2, 75} {
+		var out bytes.Buffer
+		if emitError(&out, axiOutput, code, "operation failed", "Run berth ps") != code {
+			t.Fatal("exit changed")
+		}
+		snapshot(t, "error-code-"+strconv.Itoa(code)+"-axi", out.String())
+	}
+}
+
+func TestAXIBoundedListsAndFull(t *testing.T) {
+	t.Setenv("BERTH_STATE", t.TempDir())
+	fixedBudget(t)
+	s, err := openStore(context.Background(), os.Getenv("BERTH_STATE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	host, _ := machine()
+	fixtureMachine := "fixture-" + host
+	owner := Owner{Kind: "heartbeat", ID: "/missing-berth-test-owner"}
+	longText := strings.Repeat("界", 501)
+	for i := 0; i < 101; i++ {
+		id := fmt.Sprintf("%032x", i)
+		l := Lease{ID: id, Machine: fixtureMachine, Owner: owner, Created: now, Expires: now.Add(time.Hour), TTL: time.Hour, Resources: "lab", Resource: Resource{Adapter: "none"}}
+		if i == 0 {
+			l.Resources = longText
+		}
+		s.Leases[id] = l
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	var out bytes.Buffer
+	writer := &modeWriter{Writer: &out, mode: axiOutput, machine: "remote ' lab"}
+	if code := run(context.Background(), []string{"ps", "--owner", owner.String()}, writer); code != 0 {
+		t.Fatal(code, out.String())
+	}
+	snapshot(t, "list-truncated-axi", strings.ReplaceAll(out.String(), fixtureMachine, "<machine>"))
+	for _, text := range []string{"leases[100]", "total: 101", "shown: 100", "501 chars total", "--machine", "--owner", "all 101 matching leases"} {
+		if !strings.Contains(out.String(), text) {
+			t.Fatalf("missing %q: %s", text, &out)
+		}
+	}
+	if strings.Contains(out.String(), longText) {
+		t.Fatal("unbounded default text")
+	}
+	out.Reset()
+	if code := run(context.Background(), []string{"--axi", "ps", "--full"}, &out); code != 0 || !strings.Contains(out.String(), "leases[101]") || !strings.Contains(out.String(), "records[101]") || !strings.Contains(out.String(), longText) {
+		t.Fatal(code, out.String())
+	}
+	jsonView := invoke(t, 0, "ps")
+	if jsonView["count"] != float64(101) || len(jsonView["records"].([]any)) != 101 || jsonView["leases"].([]any)[0].(map[string]any)["resources"] != longText {
+		t.Fatal("JSON was truncated")
+	}
+	// Presentation must not mutate the canonical view, including labels.
+	data := map[string]any{"lease": map[string]any{"resources": longText, "labels": map[string]string{"long": longText}}}
+	compact := axiView(data, "berth ps --full")
+	if compact["lease"].(map[string]any)["resources"] == longText || data["lease"].(map[string]any)["resources"] != longText || data["lease"].(map[string]any)["labels"].(map[string]string)["long"] != longText {
+		t.Fatal("presentation mutated data or failed to truncate")
 	}
 }
 

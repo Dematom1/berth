@@ -1,0 +1,4 @@
+code: COMMAND_FAILED
+error: operation failed
+exit_code: 1
+help[1]: Run berth ps
