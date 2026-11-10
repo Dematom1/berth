@@ -100,7 +100,7 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 		job     any
 		command string
 	}{
-		{check, "just lint"}, {check, "just deps-check"}, {check, "just vulncheck"},
+		{check, "just lint"}, {check, "just cross"}, {check, "just deps-check"}, {check, "just vulncheck"},
 		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"}, {integration, "just ssh-integration"},
 	} {
 		require(t, hasRun(pair.job, pair.command), "missing CI command: "+pair.command)
