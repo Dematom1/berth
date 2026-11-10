@@ -211,7 +211,7 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	cmd := exec.Command(bin, append([]string{"__job_exec"}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.ExtraFiles = []*os.File{gate}
-	cmd.Env = append(os.Environ(), "DIBS_LEASE="+l.ID)
+	cmd.Env = append(os.Environ(), "DIBS_LEASE="+l.ID, legacyEnvPrefix+"LEASE="+l.ID)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, out, os.Stderr
 	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
@@ -450,7 +450,7 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 	}
 	l.Resource.Adapter = "process"
 	l.Job = &JobResource{Budget: request, Class: *class}
-	dir, err := stateDir()
+	dir, err := stateDir(ctx)
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Set DIBS_STATE to a private writable directory")
 	}

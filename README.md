@@ -21,6 +21,30 @@ From a checkout, `make install` installs to Go's binary directory. `make build`
 writes `bin/dibs`. Resource adapters also require `kind`, `k3d`, `docker`,
 and Docker Compose, plus a running Docker engine.
 
+### Upgrading from berth
+
+dibs was called berth. Install dibs and use it in place of `berth`; existing
+leases stay reclaimable:
+
+- On first use, dibs moves `$XDG_STATE_HOME/berth` (default
+  `~/.local/state/berth`) to `.../dibs` while holding the berth store lock, and
+  prints the move on stderr. A file at the old path then names the new location,
+  so an older berth binary fails instead of starting a second ledger. If both
+  directories already exist, dibs leaves the berth one untouched and warns that
+  it does not manage leases recorded only there.
+- Leases created by berth keep their `berth-<id>` resource names and
+  `io.berth.*` Compose labels; `release` and `sweep` reclaim them like any other
+  lease.
+- `BERTH_OWNER`, `BERTH_STATE`, `BERTH_CONFIG`, and `BERTH_AXI` still work when
+  the matching `DIBS_*` variable is unset, with a deprecation warning on stderr.
+  A set `DIBS_*` variable, even an empty one, always wins. Jobs export both
+  `DIBS_LEASE` and `BERTH_LEASE`. The `BERTH_*` names stop working in the next
+  minor release.
+- Without a dibs config file, dibs reads `~/.config/berth/config.json` (or
+  `$XDG_CONFIG_HOME/berth/config.json`) and warns you to move it.
+- Install the dibs binary on SSH machines with `dibs machine install`; the agent
+  version must match.
+
 ## Output for people, agents, and scripts
 
 On a terminal, dibs prints aligned tables, relative expiry times, and readable

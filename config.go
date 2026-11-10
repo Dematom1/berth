@@ -121,11 +121,12 @@ func loadJobConfig() (JobConfig, error) {
 		return JobConfig{}, err
 	}
 	c := defaultJobConfig(runtime.NumCPU(), memory)
-	path := os.Getenv("DIBS_CONFIG")
+	path := getenv("CONFIG")
 	explicit := path != ""
+	var base string
 	if !explicit {
 		// Use XDG on both macOS and Linux for a consistent CLI config location.
-		base := os.Getenv("XDG_CONFIG_HOME")
+		base = os.Getenv("XDG_CONFIG_HOME")
 		if base == "" {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -137,7 +138,10 @@ func loadJobConfig() (JobConfig, error) {
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) && !explicit {
-		return c, nil
+		data, err = readLegacyConfig(base, path)
+		if errors.Is(err, os.ErrNotExist) {
+			return c, nil
+		}
 	}
 	if err != nil {
 		return c, err

@@ -24,8 +24,8 @@ type Store struct {
 	lock    *os.File
 }
 
-func stateDir() (string, error) {
-	if dir := os.Getenv("DIBS_STATE"); dir != "" {
+func stateDir(ctx context.Context) (string, error) {
+	if dir := getenv("STATE"); dir != "" {
 		return filepath.Abs(dir)
 	}
 	base := os.Getenv("XDG_STATE_HOME")
@@ -36,7 +36,14 @@ func stateDir() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Abs(filepath.Join(base, "dibs"))
+	base, err := filepath.Abs(base)
+	if err != nil {
+		return "", err
+	}
+	if err := migrateLegacyState(ctx, base); err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "dibs"), nil
 }
 
 func openStore(ctx context.Context, dir string) (*Store, error) {
@@ -85,6 +92,10 @@ func openStore(ctx context.Context, dir string) (*Store, error) {
 		err = json.Unmarshal(data, s)
 	}
 	if err == nil {
+		for id, l := range s.Leases {
+			l.Resource.File = legacyResourceFile(dir, l.Resource.File)
+			s.Leases[id] = l
+		}
 		err = s.validate()
 	}
 	if err != nil {
@@ -125,11 +136,12 @@ func (s *Store) validate() error {
 		if l.Resource.Adapter != "none" && l.Resource.Adapter != "kind" && l.Resource.Adapter != "k3d" && l.Resource.Adapter != "compose" {
 			return errors.New("unsupported resource adapter")
 		}
-		resourceName := "dibs-" + id
+		suffix := id
 		if l.Resource.Adapter == "k3d" {
-			resourceName = "dibs-" + id[:26]
+			suffix = id[:26]
 		}
-		if l.Resource.Adapter != "none" && (l.Resource.Name != resourceName || l.Resource.Context == "") {
+		named := l.Resource.Name == "dibs-"+suffix || l.Resource.Name == legacyName+"-"+suffix
+		if l.Resource.Adapter != "none" && (!named || l.Resource.Context == "") {
 			return errors.New("invalid managed resource identity")
 		}
 		if l.Resource.Adapter == "k3d" && l.Resource.DockerHost == "" {

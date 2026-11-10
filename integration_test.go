@@ -147,3 +147,54 @@ func TestIntegrationCompose(t *testing.T) {
 		t.Fatalf("stack survived cleanup: %s, %v", out, err)
 	}
 }
+
+// A stack berth v0.1.0 started stays reclaimable after dibs migrates its state.
+func TestIntegrationLegacyCompose(t *testing.T) {
+	integrationReady(t, "compose")
+	unsetenv(t, "DIBS_STATE", "BERTH_STATE")
+	base := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", base)
+	out, err := runCommand(context.Background(), nil, "docker", "context", "show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := machine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := openStore(context.Background(), filepath.Join(base, legacyName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := legacyComposeLease(t, old, host)
+	l.Resource.Context = strings.TrimSpace(string(out))
+	old.Leases[l.ID] = l
+	err = old.Save()
+	old.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (composeAdapter{runCommand}).Create(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	running := func() string {
+		out, err := runCommand(context.Background(), nil, "docker", "ps", "-aq", "--filter", "label=io.berth.lease="+l.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	t.Cleanup(func() {
+		l.Resource.File = legacyResourceFile(filepath.Join(base, "dibs"), l.Resource.File)
+		if running() != "" {
+			(composeAdapter{runCommand}).Destroy(context.Background(), l)
+		}
+	})
+	if running() == "" {
+		t.Fatal("legacy stack not labeled io.berth.lease")
+	}
+	invoke(t, 0, "release", l.ID, "--confirm")
+	if left := running(); left != "" {
+		t.Fatalf("legacy stack survived cleanup: %s", left)
+	}
+}

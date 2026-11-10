@@ -354,7 +354,7 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 	var newOwner Owner
 	if command == "create" {
 		if owner == "" {
-			owner = os.Getenv("DIBS_OWNER")
+			owner = getenv("OWNER")
 		}
 		if owner == "" {
 			owner = "pid:" + strconv.Itoa(os.Getppid())
@@ -365,7 +365,7 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 			return emitError(out, jsonOutput, 2, err.Error(), help(command))
 		}
 	}
-	dir, err := stateDir()
+	dir, err := stateDir(ctx)
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Set DIBS_STATE to a writable private directory and retry dibs "+command)
 	}

@@ -40,7 +40,7 @@ func (mode outputMode) effective(w io.Writer) outputMode {
 	if writer, ok := w.(*modeWriter); ok {
 		return writer.mode
 	}
-	if os.Getenv("DIBS_AXI") == "1" {
+	if getenv("AXI") == "1" {
 		return axiOutput
 	}
 	if file, ok := w.(*os.File); ok {
