@@ -87,7 +87,9 @@ func TestWorkflowActionPinsAndTrustBoundaries(t *testing.T) {
 }
 
 func TestCIWorkflowRequiredCoverage(t *testing.T) {
-	jobs := object(workflow(t, "ci")["jobs"])
+	doc := workflow(t, "ci")
+	require(t, object(doc["concurrency"])["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}", "main push runs must not cancel earlier validations")
+	jobs := object(doc["jobs"])
 	check, testJob, integration := jobs["check"], jobs["test"], jobs["integration"]
 	matrix := object(object(object(testJob)["strategy"])["matrix"])
 	gotOS := map[any]bool{}

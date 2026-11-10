@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -68,14 +69,18 @@ func TestReleaseWorkflowLifecycle(t *testing.T) {
 	require(t, releasePleaseAction && releaseConfig && appToken, "release creation must preserve App-authored PR identity and use the config and manifest")
 	require(t, build["needs"] == "release-please", "asset build must depend on release creation")
 	require(t, build["if"] == "needs.release-please.outputs.release_created == 'true'", "assets may build only for a created release")
-	var taggedCheckout bool
+	var taggedCheckout, uncachedGo bool
 	for _, raw := range list(build["steps"]) {
 		step := object(raw)
+		if step["uses"] == "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16" {
+			uncachedGo = object(step["with"])["cache"] == false
+		}
 		if with := object(step["with"]); with["ref"] == "${{ needs.release-please.outputs.tag_name }}" {
 			taggedCheckout = true
 		}
 	}
 	require(t, taggedCheckout, "build must check out the release tag")
+	require(t, uncachedGo, "release artifacts must not consume a shared Go cache")
 	releaseScript := ""
 	for _, raw := range list(build["steps"]) {
 		step := object(raw)
@@ -124,6 +129,16 @@ func testReleaseUploadScript(t *testing.T, script string) {
 			if err := os.MkdirAll(dist, 0o755); err != nil {
 				t.Fatal(err)
 			}
+			if _, err := exec.LookPath("sha256sum"); err != nil {
+				shasum, err := exec.LookPath("shasum")
+				if err != nil {
+					t.Fatal("release script test requires sha256sum or shasum")
+				}
+				shim := "#!/bin/sh\nexec " + shellQuote(shasum) + " -a 256 \"$@\"\n"
+				if err := os.WriteFile(filepath.Join(bin, "sha256sum"), []byte(shim), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 			ghLog := filepath.Join(dir, "uploads")
 			if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$UPLOAD_LOG\"\n"), 0o755); err != nil {
 				t.Fatal(err)
@@ -134,13 +149,7 @@ func testReleaseUploadScript(t *testing.T, script string) {
 				if err := os.WriteFile(filepath.Join(dist, name), []byte(name), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				cmd := exec.Command("sha256sum", name)
-				cmd.Dir = dist
-				out, err := cmd.Output()
-				if err != nil {
-					t.Fatal(err)
-				}
-				sums.Write(out)
+				fmt.Fprintf(&sums, "%x  %s\n", sha256.Sum256([]byte(name)), name)
 			}
 			if err := os.WriteFile(filepath.Join(dist, "checksums.txt"), []byte(sums.String()), 0o644); err != nil {
 				t.Fatal(err)
