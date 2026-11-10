@@ -48,7 +48,8 @@ Existing behavior changes only through a manual review by the maintainer.
 Opt-in, non-breaking changes merge once the automated review process approves them.
 Opt-in capabilities in vision include a resident sweeper, deadline-bounded backfill, owner preemption of lower-class jobs, cgroup or container enforcement of reservations, Kubernetes namespaces as machines through API calls, worktree sync into a per-lease remote directory, and interactive remote jobs.
 Every guarantee holds without any of them: berth stays one Go binary that works per command, with sweep from a host timer or a caller and an SSH agent that lives exactly as long as its session.
-A resource type is built in only when it is widely used and has a real integration test in CI, on a self-hosted runner where hosted runners cannot run it, as with macOS VMs; everything else is exec or a plugin, and a new built-in starts as an issue.
+A resource type is built in only when it is widely used and has a real integration test in CI, on a self-hosted runner where hosted runners cannot run it; everything else is exec or a plugin, and a new built-in starts as an issue.
+Tart macOS VMs are an in-vision built-in, tested in CI on a self-hosted runner.
 The state schema is versioned with migrations, the CLI, AXI, and exit-code contracts are stable, releases follow semver, and removals follow a published deprecation policy.
 `berth job` exits with the child's code, 124 on deadline, 75 when no slot frees within the wait, 76 when SSH transport fails, 143 when preempted, and berth's own 1 and 2 only when no child started.
 
