@@ -1,0 +1,11 @@
+budget:
+  room_cores: 3
+  room_memory_bytes: 8589934592
+  summary: "jobs: 9 of 11 cores, 1.0 GiB of 24.0 GiB in use; 3 cores / 8.0 GiB kept free for you"
+  usable_cores: 11
+  usable_memory_bytes: 25769803776
+  used_cores: 9
+  used_memory_bytes: 1073741824
+help[1]: "Run berth --axi ps --full for all fields, complete text and all matching leases"
+leases[1]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,resource,resources}:
+  9,"2026-11-09T13:00:00Z",job,"",alive,lab,1073741824,":","process:",""

@@ -193,7 +193,7 @@ func TestFormalAuthoritativeResult(t *testing.T) {
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 		config := JobConfig{Machines: map[string]SSHMachine{"test": {Host: "test", User: "test", Workdir: "/tmp", Agent: "/tmp/berth"}}}
 		var out bytes.Buffer
-		if got := runRemote(context.Background(), config, "test", []string{"job", "--", "true"}, &out, false); got != code {
+		if got := runRemote(context.Background(), config, "test", []string{"job", "--", "true"}, &out, axiOutput); got != code {
 			t.Fatalf("authoritative result %d became %d", code, got)
 		}
 		if out.String() != `{"type":"result","code":99}` {

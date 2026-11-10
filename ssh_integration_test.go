@@ -61,7 +61,7 @@ func TestSSHIntegration(t *testing.T) {
 	buildRemote(filepath.Join(dir, "wrong-version"), "incompatible-test-version")
 	// The fixture has two usable cores. Local config below has only one, proving
 	// admission and class lookup use the remote machine, not client defaults.
-	write(filepath.Join(dir, "remote-config.json"), `{"cores":3,"room_cores":1,"memory":"4GiB","room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"20s"},"remote-short":{"cores":1,"memory":"1GiB","timeout":"200ms"}}}`, 0600)
+	write(filepath.Join(dir, "remote-config.json"), `{"cores":3,"room_cores":1,"memory":"4GiB","room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"20s"},"remote-short":{"cores":1,"memory":"1GiB","timeout":"1s"}}}`, 0600)
 	name := "berth-ssh-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	script := `apk add --no-cache openssh-server procps >/dev/null
 mkdir -p /root/.ssh /root/.config/berth "/lab/work 'quoted'"
@@ -163,7 +163,7 @@ exec /usr/sbin/sshd -D -e -h /fixture/host -o PermitRootLogin=prohibit-password 
 	t.Run("remote budget owner room class and deadline", func(t *testing.T) {
 		childExit(t, job("--cores", "2", "--memory", "2GiB", "--", "true"), 0)
 		childExit(t, job("--cores", "3", "--", "true"), 2)
-		childExit(t, job("--timeout", "200ms", "--", "sleep", "30"), 124)
+		childExit(t, job("--timeout", "1s", "--", "sleep", "30"), 124)
 		childExit(t, job("--class", "remote-short", "--", "sleep", "30"), 124)
 		empty()
 	})

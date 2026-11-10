@@ -44,7 +44,7 @@ func TestSessionWaiterStateRoundTrip(t *testing.T) {
 func TestRemoteConfigErrorHelp(t *testing.T) {
 	for _, command := range []string{"job", "list", "sweep"} {
 		var out bytes.Buffer
-		code := runRemote(context.Background(), JobConfig{}, "missing", []string{command}, &out, false)
+		code := runRemote(context.Background(), JobConfig{}, "missing", []string{command}, &out, axiOutput)
 		if code != 2 || !strings.Contains(out.String(), "Run berth "+command+" --help") {
 			t.Fatalf("%s config error: %d %s", command, code, out.String())
 		}
@@ -92,6 +92,7 @@ func TestAgentProtocolRefusal(t *testing.T) {
 		{`{"type":"request","version":` + fmt.Sprintf("%q", version) + `,"args":["machine"]}`, "unsupported"},
 		{`{"type":"request","version":` + fmt.Sprintf("%q", version) + `,"args":["job","--machine=another","--","true"]}`, "nested"},
 		{`{"type":"request","unknown":1}`, "invalid"},
+		{`{"type":"request","version":` + fmt.Sprintf("%q", version) + `,"args":["list"],"output":"unknown"}`, "invalid output mode"},
 		{`{"type":"request"} {}`, "invalid"},
 	} {
 		var out bytes.Buffer
@@ -105,6 +106,38 @@ func TestAgentProtocolRefusal(t *testing.T) {
 	}
 	if _, err := readFrame(frameScanner(strings.NewReader(strings.Repeat("x", (1<<20)+1)))); err == nil {
 		t.Fatal("unbounded frame accepted")
+	}
+}
+
+func TestAgentRequestedOutput(t *testing.T) {
+	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("BERTH_AXI", "1")
+	fixedBudget(t)
+	for _, mode := range []outputMode{humanOutput, axiOutput, jsonOutput} {
+		request, _ := json.Marshal(agentFrame{Type: "request", Version: version, Args: []string{"list"}, Output: mode})
+		reader, writer := io.Pipe()
+		var wire bytes.Buffer
+		code := runAgent(context.Background(), nil, io.MultiReader(bytes.NewReader(append(request, '\n')), reader), &wire)
+		writer.Close()
+		reader.Close()
+		if code != 0 {
+			t.Fatal(code, wire.String())
+		}
+		scanner := frameScanner(&wire)
+		var rendered bytes.Buffer
+		for {
+			frame, err := readFrame(scanner)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if frame.Type == "output" {
+				rendered.Write(frame.Data)
+			}
+		}
+		snapshot(t, "ps-"+string(mode), rendered.String())
 	}
 }
 

@@ -25,7 +25,7 @@ func TestTOONQuotesKeysInEveryShape(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			emit(&out, false, tc.data)
+			emit(&out, axiOutput, tc.data)
 			if !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), "\nerror: injected") {
 				t.Fatalf("key changed TOON structure: %q; want %q", out.String(), tc.want)
 			}
