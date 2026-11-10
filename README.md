@@ -409,3 +409,7 @@ or any adapter prerequisite is unavailable.
 The live `main-required-ci` ruleset requires the checks `PR title` and
 `PR must be raised via no-mistakes`; the workflow also provides the Go validation
 check named `main-required-ci`.
+
+## License
+
+Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE).
