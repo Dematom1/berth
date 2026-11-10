@@ -542,6 +542,18 @@ The shared contribution workflow provides `contribution / PR title`,
 `contribution / Generated files must not be hand-edited`. The Go validation
 job is named `main-required-ci`. Required-check policy is managed separately.
 
+`just fmt` formats Go files. `just lint` checks formatting and runs vet.
+`just release-check` validates GoReleaser configuration; `just release-snapshot`
+builds local archives and checksums without publishing. Release-please opens
+version PRs and creates draft releases after merge. CI uploads all four Linux
+and macOS archives before publishing a prerelease. Stable promotion is manual.
+macOS Developer ID signing is disabled until signing credentials and identity
+are configured. Prebuilt macOS binaries are not Developer ID signed and may be
+quarantined by Gatekeeper. Prefer `go install github.com/Dematom1/berth@latest`;
+for a downloaded binary, verify its trusted release checksum before removing
+quarantine from that binary with `xattr -d com.apple.quarantine /path/to/berth`.
+Do not disable Gatekeeper globally.
+
 ## License
 
 Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE).
