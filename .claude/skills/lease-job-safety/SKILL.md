@@ -7,14 +7,14 @@ description: "Check lease reclaim, FIFO admission and budgets, job deadlines and
 
 TLA+ with TLC fits this task because the dangerous cases depend on event order, lock scope, and crashes. The Go package has no installed code-level verifier. The models check protocol ordering, while exhaustive small-domain tests and mutations execute the real Go code to expose mapping drift.
 
-Read [the findings](../../../verification/findings.md) first. The current code violates three stronger safety properties. Do not describe a green CI job as proof that those properties hold.
+Read [the findings](../../../verification/findings.md) first. F1 is resolved by policy: TTL expiry permits reclaim even for Alive owners, while an unexpired live owner must not be reclaimed. F2 and F3 remain known counterexamples; do not describe a green CI job as proof they hold.
 
 ## Run the checks
 
 1. Install Go as specified by `go.mod`, Python 3, and Java 17 or newer. CI uses Java 21.
 2. From the repository root, run `make formal`.
 3. Read every `PASS`, `COUNTEREXAMPLE`, and `REJECTED real-code mutant` line. Read the TLC logs at the printed path if any result is unexpected.
-4. To require all requested properties to hold, run `python3 verification/check.py --strict`. It currently exits 1 for F1, F2, and F3.
+4. To require all requested properties to hold, run `python3 verification/check.py --strict`. It currently exits 1 for F2 and F3.
 
 `check.py` downloads the checksum-pinned `tla2tools.jar` v1.7.4 release. `TLA2TOOLS_JAR` selects an already downloaded copy, which still needs the same checksum. `JAVA` selects the Java executable. `FORMAL_LOG_DIR` selects a directory outside the checkout for configs, traces, and checker state. Without it, the checker creates a temporary directory and prints its path.
 
@@ -48,7 +48,7 @@ The independent safety promises and their harms are:
 - `ReceivedResult`: receiving a result frame preserves the child's code, including 255, even if SSH teardown fails. Otherwise a completed job looks like an unknown remote result.
 - `EOFEventuallyCancels`: after an accepted handshake and owner-channel EOF, the context eventually cancels or the agent dies, under weak scheduling fairness. A missed cancel leaves the remote job running after the caller disappears.
 
-`NeverReclaimLive`, `NoUnrecordedGroup`, and `NoLateStart` remain failing properties. Their short traces and code locations are in `verification/findings.md`. Each runs separately so a known failure cannot hide a different property's violation. Default CI requires the expected invariant violation, not a generic nonzero checker exit. Strict mode also returns failure for these known counterexamples. If a fix makes one pass, update its expected outcome only after reviewing the fix and trace.
+`NeverReclaimLive` now passes: it means a sweep cannot reclaim a live owner before TTL expiry. `NoUnrecordedGroup` and `NoLateStart` remain failing properties; their traces and code locations are in `verification/findings.md`. Each known failure runs separately so one cannot hide another. Default CI requires the expected invariant violation, not a generic nonzero checker exit. Strict mode returns failure for F2 and F3.
 
 ## Respect the bounds
 

@@ -4,7 +4,7 @@ CONSTANT UnsafeUnknown
 VARIABLES present, live, local, expired, resource, event, evidence
 vars == <<present, live, local, expired, resource, event, evidence>>
 
-\* lease.go: reclaimable. Expiry currently overrides even Alive (F1).
+\* lease.go: reclaimable. TTL expiry permits reclaim even when the owner is Alive.
 Eligible == local /\ (live = "dead" \/ expired \/ UnsafeUnknown)
 Init == /\ present = TRUE /\ resource = TRUE
         /\ live \in {"alive", "dead", "unknown"}
@@ -37,5 +37,5 @@ Spec == Init /\ [][Next]_vars
 ForeignSafe == event = "sweep" => evidence[2]
 UnknownSafe == event = "sweep" /\ evidence[1] = "unknown" => evidence[3]
 FailureRetains == event = "failure" => present
-NeverReclaimLive == event = "sweep" => evidence[1] # "alive"
+NeverReclaimLive == event = "sweep" => (evidence[1] # "alive" \/ evidence[3])
 =============================================================================

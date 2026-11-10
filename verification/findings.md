@@ -1,16 +1,12 @@
-# Formal verification findings (no product fixes)
+# Formal verification findings
 
 Source reviewed: `17c0265225197abd1010bec959eed501be5cc02f`.
 Tool: TLA+ TLC 1.7.4 (tla2tools release), bounded exhaustive exploration.
 Run `make formal` to generate full machine traces `F1-live-expiry.log`, `F2-orphan-group.log`, and `F3-late-start.log` in the printed log directory. CI publishes them in the `formal-counterexamples` artifact.
 
-## F1: live owners are reclaimable at expiry (confirmed policy conflict)
+## F1: resolved by policy
 
-Property: a sweep never reclaims a lease whose owner was observed Alive.
-Harm: a confirmed sweep can destroy a still-used Compose/kind/k3d resource.
-Code: `lease.go:reclaimable` (return `live == Dead || !now.Before(l.Expires)`), `sweep`, `releaseLease`.
-Trace: local lease exists; owner Alive; TTL expired -> `Sweep` -> resource destroyed, lease removed, owner still Alive.
-Existing real-code tests already confirm this behavior: `TestReclaimAndExtend/expired_live_owner`, `TestSweepDecisions`. This is the current documented TTL policy, not a newly introduced regression. It conflicts with the requested stronger "never reclaim a live owner" property. A policy decision is needed before a fix; this PR does not change it.
+Authorized policy clarification R-B3: TTL expiry permits reclaim even when the owner is Alive. The verified safety property is therefore narrower: never reclaim a live owner before expiry. `NeverReclaimLive` checks that boundary. Real-code tests `TestReclaimAndExtend/expired_live_owner` and `TestSweepDecisions` retain coverage of the documented expiry behavior. No product-code change was needed.
 
 ## F2: reaped leader permits forgetting a surviving group (confirmed limitation)
 

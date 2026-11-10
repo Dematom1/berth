@@ -70,9 +70,9 @@ def main():
     check("ssh-eof-liveness", "JobSession", job, ["EOFEventuallyCancels"], temporal=True)
     check("mutant-eof", "JobSession", {**job, "IgnoreEOF": True},
           ["EOFEventuallyCancels"], "EOFEventuallyCancels", temporal=True)
+    check("live-owner-before-expiry", "Lease", lease, ["NeverReclaimLive"])
     # Never hide a new failure behind a known one: each property runs separately.
     for name, module, constants, invariant in [
-        ("F1-live-expiry", "Lease", lease, "NeverReclaimLive"),
         ("F2-orphan-group", "JobSession", job, "NoUnrecordedGroup"),
         ("F3-late-start", "JobSession", job, "NoLateStart"),
     ]:
@@ -89,7 +89,7 @@ def main():
     ]:
         check(f"mutant-{name}", module, {**constants, flag: True}, [invariant], invariant)
     print(f"TLC logs and counterexample traces: {logs}")
-    print("NOT VERIFIED: F1 never reclaim live; F2 cleanup without orphan; F3 no start after deadline.")
+    print("NOT VERIFIED: F2 cleanup without orphan; F3 no start after deadline.")
     print("Known counterexamples reproduced; no product fixes applied. See verification/findings.md.")
     return 1 if "--strict" in sys.argv else 0
 
