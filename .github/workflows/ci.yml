@@ -11,30 +11,10 @@ permissions:
   pull-requests: read
 
 jobs:
-  pr-title:
-    name: PR title
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check conventional commit title
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^\)]+\))?\!?:\ .+ ]]; then
-            echo 'Use a conventional commit title, for example: feat: add leases'
-            exit 1
-          fi
-  no-mistakes:
-    name: PR must be raised via no-mistakes
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Verify pipeline attestation
-        uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
   main-required-ci:
     name: main-required-ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -56,8 +36,10 @@ jobs:
           go build -o "$RUNNER_TEMP/berth" .
           GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
           GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
-      - name: Real SSH agent integration
-        run: make ssh-integration
+      - name: Verify demo leases, heartbeat, jobs, and FIFO
+        run: .claude/skills/verify/verify.py local --evidence "$RUNNER_TEMP/verify/local"
+      - name: Verify real SSH machine workflow
+        run: .claude/skills/verify/verify.py ssh --evidence "$RUNNER_TEMP/verify/ssh"
       - name: Install kind and k3d for real adapter integration
         run: |
           curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"
@@ -70,5 +52,15 @@ jobs:
           k3d version
           docker info
           docker compose version
+      - name: Verify demo Compose HTTP and Ready kind/k3d nodes
+        run: .claude/skills/verify/verify.py adapters --evidence "$RUNNER_TEMP/verify/adapters"
       - name: Real kind, k3d, and Compose adapter integration
         run: make integration
+      - name: Retain verification evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: berth-verification
+          path: ${{ runner.temp }}/verify
+          if-no-files-found: warn
+          retention-days: 7

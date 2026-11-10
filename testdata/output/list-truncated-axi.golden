@@ -1,0 +1,112 @@
+budget:
+  room_cores: 3
+  room_memory_bytes: 8589934592
+  summary: "jobs: 0 of 11 cores, 0 B of 24.0 GiB in use; 3 cores / 8.0 GiB kept free for you"
+  usable_cores: 11
+  usable_memory_bytes: 25769803776
+  used_cores: 0
+  used_memory_bytes: 0
+help[3]: "Run berth job --machine 'remote '\"'\"' lab' -- <cmd> to reserve resources","Run berth sweep --machine 'remote '\"'\"' lab' to preview reclamation","Run berth --axi ps --machine 'remote '\"'\"' lab' --owner 'heartbeat:/missing-berth-test-owner' --full for all 101 matching leases and complete records"
+leases[100]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,resource,resources}:
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000000","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:","界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界界… (truncated, 501 chars total)"
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000001","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000002","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000003","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000004","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000005","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000006","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000007","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000008","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000009","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000000a,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000000b,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000000c,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000000d,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000000e,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000000f,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000010","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000011","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000012","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000013","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000014","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000015","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000016","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000017","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000018","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000019","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000001a,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000001b,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000001c,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000001d,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000001e,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000001f,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000020","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000021","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000022","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000023","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000024","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000025","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000026","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000027","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000028","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000029","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000002a,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000002b,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000002c,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000002d,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000002e,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000002f,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000030","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000031","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000032","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000033","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000034","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000035","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000036","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000037","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000038","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000039","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000003a,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000003b,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000003c,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000003d,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000003e,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000003f,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000040","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000041","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000042","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000043","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000044","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000045","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000046","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000047","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000048","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000049","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000004a,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000004b,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000004c,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000004d,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000004e,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000004f,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000050","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000051","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000052","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000053","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000054","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000055","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000056","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000057","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000058","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000059","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000005a,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000005b,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000005c,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000005d,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000005e,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z",0000000000000000000000000000005f,"",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000060","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000061","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000062","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+  0,"2026-11-09T13:00:00Z","00000000000000000000000000000063","",unknown,<machine>,0,"heartbeat:/missing-berth-test-owner","none:",lab
+shown: 100
+total: 101

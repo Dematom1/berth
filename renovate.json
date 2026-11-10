@@ -1,0 +1,13 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>Dematom1/oss-workflows//renovate/axi#ee220d669cbb1376363825c273291dea4a539847"],
+  "enabledManagers": ["gomod"],
+  "automerge": false,
+  "packageRules": [
+    {
+      "description": "Keep Go updates under maintainer review until shared Go dependency verification is available",
+      "matchManagers": ["gomod"],
+      "automerge": false
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+code: VALIDATION_ERROR
+error: unknown flag --typo
+exit_code: 2
+help[1]: Run berth list --help for options

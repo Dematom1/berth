@@ -14,6 +14,11 @@ go install github.com/Dematom1/berth@latest
 berth --version
 ```
 
+`--version` reports the installed module version without the leading `v` (for
+example, `0.2.0`). Checkout builds report `devel-<12-character-commit>`, with
+`-dirty` for local changes, or `devel` when VCS metadata is unavailable.
+Release builds can override this with `-ldflags '-X main.version=0.2.0'`.
+
 The module path is case-sensitive; `github.com/dematom1/berth` fails. Prebuilt
 Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/berth/releases) page.
 
@@ -21,24 +26,98 @@ From a checkout, `make install` installs to Go's binary directory. `make build`
 writes `bin/berth`. Resource adapters also require `kind`, `k3d`, `docker`,
 and Docker Compose, plus a running Docker engine.
 
+## Output for people, agents, and scripts
+
+On a terminal, berth prints aligned tables, relative expiry times, and readable
+memory units. `berth ps` and the no-args home view show job usage, usable capacity,
+and the cores and memory kept free for you. Usage errors have one error line and
+one short hint, not a help dump.
+
+Use `--axi` or `BERTH_AXI=1` for agent output in TOON. Use `--json` for complete,
+stable JSON suitable for `jq` and scripts. Both flags work before or after the
+command. They are mutually exclusive, and an explicit flag overrides `BERTH_AXI`.
+There is no `--human` flag.
+
+AXI is a first-class agent view, not a debug format. Lists default to 100 compact
+rows with `total` for all matching leases and `shown` when the list is truncated.
+Descriptions and detail label values have 500-character previews. Truncated text
+states the full character count. Help lines carry the filters and remote machine
+needed to fetch the complete result. `--full` on lease commands removes these
+bounds and restores complete records. **AXI with `--full` has the same fields and
+data as `--json`**, which never truncates. Canonical state is never shortened.
+
+When stdout is not a TTY and neither output flag is present, berth emits AXI as
+a safety net for agents and pipes. **Human default means terminal output**, not
+redirected output. Use `--json` explicitly for scripts that need JSON.
+
+```sh
+berth ps                              # human on a terminal
+berth --axi ps                        # bounded agent view
+berth --axi ps --full                 # complete records, same data as --json
+BERTH_AXI=1 berth ps                   # agent session environment
+berth ps --json | jq '.budget.used_cores'
+```
+
+### Install agent integrations
+
+```sh
+berth setup hooks
+berth setup hooks --remove
+```
+
+Setup reports the files it changed. Repeating either command is a no-op.
+It preserves unrelated settings and refuses malformed configs or unmanaged files
+at its plugin paths. Only this explicit setup command edits agent configuration.
+Restart agent sessions after installation or removal.
+
+- Claude Code uses a managed `SessionStart` hook in `~/.claude/settings.json`.
+  The hook appends `export BERTH_AXI=1` to `CLAUDE_ENV_FILE`.
+- Codex uses `SessionStart` in `~/.codex/hooks.json` and enables `features.hooks`
+  in `~/.codex/config.toml`. It uses `CODEX_ENV_FILE`, with `CLAUDE_ENV_FILE` as a
+  compatibility fallback. Removal restores a `false` toggle changed by setup,
+  or removes the toggle if setup added it. Existing enabled hooks stay enabled.
+- Pi loads `~/.pi/agent/extensions/berth-axi.ts`, which sets the environment at
+  `session_start`.
+- OpenCode loads `~/.config/opencode/plugins/berth-axi.js`, which sets the
+  environment through `shell.env`.
+
+Setup respects `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, and
+`XDG_CONFIG_HOME`. Claude Code or Codex versions without an environment-file
+hook receive a short instruction to use `berth --axi` instead. Agents without
+these integrations still get AXI when they capture stdout through a pipe.
+No shell profile changes or executable shims are installed.
+
 ## Start a leased test lab
 
 Keep the shell or session that owns the lab alive.
 
 ```sh
- berth create --adapter kind --owner "pid:$$" --ttl 2h \
-   --resources '2 CPUs, Kubernetes test lab' --label task=lab
+ id=$(berth create --adapter kind --owner "pid:$$" --ttl 2h \
+   --resources '2 CPUs, Kubernetes test lab' --label task=lab --quiet)
  berth ps
- berth extend <id> --ttl 2h
- berth release <id>                  # preview
- berth release <id> --confirm        # delete cluster and release lease
+ eval "$(berth env "$id")"          # select this lab's private kubeconfig
+ kubectl get nodes
+ berth extend "$id" --ttl 2h
+ berth release "$id"                # preview
+ berth release "$id" --confirm      # delete cluster and release lease
 ```
 
 Kind cluster names are `berth-<id>`. K3d names use the first 26 ID characters
 to fit its 32-character limit. Both use the selected Docker context and private
 kubeconfigs under `$BERTH_STATE/resources/<id>/`: `kubeconfig` for kind and `k3d`
 for k3d. Creation and cleanup do not edit the caller's kubeconfig or current
-context. The resources description is metadata, not a CPU or memory limit.
+context. Human create/list output shows the kubeconfig path. JSON and AXI expose
+`kubeconfig` in both the lease view and full record, with an empty string for
+leases without a kubeconfig. `berth env <id>` always prints a shell-safe
+`export KUBECONFIG=...` line, even under `--axi` or `--json`. It exits 2 for a
+missing lease or a lease without a kubeconfig. It does not read the kubeconfig
+or change your shell itself.
+
+`create --quiet` or `create -q` prints only the new lease ID and a newline on
+success, regardless of output mode. Failures retain the usual error format and
+exit code. Without quiet mode, create shows the lease details.
+
+The resources description is metadata, not a CPU or memory limit.
 An orphaned lab such as `k8s-axi-lab` is prevented by creating the new cluster
 through berth. This slice does not adopt or delete existing unleased clusters.
 
@@ -81,7 +160,7 @@ not count against them. Configure a static partition if other tools such as
 runner-up also schedule work on the host; berth does not read their ledgers.
 Jobs inherit the working directory and environment, and pass stdin, stdout and
 stderr through unchanged. `BERTH_LEASE` identifies the job.
-`--json` changes only pre-start errors, not child output. Use noninteractive
+`--axi` and `--json` change only pre-start errors, not child output. Use noninteractive
 commands. Berth does not hand terminal foreground job control to the child.
 
 Admission is FIFO across classes, with no backfill: a smaller request cannot
@@ -262,6 +341,8 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 | `berth` | Live home view with executable path, description, lease count, and hints |
 | `berth create` or `berth up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose` |
 | `berth list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
+| `berth env <id>` | Print a shell-safe kubeconfig export for a kind or k3d lease |
+| `berth setup hooks [--remove]` | Install or remove managed agent integrations |
 | `berth extend <id> --ttl D` | Renew an unexpired lease with a live owner |
 | `berth release <id>` or `down` | Preview cleanup; `--confirm` performs it |
 | `berth sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
@@ -271,13 +352,29 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 
 `list` and `sweep` also accept `--machine NAME` to operate on that SSH machine.
 
-Every command accepts `--help` and `--json`. Output defaults to concise TOON-style
-objects and tables. Label cells in text tables contain compact JSON, with `"{}"`
-for empty labels. JSON listings keep labels as native objects and include full
-records. Both formats have explicit empty states and structured errors on stdout.
-The exception is `job`: child output passes through, while pre-start errors are
-structured and post-start cleanup diagnostics go to stderr. Resource tool
-diagnostics also go to stderr. There are no prompts. Unknown berth arguments
+Commands accept `--help`, `--axi`, and `--json`, except the internal `agent`
+protocol. Human output is the terminal default. AXI and JSON have explicit empty
+states and structured errors on stdout with short help pointers. Structured errors
+include a symbolic `code` and the numeric `exit_code`. Codes are
+`VALIDATION_ERROR`, `COMMAND_FAILED`, and `NO_CAPACITY`; actual exit codes do not
+change. Explicit help requests also use structured output in these modes.
+
+AXI's compact list includes lease identity, owner/liveness, machine/expiry,
+resource description, exact job cores/memory bytes, and the kubeconfig path.
+`--full` restores labels, class, and full records. Labels remain native objects
+in both complete formats. JSON always includes the complete records. Both modes
+include numeric machine-budget fields in bytes.
+`leases[].memory` retains its byte-string representation for scripts;
+`leases[].memory_bytes` provides the same value as an integer. Human output uses
+GiB, MiB, or smaller readable units. Budget usage includes all retained local job
+reservations, even when an owner filter hides a row or failed cleanup retains it.
+A broken job config leaves lease listing available with a budget-unavailable note.
+
+`job` child output passes through unchanged in every mode. Post-start cleanup
+diagnostics and resource tool diagnostics go to stderr. Exit codes and stream
+separation do not depend on output mode. `env` and `create --quiet` print shell
+text and an ID respectively, rather than structured success output.
+There are no prompts. Unknown berth arguments
 and flags fail with code 2 and help before state or resource operations run;
 everything after a job's required `--` belongs to the child.
 
@@ -306,6 +403,39 @@ numbers, including 1, 2, 75, and 124. `berth job --help` documents this contract
 After start, cleanup errors never override the child's result. Signals and
 startup failures of the gated execution helper may return 125 or 126; a helper
 execution failure is reported on stderr.
+
+### Demo expectations
+
+On a terminal, `berth ps` starts with a `jobs:` budget summary and then an aligned
+lease table, or `No leases.`. The no-args home view also names the executable and
+describes berth. A kind or k3d lease includes its kubeconfig path. Job rows show
+cores and readable memory, and expiries read `in 1h0m0s` rather than a timestamp.
+
+For a 14-core, 32-GiB configuration with 3 cores and 8 GiB of owner room, an empty
+machine reports:
+
+```text
+jobs: 0 of 11 cores, 0 B of 24.0 GiB in use; 3 cores / 8.0 GiB kept free for you
+No leases.
+```
+
+With the same config, `berth job --cores 999 -- true` exits 2 without starting a
+child. Its human output is exactly two lines:
+
+```text
+Error: requested 999 cores; usable 11 after owner room 3
+Try --cores 11 or set BERTH_CONFIG
+```
+
+AXI keeps the same message under `error:`, `code: VALIDATION_ERROR`,
+`exit_code: 2`, and a short `help` array. Piped
+`berth ps` uses AXI; `berth ps --json` remains JSON. Byte-for-byte expectations
+for list, ps, who, full lease records, truncated lists with counts, structured
+help, budget summaries, and errors are in
+[`testdata/output`](testdata/output). `go test ./...` also checks real PTY output,
+child stdout/stderr passthrough, quiet IDs, shell exports, and setup/removal under
+a temporary HOME. To update snapshots after an intentional format change, run
+`UPDATE_GOLDEN=1 go test ./...` and review the fixture diff.
 
 ## Sweep from a host timer
 
@@ -356,7 +486,32 @@ timers.
  make check
  make integration
  make ssh-integration
+ make formal
 ```
+
+`make formal` runs bounded TLA+ models, real-code checks, and mutation checks.
+It requires Java 17 or newer, Python 3, and Go. The model checker download is
+version- and checksum-pinned. Read the [formal findings](verification/findings.md)
+first: TTL expiry may reclaim an Alive owner by policy; the model checks that
+an unexpired live owner is not reclaimed. Orphan-group cleanup and a deadline-
+check race remain counterexamples, not verified guarantees. CI reproduces those
+known failures explicitly. `python3 verification/check.py --strict` exits nonzero
+for F2 and F3.
+The [lease and job safety skill](.claude/skills/lease-job-safety/SKILL.md)
+records the code mapping, bounds, assumptions, and rerun procedure.
+
+The project-local [verify skill](.claude/skills/verify/SKILL.md) drives the demo
+through the real CLI, including Compose HTTP, Ready kind/k3d nodes, FIFO jobs,
+and SSH session cleanup. To run every flow and retain proof outside the checkout:
+
+```sh
+PROOF=$(mktemp -d "${TMPDIR:-/tmp}/berth-proof.XXXXXX")
+.claude/skills/verify/verify.py all --evidence "$PROOF/all"
+```
+
+The helper needs Python 3 and the real adapter/SSH tools; missing prerequisites
+fail rather than skip. CI runs these workflows and uploads `berth-verification`
+evidence, including failed runs, for seven days.
 
 `make check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
@@ -381,6 +536,12 @@ CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
 cross-builds, `make ssh-integration`, and `make integration`. It installs pinned,
 checksum-verified kind and k3d binaries; the integration target fails if Docker
 or any adapter prerequisite is unavailable.
-The live `main-required-ci` ruleset requires the checks `PR title` and
-`PR must be raised via no-mistakes`; the workflow also provides the Go validation
-check named `main-required-ci`.
+The shared contribution workflow provides `contribution / PR title`,
+`contribution / PR must be raised via no-mistakes`,
+`contribution / Release PR identity`, and
+`contribution / Generated files must not be hand-edited`. The Go validation
+job is named `main-required-ci`. Required-check policy is managed separately.
+
+## License
+
+Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE).

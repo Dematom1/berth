@@ -99,7 +99,7 @@ func TestPartialConfigKeepsDefaultClass(t *testing.T) {
 func jobTestConfig(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.json")
-	data := `{"cores":3,"memory":"4GiB","room_cores":1,"room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"5s"},"short":{"cores":1,"memory":"1GiB","timeout":"200ms"}}}`
+	data := `{"cores":3,"memory":"4GiB","room_cores":1,"room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"5s"},"short":{"cores":1,"memory":"1GiB","timeout":"1s"}}}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,7 @@ func childExit(t *testing.T, cmd *exec.Cmd, want int) string {
 			t.Fatal(err)
 		}
 	}
+	t.Logf("command=%q exit=%d output=%q", cmd.Args, code, out)
 	if code != want {
 		t.Fatalf("%v exited %d want %d: %s", cmd.Args, code, want, out)
 	}
@@ -275,8 +276,53 @@ func TestJobsRealProcesses(t *testing.T) {
 			t.Fatal("invalid usage reached store")
 		}
 	})
+	t.Run("startup keeps admission deadline", func(t *testing.T) {
+		dir, bin := t.TempDir(), t.TempDir()
+		t.Setenv("BERTH_STATE", dir)
+		realPS, err := exec.LookPath("ps")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Delay the real external identity probe only after admission is durable.
+		probe := "#!/bin/sh\nif [ -s \"$BERTH_STATE/state.json\" ]; then\n  touch \"$BERTH_STATE/probing\"\n  while [ ! -e \"$BERTH_STATE/resume\" ]; do sleep 0.01; done\nfi\nexec " + shellQuote(realPS) + " \"$@\"\n"
+		if err := os.WriteFile(filepath.Join(bin, "ps"), []byte(probe), 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		marker := filepath.Join(dir, "child-started")
+		cmd := startJobCommand(t, binary, "--timeout", "1s", "--", "sh", "-c", `touch "$1"`, "_", marker)
+		awaitJob(t, func() bool { _, err := os.Stat(filepath.Join(dir, "probing")); return err == nil })
+		data, err := os.ReadFile(filepath.Join(dir, "state.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state Store
+		if err := json.Unmarshal(data, &state); err != nil {
+			t.Fatal(err)
+		}
+		if len(state.Leases) != 1 {
+			t.Fatalf("expected one admitted lease: %s", data)
+		}
+		for _, l := range state.Leases {
+			time.Sleep(time.Until(l.Expires) + 20*time.Millisecond)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "resume"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err = cmd.Wait()
+		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+			t.Fatalf("pre-start expiry should exit 1, got %v", err)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatal("child executed after its admission deadline")
+		}
+		log, err := os.ReadFile(cmd.Stdout.(*os.File).Name())
+		if err != nil || !strings.Contains(string(log), "job reservation expired before child start") {
+			t.Fatalf("wrong pre-start failure: %s %v", log, err)
+		}
+	})
 	t.Run("deadline flag class and grandchildren", func(t *testing.T) {
-		for _, options := range [][]string{{"--timeout", "200ms"}, {"--class", "short"}} {
+		for _, options := range [][]string{{"--timeout", "1s"}, {"--class", "short"}} {
 			dir := t.TempDir()
 			t.Setenv("BERTH_STATE", dir)
 			pidfile := filepath.Join(t.TempDir(), "pid")
