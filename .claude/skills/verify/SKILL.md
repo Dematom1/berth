@@ -18,7 +18,7 @@ PROOF=$(mktemp -d "${TMPDIR:-/tmp}/berth-proof.XXXXXX")
 
 The helper builds the checkout into a fresh private scratch directory. A successful `--version` and empty `ps --json` establish readiness. Each short-lived CLI invocation is noninteractive; no server or PTY is needed. Every run owns its state, config, children, and kubeconfig. Do not point it at existing leases. Do not use Python's `-O` option: assertions are the checks.
 
-For external flows, install Docker with Compose, kind, k3d, kubectl, OpenSSH, and ssh-keygen. Start Docker yourself if it is not running. On macOS, `brew install kind k3d kubectl` installs the cluster clients. On Linux, follow the pinned kind and k3d installation steps in `.github/workflows/ci.yml`; GitHub-hosted Ubuntu supplies Docker, Compose, SSH, and kubectl. Missing prerequisites fail, never skip.
+For external flows, install just, Docker with Compose, kind, k3d, kubectl, OpenSSH, and ssh-keygen. Start Docker yourself if it is not running. On macOS, `brew install kind k3d kubectl` installs the cluster clients. On Linux, follow the pinned kind and k3d installation steps in `.github/workflows/ci.yml`; GitHub-hosted Ubuntu supplies Docker, Compose, SSH, and kubectl. Missing prerequisites fail, never skip.
 
 ## Doctor
 
@@ -38,11 +38,11 @@ The executable helper uses Python's standard library and real subprocesses. Run 
 .claude/skills/verify/verify.py all --evidence "$PROOF/all"
 ```
 
-`local` covers metadata leases, owner death, heartbeat renewal, jobs, and FIFO/no-backfill. `adapters` creates real Compose, kind, and k3d resources. `ssh` reuses `make ssh-integration`, which builds the CLI and drives real OpenSSH in a disposable Alpine container. Read the mapped feature before interpreting results. CI runs all three flows on `ubuntu-24.04`, plus the existing adapter retry tests.
+`local` covers metadata leases, owner death, heartbeat renewal, jobs, and FIFO/no-backfill. `adapters` creates real Compose, kind, and k3d resources. `ssh` reuses `just ssh-integration`, which builds the CLI and drives real OpenSSH in a disposable Alpine container. Read the mapped feature before interpreting results. CI runs all three flows on `ubuntu-24.04`, plus the existing adapter retry tests.
 
 ## Evidence
 
-Keep `$PROOF` outside the checkout. Each flow writes `events.jsonl` with argv, stdout, stderr, exit codes, and labeled observations, plus background job logs and `result.json`. SSH command transcripts are inside the recorded `make ssh-integration` stdout. A valid proof requires `passed: true` **and** `cleaned: true`.
+Keep `$PROOF` outside the checkout. Each flow writes `events.jsonl` with argv, stdout, stderr, exit codes, and labeled observations, plus background job logs and `result.json`. SSH command transcripts are inside the recorded `just ssh-integration` stdout. A valid proof requires `passed: true` **and** `cleaned: true`.
 
 Exercise public CLI commands; do not call Go internals, edit lease records, or substitute fake tools. The sole queue-state read observes waiter registration so launch timing cannot masquerade as FIFO. Check action and result: preview must retain a lease, HTTP must reach Compose, nodes must be Ready, cleanup must remove resources, and jobs must return actual child/deadline/admission/transport codes. The harness observes preview side effects instead of trusting the word "preview".
 

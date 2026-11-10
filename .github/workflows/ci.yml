@@ -8,26 +8,12 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  pr-title:
-    name: PR title
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check conventional commit title
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^\)]+\))?\!?:\ .+ ]]; then
-            echo 'Use a conventional commit title, for example: feat: add leases'
-            exit 1
-          fi
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -85,8 +71,6 @@ jobs:
         run: .claude/skills/verify/verify.py local --evidence "$RUNNER_TEMP/verify/local"
       - name: Verify real SSH machine workflow
         run: .claude/skills/verify/verify.py ssh --evidence "$RUNNER_TEMP/verify/ssh"
-      - name: Real SSH agent integration
-        run: just ssh-integration
       - name: Install kind and k3d for real adapter integration
         run: |
           curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"
@@ -112,13 +96,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  no-mistakes:
-    name: PR must be raised via no-mistakes
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Verify pipeline attestation
-        uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
   main-required-ci:
     name: main-required-ci
     needs: [check, test, integration]

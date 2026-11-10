@@ -49,15 +49,20 @@ func TestReleaseWorkflowLifecycle(t *testing.T) {
 	jobs := object(doc["jobs"])
 	please, build, finalize := object(jobs["release-please"]), object(jobs["build-and-upload"]), object(jobs["finalize"])
 	require(t, please["outputs"] != nil && please["permissions"] != nil, "release-please must expose release metadata and write permissions")
-	var releasePleaseAction, releaseConfig bool
+	var releasePleaseAction, releaseConfig, appToken bool
 	for _, raw := range list(please["steps"]) {
 		step := object(raw)
 		uses, _ := step["uses"].(string)
 		releasePleaseAction = releasePleaseAction || strings.Contains(uses, "release-please-action")
 		with := object(step["with"])
-		releaseConfig = releaseConfig || with["config-file"] == "release-please-config.json" && with["manifest-file"] == ".release-please-manifest.json"
+		if strings.HasPrefix(uses, "actions/create-github-app-token@") {
+			appToken = step["id"] == "app" && with["app-id"] == "${{ secrets.RELEASE_APP_ID }}" && with["private-key"] == "${{ secrets.RELEASE_APP_PRIVATE_KEY }}" && with["repositories"] == "${{ github.event.repository.name }}"
+		}
+		if strings.Contains(uses, "release-please-action") {
+			releaseConfig = with["config-file"] == "release-please-config.json" && with["manifest-file"] == ".release-please-manifest.json" && with["token"] == "${{ steps.app.outputs.token }}"
+		}
 	}
-	require(t, releasePleaseAction && releaseConfig, "release creation must use release-please config and manifest")
+	require(t, releasePleaseAction && releaseConfig && appToken, "release creation must preserve App-authored PR identity and use the config and manifest")
 	require(t, build["needs"] == "release-please", "asset build must depend on release creation")
 	require(t, build["if"] == "needs.release-please.outputs.release_created == 'true'", "assets may build only for a created release")
 	var taggedCheckout bool

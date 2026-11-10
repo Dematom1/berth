@@ -16,9 +16,9 @@ Configure `machines.<name>` with host, user, workdir, agent, port, and identity_
 
 ## Driving it with verify.py
 
-Preconditions: Docker, Go, SSH, and ssh-keygen are available. Docker can fetch `alpine:3.23`; the container can install OpenSSH and procps.
+Preconditions: just, Docker, Go, SSH, and ssh-keygen are available. Docker can fetch `alpine:3.23`; the container can install OpenSSH and procps.
 
-- **Run:** `.claude/skills/verify/verify.py ssh --evidence "$PROOF/ssh"`. This runs the existing real `make ssh-integration` harness, not an SSH mock.
+- **Run:** `.claude/skills/verify/verify.py ssh --evidence "$PROOF/ssh"`. This runs the existing real `just ssh-integration` harness, not an SSH mock.
 - **Install:** build local and Linux binaries, start an isolated sshd with fixture keys and strict private host trust, and run `machine install fixture --file <linux-binary>`. An incompatible upgrade must fail while the previous executable still runs.
 - **Results:** run remote children with codes 0, 1, 2, 37, 75, 76, 124, and 255. Require exact passthrough. Observe quoted argv and workdir, binary output bytes, and empty child stdin.
 - **Admission:** a two-core job must succeed under the remote budget despite a smaller local budget. Three cores must fail with 2. Explicit and class deadlines must return 124. Saturated admission must return 75.

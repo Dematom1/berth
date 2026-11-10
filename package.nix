@@ -16,6 +16,7 @@ buildGoModule {
   meta = {
     description = "Daemonless resource leases and budgeted jobs";
     homepage = "https://github.com/Dematom1/berth";
+    license = lib.licenses.asl20;
     mainProgram = "berth";
     platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };

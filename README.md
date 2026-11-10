@@ -17,8 +17,8 @@ berth --version
 The module path is case-sensitive; `github.com/dematom1/berth` fails. Prebuilt
 Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/berth/releases) page.
 
-From a checkout, `make install` installs to Go's binary directory. `make build`
-writes `bin/berth`. Resource adapters also require `kind`, `k3d`, `docker`,
+From a checkout, `just install` installs to Go's binary directory. `just build`
+writes `bin/berth`. Installing with `go install` does not require just. Resource adapters also require `kind`, `k3d`, `docker`,
 and Docker Compose, plus a running Docker engine.
 
 ## Start a leased test lab
@@ -70,7 +70,7 @@ for release or sweep to clean up partial resources.
 
 ```sh
  berth job --cores 2 --memory 2GiB --timeout 10m -- go test ./...
- berth job --class suite --wait 5m -- make check
+ berth job --class suite --wait 5m -- just check
  berth ps                           # includes each job's cores, memory and class
 ```
 
@@ -352,14 +352,17 @@ timers.
 
 ## Develop and verify
 
+Install [just](https://just.systems), or run `nix develop` for Go, just, and
+GoReleaser. Run `just` to list recipes.
+
 ```sh
- make check
- make integration
- make ssh-integration
- make formal
+ just check
+ just integration
+ just ssh-integration
+ just formal
 ```
 
-`make formal` runs bounded TLA+ models, real-code checks, and mutation checks.
+`just formal` runs bounded TLA+ models, real-code checks, and mutation checks.
 It requires Java 17 or newer, Python 3, and Go. The model checker download is
 version- and checksum-pinned. Read the [formal findings](verification/findings.md)
 first: TTL expiry may reclaim an Alive owner by policy; the model checks that
@@ -383,18 +386,18 @@ The helper needs Python 3 and the real adapter/SSH tools; missing prerequisites
 fail rather than skip. CI runs these workflows and uploads `berth-verification`
 evidence, including failed runs, for seven days.
 
-`make check` runs formatting checks, vet, race-enabled tests, and build. Unit
+`just check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
 owner, unknown liveness, machine boundaries, retry, state corruption, locking,
 the CLI lifecycle, budget/owner-room math, FIFO/no-backfill queueing, dead
 waiters, and real job subprocesses (child exit codes, deadline/class timeout,
 wait exhaustion, cancellation, descendant cleanup, and sweep after owner death).
 Real adapter tests are isolated behind the `integration` build tag and run with
-`make integration`. They create unique kind, k3d, and Compose resources, then
+`just integration`. They create unique kind, k3d, and Compose resources, then
 verify cleanup. Missing adapter tools, Docker, or Compose fail the command rather
 than skip; failed cleanup retains the state directory and reports its path.
 
-`make ssh-integration` runs real SSH end-to-end tests against a disposable
+`just ssh-integration` runs real SSH end-to-end tests against a disposable
 Alpine container with OpenSSH and procps. It requires Docker, SSH, ssh-keygen,
 and Go. It fails rather than skips when a prerequisite is absent. Tests use
 isolated keys and a strict private known-hosts file. They cover quoting, binary
@@ -402,10 +405,11 @@ output, remote budget and owner room, child exit codes including 255, deadline
 124, wait 75, session disconnect cleanup, remote listing and sweep, version
 refusal, atomic upgrades, and transport failure 76.
 
-CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
-cross-builds, `make ssh-integration`, and `make integration`. It installs pinned,
-checksum-verified kind and k3d binaries; the integration target fails if Docker
-or any adapter prerequisite is unavailable.
+CI runs race-enabled tests and builds on GitHub-hosted `ubuntu-24.04` and
+`macos-15`. Linux also runs formatting, vet, dependency integrity, vulnerability
+checks, all four release-target cross-builds, and real demo and adapter
+integrations. It installs pinned, checksum-verified kind and k3d binaries.
+Missing adapter prerequisites fail rather than skip.
 The shared contribution workflow provides `contribution / PR title`,
 `contribution / PR must be raised via no-mistakes`,
 `contribution / Release PR identity`, and
@@ -423,6 +427,12 @@ quarantined by Gatekeeper. Prefer `go install github.com/Dematom1/berth@latest`;
 for a downloaded binary, verify its trusted release checksum before removing
 quarantine from that binary with `xattr -d com.apple.quarantine /path/to/berth`.
 Do not disable Gatekeeper globally.
+
+Build with `nix build`, or use
+`nix-build default.nix -A packages.x86_64-linux.default` without flakes.
+The flake provides `packages.<system>.berth` for `x86_64-linux`, `aarch64-linux`,
+and `aarch64-darwin` for NixOS or home-manager package lists. Its binary reports
+the version in `.release-please-manifest.json`.
 
 ## License
 

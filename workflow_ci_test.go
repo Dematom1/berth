@@ -56,24 +56,22 @@ func TestWorkflowActionPinsAndTrustBoundaries(t *testing.T) {
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("workflows: %v, %v", paths, err)
 	}
+	pinned := regexp.MustCompile(`^[^@]+@[0-9a-f]{40}$`)
+	checkUse := func(value any) {
+		t.Helper()
+		uses, _ := value.(string)
+		if uses != "" && !strings.HasPrefix(uses, "./") && !pinned.MatchString(uses) {
+			t.Errorf("action or reusable workflow is not SHA-pinned: %q", uses)
+		}
+	}
 	for _, path := range paths {
 		doc := workflow(t, strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
 		jobs := object(doc["jobs"])
 		for _, raw := range jobs {
+			checkUse(object(raw)["uses"])
 			for _, step := range list(object(raw)["steps"]) {
 				uses, _ := object(step)["uses"].(string)
-				if uses == "" {
-					continue
-				}
-				if !strings.HasPrefix(uses, "./") && !strings.Contains(uses, "@") {
-					t.Errorf("unversioned action %q", uses)
-				}
-				if !strings.HasPrefix(uses, "./") {
-					pin := strings.SplitN(uses, "@", 2)[1]
-					if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(pin) {
-						t.Errorf("action is not SHA-pinned: %q", uses)
-					}
-				}
+				checkUse(uses)
 				with := object(object(step)["with"])
 				if strings.Contains(uses, "actions/checkout") {
 					require(t, with["persist-credentials"] == false, "checkout credentials must not persist")
@@ -101,7 +99,8 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 		command string
 	}{
 		{check, "just lint"}, {check, "just cross"}, {check, "just deps-check"}, {check, "just vulncheck"},
-		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"}, {integration, "just ssh-integration"},
+		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"},
+		{integration, ".claude/skills/verify/verify.py local"}, {integration, ".claude/skills/verify/verify.py ssh"}, {integration, ".claude/skills/verify/verify.py adapters"},
 	} {
 		require(t, hasRun(pair.job, pair.command), "missing CI command: "+pair.command)
 	}
@@ -115,10 +114,7 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 }
 
 func TestNoMistakesRequiredWorkflow(t *testing.T) {
-	doc := workflow(t, "no-mistakes-required")
-	jobs := object(doc["jobs"])
-	require(t, jobs["check"] != nil, "missing attestation check")
-	require(t, object(doc["permissions"])["contents"] == "read", "PR workflow must have read-only contents permission")
+	doc, _ := contribution(t)
 	pullRequest := object(object(doc["on"])["pull_request"])
 	wantEvents := map[any]bool{"opened": true, "edited": true, "synchronize": true, "reopened": true, "ready_for_review": true}
 	gotEvents := map[any]bool{}
@@ -129,13 +125,8 @@ func TestNoMistakesRequiredWorkflow(t *testing.T) {
 	for event := range wantEvents {
 		require(t, gotEvents[event], "attestation missing PR event: "+event.(string))
 	}
-	job := object(jobs["check"])
-	wantCondition := "github.event.pull_request.user.login != 'github-actions[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]'"
-	require(t, job["if"] == wantCondition, "attestation must exclude only the three trusted automation accounts with AND conditions")
-	var guardAction bool
-	for _, raw := range list(job["steps"]) {
-		uses, _ := object(raw)["uses"].(string)
-		guardAction = guardAction || strings.Contains(uses, "require-no-mistakes@")
-	}
-	require(t, guardAction, "attestation must invoke the no-mistakes guard")
+	require(t, pullRequest["paths"] == nil && pullRequest["paths-ignore"] == nil, "attestation must run for every PR path")
+	concurrency := object(doc["concurrency"])
+	wantGroup := "contribution-${{ github.event.pull_request.number }}-${{ (github.event.action == 'opened' || github.event.action == 'edited') && github.run_id || 'head-change' }}"
+	require(t, concurrency["group"] == wantGroup, "body-bearing events must retain their individual attestation runs")
 }
