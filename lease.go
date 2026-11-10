@@ -30,6 +30,13 @@ type Resource struct {
 	File       string `json:"file,omitempty"`
 }
 
+func kubeconfig(l Lease) string {
+	if l.Resource.Adapter == "kind" || l.Resource.Adapter == "k3d" {
+		return l.Resource.File
+	}
+	return ""
+}
+
 type Liveness string
 
 const (

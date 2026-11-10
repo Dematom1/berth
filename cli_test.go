@@ -119,7 +119,7 @@ func TestCLIRejectsUsageBeforeStateAccess(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "must-not-exist")
 	t.Setenv("BERTH_STATE", dir)
 	for _, args := range [][]string{
-		{"ps", "--typo"}, {"ps", "extra"}, {"create", "--ttl", "0s"},
+		{"ps", "--typo"}, {"ps", "--human"}, {"ps", "--humans"}, {"ps", "extra"}, {"create", "--ttl", "0s"},
 		{"create", "--ttl", "bad"}, {"create", "--adapter", "unknown"},
 		{"create", "--adapter", "compose"}, {"create", "--file", "x"},
 		{"create", "--label", "bad"}, {"create", "--owner", "pid:-2"},
@@ -257,7 +257,7 @@ func TestCLIHomeHelpVersionAndTOON(t *testing.T) {
 		}
 	}
 	var rendered bytes.Buffer
-	emit(&rendered, false, map[string]any{"leases": []map[string]any{{"id": "abc", "resources": "lab, \"db\"\nnext"}}})
+	emit(&rendered, axiOutput, map[string]any{"leases": []map[string]any{{"id": "abc", "resources": "lab, \"db\"\nnext"}}})
 	if rendered.String() != "leases[1]{id,resources}:\n  abc,\"lab, \\\"db\\\"\\nnext\"\n" {
 		t.Fatalf("TOON string escaping changed: %q", rendered.String())
 	}

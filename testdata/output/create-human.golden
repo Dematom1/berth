@@ -1,0 +1,15 @@
+age: 5m0s ago
+class: -
+cores: 0
+expires: in 1h0m0s
+id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+kubeconfig: /tmp/lab's kubeconfig
+labels: map[task:lab]
+liveness: alive
+machine: lab
+memory: 0 B
+owner: pid:123
+resource: kind:berth-lab
+resource_adapter: kind
+resource_name: berth-lab
+resources: test, lab
