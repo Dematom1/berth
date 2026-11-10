@@ -1,0 +1,3 @@
+ID                                OWNER    LIVENESS  AGE       EXPIRES  MACHINE  RESOURCE  RESOURCES  CORES  MEMORY   CLASS  KUBECONFIG
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  pid:123  dead      8m0s ago  in 4m0s  lab      process:  -          1      1.0 GiB  suite  -
+Warning: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: orphan-suspected; budget reserved until group absence is verified

@@ -125,6 +125,50 @@ func TestLeaseOutputSnapshots(t *testing.T) {
 	}
 }
 
+func TestLeaseWarningSnapshots(t *testing.T) {
+	for _, orphan := range []bool{false, true} {
+		name := "expiring-lease"
+		l := Lease{ID: strings.Repeat("a", 32), Machine: "lab", Owner: Owner{Kind: "pid", ID: "123"}, Created: testNow.Add(-8 * time.Minute), Expires: testNow.Add(4 * time.Minute), TTL: 12 * time.Minute, Resource: Resource{Adapter: "none"}}
+		live := Alive
+		if orphan {
+			name, live = "orphan-job", Dead
+			l.Resource.Adapter = "process"
+			l.Job = &JobResource{Budget: Budget{1, 1 << 30}, Class: "suite", OrphanSuspected: true}
+		}
+		value := map[string]any{"count": 1, "leases": []map[string]any{leaseView(l, live, testNow)}}
+		for _, mode := range []outputMode{humanOutput, axiOutput, jsonOutput} {
+			var out bytes.Buffer
+			if mode == humanOutput {
+				humanObject(&out, value, testNow)
+			} else {
+				emit(&out, mode, value)
+			}
+			snapshot(t, name+"-"+string(mode), out.String())
+		}
+	}
+}
+
+func TestHumanLeaseWarnings(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BERTH_STATE", dir)
+	t.Setenv("BERTH_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	id := invoke(t, 0, "create")["lease"].(map[string]any)["id"].(string)
+	jobStore(t, dir, func(s *Store) {
+		l := s.Leases[id]
+		l.TTL, l.Expires = 12*time.Minute, time.Now().Add(4*time.Minute)
+		s.Leases[id] = l
+		if err := s.Save(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, args := range [][]string{nil, {"ps"}} {
+		var out bytes.Buffer
+		if code := runWithOutput(context.Background(), args, &out, humanOutput); code != 0 || !strings.Contains(out.String(), "Warning: "+id+": expires in 4m0s - extend or it will be reclaimed") {
+			t.Fatalf("human warning missing: %d %s", code, out.String())
+		}
+	}
+}
+
 func TestAXIHelpAndErrors(t *testing.T) {
 	for _, command := range []string{"", "create", "list", "extend", "release", "sweep", "job", "machine", "setup", "env"} {
 		var out bytes.Buffer

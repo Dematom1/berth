@@ -4,6 +4,7 @@ leases[1]:
     class: ""
     cores: 0
     expires: "2026-11-09T13:00:00Z"
+    expiring_soon: false
     id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     kubeconfig: /tmp/lab's kubeconfig
     labels:
@@ -12,11 +13,13 @@ leases[1]:
     machine: lab
     memory: 0B
     memory_bytes: 0
+    orphan_suspected: false
     owner: "pid:123"
     resource: "kind:berth-lab"
     resource_adapter: kind
     resource_name: berth-lab
     resources: "test, lab"
+    warning: ""
 records[1]:
   - created: "2026-11-09T11:55:00Z"
     expires: "2026-11-09T13:00:00Z"

@@ -172,7 +172,7 @@ func axiView(value map[string]any, fullCommand string) map[string]any {
 			shown := make([]map[string]any, 0, min(total, axiListLimit))
 			for _, row := range rows[:min(total, axiListLimit)] {
 				compact := map[string]any{}
-				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
+				for _, field := range []string{"id", "owner", "liveness", "expires", "expiring_soon", "orphan_suspected", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
 					compact[field] = row[field]
 				}
 				if text, ok := compact["resources"].(string); ok {
@@ -252,10 +252,23 @@ func humanValue(key string, value any, now time.Time) string {
 	return humanText(fmt.Sprint(value))
 }
 
+func humanWarnings(w io.Writer, value map[string]any) {
+	prefix := ""
+	if id, ok := value["id"].(string); ok {
+		prefix = humanText(id) + ": "
+	}
+	if value["orphan_suspected"] == true {
+		fmt.Fprintln(w, "Warning: "+prefix+"orphan-suspected; budget reserved until group absence is verified")
+	}
+	if warning, ok := value["warning"].(string); ok && warning != "" {
+		fmt.Fprintln(w, "Warning: "+prefix+humanText(warning))
+	}
+}
+
 func humanObject(w io.Writer, value map[string]any, now time.Time) {
 	for _, key := range keys(value) {
 		switch key {
-		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code":
+		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code", "expiring_soon", "orphan_suspected", "warning":
 			continue
 		case "budget":
 			fmt.Fprintln(w, value[key].(map[string]any)["summary"])
@@ -280,6 +293,9 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 				fmt.Fprintln(table, strings.Join(cells, "\t"))
 			}
 			table.Flush()
+			for _, row := range rows {
+				humanWarnings(w, row)
+			}
 		case "lease":
 			humanObject(w, value[key].(map[string]any), now)
 		default:
@@ -299,6 +315,7 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 			fmt.Fprintln(w, humanText(hint))
 		}
 	}
+	humanWarnings(w, value)
 }
 
 func readableMemory(bytes int64) string {

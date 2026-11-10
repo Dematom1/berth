@@ -30,15 +30,8 @@ func TestLeaseExpiryWarnings(t *testing.T) {
 			}
 		})
 	}
-	view := leaseView(lease, Alive, testNow)
-	var out bytes.Buffer
-	emit(&out, false, map[string]any{"leases": []map[string]any{{"expiring_soon": view["expiring_soon"], "orphan_suspected": view["orphan_suspected"], "warning": view["warning"]}}})
-	want := "leases[1]{expiring_soon,orphan_suspected,warning}:\n  true,false,expires in 4m0s - extend or it will be reclaimed\n"
-	if out.String() != want {
-		t.Fatalf("AXI warning bytes changed: %q", out.String())
-	}
 	lease.Job = &JobResource{OrphanSuspected: true}
-	view = leaseView(lease, Alive, testNow)
+	view := leaseView(lease, Alive, testNow)
 	if view["orphan_suspected"] != true || view["warning"] != "expires in 4m0s - job deadline cannot be extended" {
 		t.Fatalf("job warning misled owner: %+v", view)
 	}

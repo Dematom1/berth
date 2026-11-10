@@ -1,0 +1,4 @@
+help[1]: Run berth --axi ps --full for all 1 matching leases and complete records
+leases[1]{cores,expires,expiring_soon,id,kubeconfig,liveness,machine,memory_bytes,orphan_suspected,owner,resource,resources}:
+  0,"2026-11-09T12:04:00Z",true,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,"",alive,lab,0,false,"pid:123","none:",""
+total: 1
