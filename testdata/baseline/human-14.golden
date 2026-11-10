@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: invalid or unexpected arguments
+Run berth list --help for options

@@ -4,7 +4,7 @@ CONSTANT UnsafeUnknown
 VARIABLES present, live, local, expired, resource, event, evidence
 vars == <<present, live, local, expired, resource, event, evidence>>
 
-\* lease.go: reclaimable. TTL expiry permits reclaim even when the owner is Alive.
+\* internal/lease/lease.go: reclaimable. TTL expiry permits reclaim even when the owner is Alive.
 Eligible == local /\ (live = "dead" \/ expired \/ UnsafeUnknown)
 Init == /\ present = TRUE /\ resource = TRUE
         /\ live \in {"alive", "dead", "unknown"}

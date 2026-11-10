@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: use berth job [flags] -- <cmd>; --wait must be nonnegative
+Run berth job --help for options

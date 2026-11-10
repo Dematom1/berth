@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: use berth machine install <name> --file <binary>
+Run berth machine --help for options

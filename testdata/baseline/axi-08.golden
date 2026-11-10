@@ -1,0 +1,6 @@
+exit: 2
+stdout:
+code: VALIDATION_ERROR
+error: lease does not exist
+exit_code: 2
+help[1]: Run berth ps to find a lease

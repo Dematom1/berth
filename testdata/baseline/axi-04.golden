@@ -1,0 +1,7 @@
+exit: 0
+stdout:
+confirmed: false
+eligible: []
+help[1]: Run berth sweep --confirm to reclaim eligible leases
+reclaimed: []
+unknown: []

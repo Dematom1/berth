@@ -1,0 +1,6 @@
+exit: 2
+stdout:
+code: VALIDATION_ERROR
+error: "use berth job [flags] -- <cmd>; --wait must be nonnegative"
+exit_code: 2
+help[1]: Run berth job --help for options

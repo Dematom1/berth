@@ -49,15 +49,15 @@ vulncheck:
     go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 formal:
-    go test -race -tags formal -count=1 -timeout 1m .
+    go test -race -tags formal -count=1 -timeout 1m ./...
     python3 verification/check.py
     python3 verification/mutations.py
 
 integration:
-    go test -tags integration -count=1 -v -run '^TestIntegration' -timeout 15m .
+    go test -tags integration -count=1 -v -run '^TestIntegration' -timeout 15m ./...
 
 ssh-integration:
-    go test -race -tags sshintegration -count=1 -v -run '^TestSSHIntegration$' -timeout 5m .
+    go test -race -tags sshintegration -count=1 -v -run '^TestSSHIntegration$' -timeout 5m ./...
 
 release-check:
     goreleaser check

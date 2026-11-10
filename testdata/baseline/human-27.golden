@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: expected setup hooks
+Run berth setup hooks [--remove]

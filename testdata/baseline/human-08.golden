@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: lease does not exist
+Run berth ps to find a lease

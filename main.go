@@ -7,6 +7,9 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+
+	clipkg "github.com/Dematom1/berth/internal/cli"
+	leasepkg "github.com/Dematom1/berth/internal/lease"
 )
 
 var version string
@@ -47,9 +50,9 @@ func resolveVersion(override string, info *debug.BuildInfo) string {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "__job_exec" {
-		os.Exit(jobExec(os.Args[2:]))
+		os.Exit(leasepkg.Exec(os.Args[2:]))
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	os.Exit(run(ctx, os.Args[1:], os.Stdout))
+	os.Exit(clipkg.Run(ctx, os.Args[1:], os.Stdout, version))
 }

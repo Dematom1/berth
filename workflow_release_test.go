@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	remotepkg "github.com/Dematom1/berth/internal/remote"
 	"gopkg.in/yaml.v3"
 )
 
@@ -134,7 +135,7 @@ func testReleaseUploadScript(t *testing.T, script string) {
 				if err != nil {
 					t.Fatal("release script test requires sha256sum or shasum")
 				}
-				shim := "#!/bin/sh\nexec " + shellQuote(shasum) + " -a 256 \"$@\"\n"
+				shim := "#!/bin/sh\nexec " + remotepkg.ShellQuote(shasum) + " -a 256 \"$@\"\n"
 				if err := os.WriteFile(filepath.Join(bin, "sha256sum"), []byte(shim), 0o755); err != nil {
 					t.Fatal(err)
 				}
