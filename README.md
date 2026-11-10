@@ -406,9 +406,9 @@ CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
 cross-builds, `make ssh-integration`, and `make integration`. It installs pinned,
 checksum-verified kind and k3d binaries; the integration target fails if Docker
 or any adapter prerequisite is unavailable.
-The live `main-required-ci` ruleset requires the checks `PR title` and
-`PR must be raised via no-mistakes`; the workflow also provides the Go validation
-check named `main-required-ci`.
+The live `main-required-ci` ruleset requires the `contribution` check from the
+shared contribution workflow and the Go validation check named
+`main-required-ci`.
 
 ## License
 
