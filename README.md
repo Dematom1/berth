@@ -29,34 +29,10 @@ and Docker Compose, plus a running Docker engine.
 ## Upgrade from berth
 
 Dibs is the new name for berth. Update install commands, sweep timers, scripts,
-and remote binary paths to `dibs`. See the [rename release notes](docs/releases/rename-to-dibs.md)
-for compatibility and repository-rename ordering.
-
-For one minor release, `BERTH_*` environment variables remain deprecated aliases
-for `DIBS_*`. New variables win even when explicitly empty. Legacy alias use
-prints one warning on stderr, without values or changes to JSON or AXI stdout.
-Job children receive both `DIBS_LEASE` and `BERTH_LEASE` during this window.
-This includes `DIBS_LEGACY_MACHINE` and its legacy alias for machine migration.
-
-When the preferred default config is absent, dibs reads the old
-`$XDG_CONFIG_HOME/berth/config.json` or `~/.config/berth/config.json` without
-moving it. Invalid preferred config remains an error. Explicit config and state
-paths keep their meaning.
-
-When legacy default state exists, dibs atomically creates a sibling `dibs` symlink
-to the `berth` directory. The ledger, lock inode, and absolute snapshot paths
-stay in place. Keep both the old directory and its alias until all leases are
-released. Independent old and new directories cause an error; select each ledger
-with `DIBS_STATE` rather than deleting or combining them. Read-only `orphans`
-uses legacy state without creating the alias or migrating the ledger.
-
-Existing `berth-` resources and `io.berth.*` labels remain listable, adoptable,
-and reclaimable through their leases, including after the environment-alias
-window ends. New resources use `dibs-` and `io.dibs.*`. Inventory preserves
-both label namespaces and never authorizes cleanup of unleased resources.
-`dibs setup hooks` upgrades managed berth hooks and plugins while preserving
-unrelated settings and unmanaged files. Install matching client and remote
-versions before SSH jobs.
+and remote binary paths to `dibs`. For one minor release, `BERTH_*` variables
+remain deprecated aliases for `DIBS_*`; existing berth-named leases remain
+reclaimable. See the [rename release notes](docs/releases/rename-to-dibs.md) for
+the compatibility details and repository-rename ordering.
 
 ## Output for people, agents, and scripts
 
