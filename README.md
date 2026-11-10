@@ -392,7 +392,11 @@ builds local archives and checksums without publishing. Release-please opens
 version PRs and creates draft releases after merge. CI uploads all four Linux
 and macOS archives before publishing a prerelease. Stable promotion is manual.
 macOS Developer ID signing is disabled until signing credentials and identity
-are configured.
+are configured. Prebuilt macOS binaries are not Developer ID signed and may be
+quarantined by Gatekeeper. Prefer `go install github.com/Dematom1/berth@latest`;
+for a downloaded binary, verify its trusted release checksum before removing
+quarantine from that binary with `xattr -d com.apple.quarantine /path/to/berth`.
+Do not disable Gatekeeper globally.
 
 Build with `nix build`, or use
 `nix-build default.nix -A packages.x86_64-linux.default` without flakes.
