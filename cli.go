@@ -343,7 +343,7 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 		}
 		remoteArgs := []string{command}
 		fs.Visit(func(f *flag.Flag) {
-			if f.Name != "machine" {
+			if f.Name != "machine" && f.Name != "axi" && f.Name != "json" {
 				remoteArgs = append(remoteArgs, "--"+f.Name+"="+f.Value.String())
 			}
 		})
