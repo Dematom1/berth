@@ -523,7 +523,7 @@ eligible sweep retries the same unique resource. Kernel locks end on process
 death. Corrupt or unsupported state is an error, never an empty lease list.
 
 Each new lease records a stable machine identity: `darwin:<IOPlatformUUID>` on
-macOS or `linux:</etc/machine-id>` on Linux, normalized to lowercase hexadecimal
+macOS or `linux:<machine-id>` on Linux, normalized to lowercase hexadecimal
 without hyphens. Hostname changes no longer change lease ownership. An unavailable
 or invalid OS identity is an error; berth never falls back to a hostname.
 Cloned hosts must have distinct OS machine identities. On minimal Linux hosts
@@ -543,8 +543,8 @@ belongs to this machine and that you are using its original local state director
 Then authorize that exact legacy hostname through the invocation's environment:
 
 ```sh
- BERTH_LEGACY_MACHINE=Mac.localdomain berth sweep             # migrate and preview
- berth sweep --confirm                                      # separate cleanup decision
+BERTH_LEGACY_MACHINE=Mac.localdomain berth sweep  # migrate and preview
+berth sweep --confirm                              # separate cleanup decision
 ```
 
 `BERTH_LEGACY_MACHINE` is an explicit same-user attestation, not automatic proof
