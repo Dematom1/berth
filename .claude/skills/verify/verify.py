@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Drive the real berth CLI; retain commands, output, exit codes, and observations."""
+
 import argparse
 import json
 import os
@@ -22,16 +23,25 @@ class Driver:
         self.env = os.environ.copy()
         self.env.pop("BERTH_OWNER", None)
         self.env.pop("DOCKER_HOST", None)
-        self.env.update(BERTH_STATE=str(self.scratch / "state"),
-                        BERTH_CONFIG=str(self.scratch / "config.json"),
-                        KUBECONFIG=str(self.scratch / "caller-kubeconfig"))
+        self.env.update(
+            BERTH_STATE=str(self.scratch / "state"),
+            BERTH_CONFIG=str(self.scratch / "config.json"),
+            KUBECONFIG=str(self.scratch / "caller-kubeconfig"),
+        )
         self.config = self.scratch / "config.json"
-        self.config.write_text(json.dumps({"cores": 3, "room_cores": 1,
-                                          "memory": "3GiB", "room_memory": "1GiB"}))
+        self.config.write_text(
+            json.dumps(
+                {"cores": 3, "room_cores": 1, "memory": "3GiB", "room_memory": "1GiB"}
+            )
+        )
         self.binary = str(self.scratch / "berth")
         self.children = []
-        self.record(scratch=str(self.scratch), config=json.loads(self.config.read_text()),
-                    state=self.env["BERTH_STATE"], kubeconfig=self.env["KUBECONFIG"])
+        self.record(
+            scratch=str(self.scratch),
+            config=json.loads(self.config.read_text()),
+            state=self.env["BERTH_STATE"],
+            kubeconfig=self.env["KUBECONFIG"],
+        )
 
     def record(self, **event):
         self.log.write(json.dumps(event) + "\n")
@@ -39,16 +49,34 @@ class Driver:
 
     def run(self, *args, code=0, timeout=300, env=None):
         try:
-            result = subprocess.run(args, cwd=ROOT, env=env or self.env,
-                                    capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(
+                args,
+                cwd=ROOT,
+                env=env or self.env,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
         except subprocess.TimeoutExpired as error:
-            self.record(command=list(args), timeout=timeout,
-                        stdout=(error.stdout or b"").decode(errors="replace"),
-                        stderr=(error.stderr or b"").decode(errors="replace"))
+            self.record(
+                command=list(args),
+                timeout=timeout,
+                stdout=(error.stdout or b"").decode(errors="replace"),
+                stderr=(error.stderr or b"").decode(errors="replace"),
+            )
             raise
-        self.record(command=list(args), stdout=result.stdout, stderr=result.stderr,
-                    exit=result.returncode)
-        assert result.returncode == code, (args, result.returncode, result.stdout, result.stderr)
+        self.record(
+            command=list(args),
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exit=result.returncode,
+        )
+        assert result.returncode == code, (
+            args,
+            result.returncode,
+            result.stdout,
+            result.stderr,
+        )
         return result.stdout
 
     def berth(self, *args, code=0):
@@ -69,7 +97,9 @@ class Driver:
 
     def start(self, name, *args):
         output = (self.evidence / (name + ".log")).open("w")
-        process = subprocess.Popen(args, cwd=ROOT, env=self.env, stdout=output, stderr=output)
+        process = subprocess.Popen(
+            args, cwd=ROOT, env=self.env, stdout=output, stderr=output
+        )
         output.close()
         self.children.append((process, name, args))
         self.record(start=list(args), pid=process.pid, output=name + ".log")
@@ -84,8 +114,9 @@ class Driver:
         self.observe(self.berth("ps")["count"] == expected, f"lease count = {expected}")
 
     def create(self, *args):
-        return self.berth("create", "--owner", f"pid:{os.getpid()}",
-                          "--ttl", "5m", *args)["record"]["id"]
+        return self.berth(
+            "create", "--owner", f"pid:{os.getpid()}", "--ttl", "5m", *args
+        )["record"]["id"]
 
     def local(self):
         self.run(self.binary)
@@ -94,8 +125,10 @@ class Driver:
         lease = self.create("--label", "demo=plain")
         for alias in ("list", "ls", "ps", "who"):
             listing = self.berth(alias)
-            self.observe(listing["count"] == 1 and listing["leases"][0]["id"] == lease,
-                         f"{alias} shows the created lease")
+            self.observe(
+                listing["count"] == 1 and listing["leases"][0]["id"] == lease,
+                f"{alias} shows the created lease",
+            )
         before = self.berth("ps")["records"][0]["expires"]
         self.berth("extend", lease, "--ttl", "30m")
         after = self.berth("ps")["records"][0]["expires"]
@@ -107,20 +140,31 @@ class Driver:
         self.count(0)
 
         owner = self.start("owner", "sleep", "60")
-        dead = self.berth("up", "--owner", f"pid:{owner.pid}", "--ttl", "1h")["record"]["id"]
+        dead = self.berth("up", "--owner", f"pid:{owner.pid}", "--ttl", "1h")["record"][
+            "id"
+        ]
         self.berth("sweep", "--confirm")
         self.count(1)
         owner.terminate()
         self.finish(owner, -15)
-        self.observe(dead in self.berth("sweep")["eligible"], "dead owner eligible before expiry")
+        self.observe(
+            dead in self.berth("sweep")["eligible"], "dead owner eligible before expiry"
+        )
         self.count(1)
         self.berth("sweep", "--confirm")
         self.count(0)
 
         heartbeat = self.scratch / "heartbeat"
         heartbeat.touch()
-        hb = self.berth("create", "--owner", f"heartbeat:{heartbeat}", "--stale", "1s",
-                        "--ttl", "1h")["record"]["id"]
+        hb = self.berth(
+            "create",
+            "--owner",
+            f"heartbeat:{heartbeat}",
+            "--stale",
+            "1s",
+            "--ttl",
+            "1h",
+        )["record"]["id"]
         time.sleep(1.2)
         self.observe(hb in self.berth("sweep")["eligible"], "stale heartbeat eligible")
         heartbeat.touch()
@@ -133,45 +177,103 @@ class Driver:
         self.run(self.binary, "job", "--", "sh", "-c", "echo working; echo done")
         self.run(self.binary, "job", "--", "sh", "-c", "exit 7", code=7)
         marker = self.scratch / "deadline-started"
-        self.run(self.binary, "job", "--timeout", "5s", "--", "sh", "-c",
-                 'touch "$1"; exec sleep 30', "_", str(marker), code=124)
+        self.run(
+            self.binary,
+            "job",
+            "--timeout",
+            "5s",
+            "--",
+            "sh",
+            "-c",
+            'touch "$1"; exec sleep 30',
+            "_",
+            str(marker),
+            code=124,
+        )
         self.observe(marker.exists(), "deadline child really started")
         never = self.scratch / "never-started"
-        self.run(self.binary, "job", "--cores", "999", "--", "touch", str(never), code=2)
+        self.run(
+            self.binary, "job", "--cores", "999", "--", "touch", str(never), code=2
+        )
         self.observe(not never.exists(), "oversized request did not start child")
         self.queue(never)
         self.count(0)
 
     def queue(self, never):
         def job(name, cores):
-            return self.start(name, self.binary, "job", "--cores", str(cores), "--memory", "1MiB",
-                              "--wait", "20s", "--timeout", "30s", "--", "sh", "-c",
-                              'echo "$1" >> "$2"; touch "$3"; while [ ! -e "$4" ]; do sleep .1; done',
-                              "_", name, str(self.scratch / "order"),
-                              str(self.scratch / (name + "-started")), str(self.scratch / (name + "-go")))
+            return self.start(
+                name,
+                self.binary,
+                "job",
+                "--cores",
+                str(cores),
+                "--memory",
+                "1MiB",
+                "--wait",
+                "20s",
+                "--timeout",
+                "30s",
+                "--",
+                "sh",
+                "-c",
+                'echo "$1" >> "$2"; touch "$3"; while [ ! -e "$4" ]; do sleep .1; done',
+                "_",
+                name,
+                str(self.scratch / "order"),
+                str(self.scratch / (name + "-started")),
+                str(self.scratch / (name + "-go")),
+            )
 
         def waiters():
             # Read-only observation of queue registration, not a state setter.
-            return len(json.loads((self.scratch / "state/state.json").read_text()).get("waiters") or [])
+            return len(
+                json.loads((self.scratch / "state/state.json").read_text()).get(
+                    "waiters"
+                )
+                or []
+            )
 
         holder = job("holder", 1)
-        self.await_(lambda: (self.scratch / "holder-started").exists(), "holder admitted")
+        self.await_(
+            lambda: (self.scratch / "holder-started").exists(), "holder admitted"
+        )
         big = job("big", 2)
         self.await_(lambda: waiters() == 1, "large waiter registered first")
         small = job("small", 1)
         self.await_(lambda: waiters() == 2, "small waiter queued despite spare core")
-        self.run(self.binary, "job", "--memory", "1MiB", "--wait", "0", "--",
-                 "touch", str(never), code=75)
-        self.observe(not never.exists() and not (self.scratch / "small-started").exists(),
-                     "no backfill; exhausted waiter did not start")
+        self.run(
+            self.binary,
+            "job",
+            "--memory",
+            "1MiB",
+            "--wait",
+            "0",
+            "--",
+            "touch",
+            str(never),
+            code=75,
+        )
+        self.observe(
+            not never.exists() and not (self.scratch / "small-started").exists(),
+            "no backfill; exhausted waiter did not start",
+        )
         self.berth("ps")
         (self.scratch / "holder-go").touch()
         self.finish(holder)
-        self.await_(lambda: (self.scratch / "big-started").exists(), "large waiter admitted next")
-        self.observe(not (self.scratch / "small-started").exists(), "small waits behind running large job")
+        self.await_(
+            lambda: (self.scratch / "big-started").exists(),
+            "large waiter admitted next",
+        )
+        self.observe(
+            not (self.scratch / "small-started").exists(),
+            "small waits behind running large job",
+        )
         (self.scratch / "big-go").touch()
         self.finish(big)
-        self.await_(lambda: (self.scratch / "small-started").exists(), "small waiter admitted last")
+        self.await_(
+            lambda: (self.scratch / "small-started").exists(),
+            "small waiter admitted last",
+        )
         (self.scratch / "small-go").touch()
         self.finish(small)
         order = (self.scratch / "order").read_text().splitlines()
@@ -185,18 +287,36 @@ class Driver:
         self.run("k3d", "version")
         self.run("kubectl", "version", "--client")
         compose = self.scratch / "compose.yaml"
-        compose.write_text('services:\n  web:\n    image: nginx:alpine\n    ports: ["127.0.0.1::80"]\n  cache:\n    image: redis:7-alpine\n    volumes: [data:/data]\nvolumes:\n  data: {}\n')
+        compose.write_text(
+            'services:\n  web:\n    image: nginx:alpine\n    ports: ["127.0.0.1::80"]\n  cache:\n    image: redis:7-alpine\n    volumes: [data:/data]\nvolumes:\n  data: {}\n'
+        )
         lease = self.create("--adapter", "compose", "--file", str(compose))
-        ids = self.run("docker", "ps", "-q", "--filter", "label=io.berth.lease=" + lease).split()
+        ids = self.run(
+            "docker", "ps", "-q", "--filter", "label=io.berth.lease=" + lease
+        ).split()
         self.observe(len(ids) == 2, "two attributed Compose containers")
         containers = json.loads(self.run("docker", "inspect", *ids))
         for container in containers:
             labels = container["Config"]["Labels"]
-            self.observe(all(key in labels for key in ("io.berth.lease", "io.berth.owner",
-                                                       "io.berth.expires", "io.berth.machine")),
-                         "container has lease attribution labels")
-        web = next(c for c in containers if c["Config"]["Labels"]["com.docker.compose.service"] == "web")
+            self.observe(
+                all(
+                    key in labels
+                    for key in (
+                        "io.berth.lease",
+                        "io.berth.owner",
+                        "io.berth.expires",
+                        "io.berth.machine",
+                    )
+                ),
+                "container has lease attribution labels",
+            )
+        web = next(
+            c
+            for c in containers
+            if c["Config"]["Labels"]["com.docker.compose.service"] == "web"
+        )
         address = self.run("docker", "port", web["Id"], "80/tcp").strip()
+
         def http_ready():
             try:
                 with urllib.request.urlopen("http://" + address, timeout=2) as response:
@@ -210,8 +330,15 @@ class Driver:
         self.await_(http_ready, "real Compose HTTP response")
         compose.unlink()
         self.berth("release", lease)  # Preview must leave the service running.
-        self.observe(len(self.run("docker", "ps", "-q", "--filter", "label=io.berth.lease=" + lease).split()) == 2,
-                     "release preview preserves containers")
+        self.observe(
+            len(
+                self.run(
+                    "docker", "ps", "-q", "--filter", "label=io.berth.lease=" + lease
+                ).split()
+            )
+            == 2,
+            "release preview preserves containers",
+        )
         self.berth("release", lease, "--confirm")
         self.assert_no_resources(lease)
 
@@ -219,22 +346,61 @@ class Driver:
         original = 'apiVersion: v1\nkind: Config\nclusters: []\nusers: []\ncontexts: []\ncurrent-context: ""\n'
         caller.write_text(original)
         for adapter, config in (("kind", "kubeconfig"), ("k3d", "k3d")):
-            lease = self.create("--adapter", adapter, "--resources", "verification cluster")
+            lease = self.create(
+                "--adapter", adapter, "--resources", "verification cluster"
+            )
             kubeconfig = self.scratch / "state/resources" / lease / config
-            self.run("kubectl", "--kubeconfig", str(kubeconfig), "wait", "--for=condition=Ready",
-                     "nodes", "--all", "--timeout=120s")
-            nodes = json.loads(self.run("kubectl", "--kubeconfig", str(kubeconfig), "get", "nodes", "-o", "json"))
-            self.observe(bool(nodes["items"]) and all(any(c["type"] == "Ready" and c["status"] == "True"
-                         for c in node["status"]["conditions"]) for node in nodes["items"]),
-                         adapter + " has Ready nodes")
+            self.run(
+                "kubectl",
+                "--kubeconfig",
+                str(kubeconfig),
+                "wait",
+                "--for=condition=Ready",
+                "nodes",
+                "--all",
+                "--timeout=120s",
+            )
+            nodes = json.loads(
+                self.run(
+                    "kubectl",
+                    "--kubeconfig",
+                    str(kubeconfig),
+                    "get",
+                    "nodes",
+                    "-o",
+                    "json",
+                )
+            )
+            self.observe(
+                bool(nodes["items"])
+                and all(
+                    any(
+                        c["type"] == "Ready" and c["status"] == "True"
+                        for c in node["status"]["conditions"]
+                    )
+                    for node in nodes["items"]
+                ),
+                adapter + " has Ready nodes",
+            )
             self.berth("ps")
-            self.observe(caller.read_text() == original, adapter + " leaves caller kubeconfig unchanged")
+            self.observe(
+                caller.read_text() == original,
+                adapter + " leaves caller kubeconfig unchanged",
+            )
             self.berth("release", lease, "--confirm")
-            clusters = (self.run("kind", "get", "clusters") if adapter == "kind" else
-                        self.run("k3d", "cluster", "list", "-o", "json"))
+            clusters = (
+                self.run("kind", "get", "clusters")
+                if adapter == "kind"
+                else self.run("k3d", "cluster", "list", "-o", "json")
+            )
             name = "berth-" + (lease if adapter == "kind" else lease[:26])
-            self.observe(name not in clusters, adapter + " cluster absent after release")
-            self.observe(caller.read_text() == original, adapter + " cleanup leaves caller kubeconfig unchanged")
+            self.observe(
+                name not in clusters, adapter + " cluster absent after release"
+            )
+            self.observe(
+                caller.read_text() == original,
+                adapter + " cleanup leaves caller kubeconfig unchanged",
+            )
         self.count(0)
 
     def assert_no_resources(self, lease):
@@ -275,7 +441,12 @@ class Driver:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("flow", choices=("local", "adapters", "ssh", "all"))
-    parser.add_argument("--evidence", required=True, type=Path, help="new absolute directory; never removed")
+    parser.add_argument(
+        "--evidence",
+        required=True,
+        type=Path,
+        help="new absolute directory; never removed",
+    )
     args = parser.parse_args()
     if not args.evidence.is_absolute():
         parser.error("--evidence must be absolute")
@@ -286,7 +457,9 @@ def main():
         driver.run("go", "build", "-o", driver.binary, ".")
         driver.run(driver.binary, "--version")
         driver.run(driver.binary, "ps", "--json")
-        for flow in (("local", "adapters", "ssh") if args.flow == "all" else (args.flow,)):
+        for flow in (
+            ("local", "adapters", "ssh") if args.flow == "all" else (args.flow,)
+        ):
             driver.record(flow=flow, status="started")
             getattr(driver, flow)()
             driver.record(flow=flow, status="passed")
@@ -296,7 +469,9 @@ def main():
         raise
     finally:
         cleaned = driver.cleanup()
-        (args.evidence / "result.json").write_text(json.dumps({"passed": passed, "cleaned": cleaned}) + "\n")
+        (args.evidence / "result.json").write_text(
+            json.dumps({"passed": passed, "cleaned": cleaned}) + "\n"
+        )
         print("evidence: " + str(args.evidence))
     assert cleaned, "cleanup failed; inspect retained_state in events.jsonl"
 
