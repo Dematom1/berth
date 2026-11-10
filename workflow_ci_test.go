@@ -120,9 +120,18 @@ func TestNoMistakesRequiredWorkflow(t *testing.T) {
 	require(t, jobs["check"] != nil, "missing attestation check")
 	require(t, object(doc["permissions"])["contents"] == "read", "PR workflow must have read-only contents permission")
 	pullRequest := object(object(doc["on"])["pull_request"])
-	require(t, len(list(pullRequest["types"])) == 5, "attestation must rerun on PR edits and readiness changes")
+	wantEvents := map[any]bool{"opened": true, "edited": true, "synchronize": true, "reopened": true, "ready_for_review": true}
+	gotEvents := map[any]bool{}
+	for _, event := range list(pullRequest["types"]) {
+		gotEvents[event] = true
+	}
+	require(t, len(gotEvents) == len(wantEvents), "attestation must use the complete required PR event set")
+	for event := range wantEvents {
+		require(t, gotEvents[event], "attestation missing PR event: "+event.(string))
+	}
 	job := object(jobs["check"])
-	require(t, strings.Contains(job["if"].(string), "release-please[bot]"), "release automation must be exempt from PR attestation")
+	wantCondition := "github.event.pull_request.user.login != 'github-actions[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]'"
+	require(t, job["if"] == wantCondition, "attestation must exclude only the three trusted automation accounts with AND conditions")
 	var guardAction bool
 	for _, raw := range list(job["steps"]) {
 		uses, _ := object(raw)["uses"].(string)
