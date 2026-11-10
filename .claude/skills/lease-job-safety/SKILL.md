@@ -60,6 +60,6 @@ A pass covers these finite models, not arbitrary queue lengths or the Go binary.
 
 ## Reject a broken change
 
-`make formal` checks intentionally broken model variants and runs `verification/mutations.py`. The latter copies the Go package into temporary directories and changes real code only in those copies. It removes unknown-owner protection, locking, budget checks, FIFO gating, helper EOF protection, cleanup retention, completion probing, EOF cancellation, and result preservation. Each variant must fail a behavior test, not compilation or source-text matching. The checkout stays unchanged.
+`just formal` checks intentionally broken model variants and runs `verification/mutations.py`. The latter copies the Go package into temporary directories and changes real code only in those copies. It removes unknown-owner protection, locking, budget checks, FIFO gating, helper EOF protection, cleanup retention, completion probing, EOF cancellation, and result preservation. Each variant must fail a behavior test, not compilation or source-text matching. The checkout stays unchanged.
 
 For an unexpected trace, map each action to the named function and check the atomicity boundary first. If the code permits the sequence, record a finding before proposing a product fix. If the model invented a sequence, correct the abstraction and rerun the mutation checks. Never weaken a safety promise to make a failing code path green.
