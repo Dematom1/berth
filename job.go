@@ -16,9 +16,10 @@ import (
 )
 
 type JobResource struct {
-	Budget Budget `json:"budget"`
-	Class  string `json:"class"`
-	Leader Owner  `json:"leader"`
+	Budget          Budget `json:"budget"`
+	Class           string `json:"class"`
+	Leader          Owner  `json:"leader"`
+	OrphanSuspected bool   `json:"orphan_suspected,omitempty"`
 }
 
 type JobWaiter struct {
@@ -111,7 +112,7 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 			existing := s.Leases[id]
 			if existing.Job != nil {
 				if eligible, _ := reclaimable(existing, l.Machine, now, checkOwner); eligible {
-					if _, err := releaseLease(cleanupCtx, s, id, l.Machine, adapters()); err != nil {
+					if _, err := releaseLease(cleanupCtx, s, id, l.Machine, adapters(), false); err != nil {
 						fmt.Fprintln(os.Stderr, "berth: retaining job reservation after cleanup failure:", err)
 					}
 				}
@@ -169,14 +170,22 @@ func admitJob(ctx context.Context, dir string, l Lease, capacity Budget, wait ti
 // parent dies before committing, EOF on fd 3 makes the helper exit instead.
 func jobExec(args []string) int {
 	gate := os.NewFile(3, "job-start")
-	if gate == nil || len(args) == 0 {
+	if gate == nil || len(args) < 2 {
 		return 125
 	}
+	deadline, parseErr := time.Parse(time.RFC3339Nano, args[0])
+	if parseErr != nil {
+		return 125
+	}
+	args = args[1:]
 	var b [1]byte
 	n, err := gate.Read(b[:])
 	gate.Close()
 	if err != nil || n != 1 || b[0] != 1 {
 		return 125
+	}
+	if !time.Now().Before(deadline) {
+		return 124
 	}
 	if err := syscall.Exec(args[0], args, os.Environ()); err != nil {
 		fmt.Fprintln(os.Stderr, "berth: cannot execute child:", err)
@@ -208,7 +217,7 @@ func startJob(ctx context.Context, dir string, l *Lease, args []string, out io.W
 	if err != nil {
 		return nil, nil, err
 	}
-	cmd := exec.Command(bin, append([]string{"__job_exec"}, args...)...)
+	cmd := exec.Command(bin, append([]string{"__job_exec", current.Expires.Format(time.RFC3339Nano)}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.ExtraFiles = []*os.File{gate}
 	cmd.Env = append(os.Environ(), "BERTH_LEASE="+l.ID)
@@ -269,12 +278,23 @@ func groupAlive(ctx context.Context, pgid int) (bool, error) {
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 2 && fields[0] == strconv.Itoa(pgid) && !strings.HasPrefix(fields[1], "Z") {
+		if len(fields) == 0 {
+			continue
+		}
+		if len(fields) != 2 {
+			return false, errors.New("invalid process group observation; cleanup record retained")
+		}
+		if _, err := strconv.Atoi(fields[0]); err != nil {
+			return false, errors.New("invalid process group ID; cleanup record retained")
+		}
+		if fields[0] == strconv.Itoa(pgid) && !strings.HasPrefix(fields[1], "Z") {
 			return true, nil
 		}
 	}
 	return false, nil
 }
+
+var errOrphanSuspected = errors.New("orphan-suspected: job group cannot be safely signaled; reservation retained")
 
 func (processResource) Destroy(ctx context.Context, l Lease) error {
 	if l.Job == nil {
@@ -289,11 +309,14 @@ func (processResource) Destroy(ctx context.Context, l Lease) error {
 		return errors.New("invalid job process identity")
 	}
 	identity, live := processIdentity(pid)
-	if live == Unknown || ((live == Alive || identity != "") && identity != leader.Start) {
-		return errors.New("job group identity cannot be verified; lease retained")
-	}
-	if live == Dead && identity == "" {
-		fmt.Fprintln(os.Stderr, "berth: job leader is gone; releasing lease without signaling an unverifiable process group")
+	if l.Job.OrphanSuspected || live == Unknown || identity != leader.Start || (live == Dead && identity == "") {
+		alive, err := groupAlive(ctx, pid)
+		if err != nil {
+			return fmt.Errorf("%w: %v", errOrphanSuspected, err)
+		}
+		if alive {
+			return errOrphanSuspected
+		}
 		return nil
 	}
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
@@ -346,7 +369,7 @@ func finishJob(dir string, l Lease, groupCleaned bool) {
 				}
 			}
 		} else {
-			_, err = releaseLease(ctx, s, l.ID, l.Machine, adapters())
+			_, err = releaseLease(ctx, s, l.ID, l.Machine, adapters(), false)
 		}
 	}
 	if err != nil {
@@ -462,31 +485,20 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 		}
 		return emitError(out, jsonOutput, code, err.Error(), "Run berth ps to inspect reservations; retry berth job with --wait")
 	}
-	finish, groupCleaned := true, false
-	defer func() {
-		if finish {
-			finishJob(dir, l, groupCleaned)
-		}
-	}()
+	groupCleaned := false
+	defer func() { finishJob(dir, l, groupCleaned) }()
+	timer := time.NewTimer(time.Until(l.Expires))
+	defer timer.Stop()
 	cmd, observed, err := startJob(ctx, dir, &l, child, out, input)
 	if err != nil {
 		return emitError(out, jsonOutput, 1, err.Error(), "Run berth ps to inspect retained reservations")
 	}
-	timer := time.NewTimer(time.Until(l.Expires))
-	defer timer.Stop()
-	cleanup := func() {
-		if err := stopJob(l, cmd); err != nil {
-			finish = false
-		} else {
-			groupCleaned = true
-		}
-	}
+	cleanup := func() { groupCleaned = stopJob(l, cmd) == nil }
 	var waitErr error
 	select {
 	case err := <-observed:
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "berth: cannot observe job exit without reaping; sweep will retry:", err)
-			finish = false
 			cmd.Process.Kill()
 		} else {
 			cleanup()
@@ -496,7 +508,6 @@ func runJob(ctx context.Context, args []string, out io.Writer, jsonOutput output
 		completed, err := childCompletion(observed, cmd.Process.Pid)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "berth: cannot verify job completion at deadline; sweep will retry:", err)
-			finish = false
 			cmd.Process.Kill()
 			waitErr = cmd.Wait()
 			return 124

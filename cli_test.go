@@ -83,6 +83,7 @@ func TestCLIReleaseFailureDoesNotReportReleased(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Close()
+	invoke(t, 1, "release", id, "--confirm", "--force")
 	result := invoke(t, 1, "release", id, "--confirm")
 	if result["status"] == "released" || result["error"] == nil {
 		t.Fatalf("failed release reported success: %+v", result)

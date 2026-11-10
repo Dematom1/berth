@@ -14,7 +14,7 @@ import (
 )
 
 const exitCodes = `Exit codes: 0 success (including no-ops), 1 operation failed, 2 invalid usage.
-berth job: child's exit code on completion; 124 deadline killed child;
+berth job: child's exit code on completion; 124 deadline killed child or refused exec;
 75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only when no child
 was started. Signal termination returns 128 + signal number. Helper/wait
 failures after start use 125/126 and diagnostics on stderr.
@@ -23,7 +23,9 @@ Child exit 255 is preserved and is not confused with SSH failure.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
-reclaimable: a live owner missing either cadence loses its resources.`
+reclaimable: TTL wins even for a live owner. A live owner missing either
+cadence loses its resources. ps warns during the last third of TTL; renew before
+expiry, not after it.`
 
 var commandHelp = map[string]string{
 	"setup": `berth setup hooks [--remove] [--axi | --json]
@@ -54,9 +56,11 @@ Examples:
   berth create --adapter compose --file compose.yaml --label task=lab`,
 	"list": `berth list [--owner KIND:ID] [--machine NAME] [--full] [--axi | --json]
 List every recorded lease with owner liveness, age, expiry, machine, resource
-identity, and description. --json is always complete. AXI defaults to 100
-compact rows and 500-character text previews; --full shows all fields, records,
-text and matching leases. Counts and --full hints identify truncated output.
+identity, and description. Live-owned leases warn in their last third of TTL.
+Job reservations with unverifiable groups show orphan-suspected and keep their
+budget until group absence is verified. --json is always complete. AXI defaults
+to 100 compact rows and 500-character text previews; --full shows all fields,
+records, text and matching leases. Counts and --full hints identify truncation.
 Aliases: ls, ps, who. No arguments shows the live home view.
 Examples:
   berth ps
@@ -67,10 +71,13 @@ verified live owner on this machine can be extended. It cannot be resurrected.
 Examples:
   berth extend <id> --ttl 2h
   berth extend <id> --ttl 30m --json`,
-	"release": `berth release <id> [--confirm] [--json]
+	"release": `berth release <id> [--confirm] [--force] [--json]
 Preview by default. --confirm destroys managed resources (including Compose
 volumes) and removes the lease only on success. Already absent is success.
-A failed cleanup retains the lease for retry. down is an alias.
+A failed cleanup retains the lease for retry. An unverifiable job group is
+orphan-suspected: no signal is sent, and its budget stays reserved until the
+group is gone. --force --confirm forgets this reservation WITHOUT killing the
+group; surviving processes may overcommit the budget. down is an alias.
 Examples:
   berth release <id>
   berth release <id> --confirm`,
@@ -116,6 +123,11 @@ commands; no terminal job-control
 handoff is provided. Deadline
 or cancellation terminates the group (TERM, then KILL after 1s); sweep reclaims
 after owner death or expiry. Children that call setsid can escape the group.
+Unverifiable groups are never signaled: orphan-suspected leases keep their
+budget until no live group members remain, or release --force --confirm forgets
+the reservation with a warning. The helper checks its absolute deadline after
+the start gate and refuses expired exec with 124. OS scheduling after that
+check is not a hard real-time guarantee.
 Reservations are cooperative admission, not hard CPU/memory limits.
 Child stdin/stdout/stderr pass through unchanged, including with --json;
 --json applies only to pre-start errors. Post-start cleanup errors go to stderr
@@ -275,7 +287,7 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 	full := fs.Bool("full", false, "complete AXI records, text and list (JSON is always complete)")
 	var owner, resources, driver, file, machineName string
 	var ttl, stale time.Duration
-	var confirm, quiet bool
+	var confirm, quiet, force bool
 	labels := labelsFlag{}
 	if command == "list" || command == "sweep" {
 		fs.StringVar(&machineName, "machine", "", "SSH machine name")
@@ -298,6 +310,9 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 	}
 	if command == "sweep" || command == "release" {
 		fs.BoolVar(&confirm, "confirm", false, "perform cleanup")
+	}
+	if command == "release" {
+		fs.BoolVar(&force, "force", false, "forget an orphan-suspected job reservation without signaling; requires --confirm")
 	}
 	if err := parseFlags(fs, args); err != nil {
 		return emitError(out, jsonOutput, 2, err.Error(), help(command))
@@ -482,12 +497,15 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 			status = "preview; rerun with --confirm to reclaim"
 		}
 		if exists && confirm {
-			_, err = releaseLease(ctx, s, id, host, adapters())
+			_, err = releaseLease(ctx, s, id, host, adapters(), force)
 			if err == nil {
 				status = "released"
 			}
 		}
 		result = map[string]any{"id": id, "status": status}
+		if force {
+			result["warning"] = "force forgets orphan-suspected reservations without signaling; surviving processes may overcommit the budget"
+		}
 	case "sweep":
 		r := sweep(ctx, s, host, now, confirm, checkOwner, adapters())
 		result = map[string]any{"confirmed": confirm, "eligible": r.Eligible, "reclaimed": r.Reclaimed, "unknown": r.Unknown}
@@ -516,9 +534,19 @@ func runWithOutput(ctx context.Context, args []string, out io.Writer, mode outpu
 
 func leaseView(l Lease, live Liveness, now time.Time) map[string]any {
 	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Resources, "resource": l.Resource.Adapter + ":" + l.Resource.Name, "resource_adapter": l.Resource.Adapter, "resource_name": l.Resource.Name, "labels": l.Labels, "kubeconfig": kubeconfig(l)}
+	remaining := l.Expires.Sub(now)
+	view["expiring_soon"] = live == Alive && remaining > 0 && remaining <= l.TTL/3
+	view["warning"], view["orphan_suspected"] = "", false
+	if view["expiring_soon"] == true {
+		view["warning"] = "expires in " + remaining.Round(time.Second).String() + " - extend or it will be reclaimed"
+	}
 	view["cores"], view["memory"], view["memory_bytes"], view["class"] = 0, "0B", int64(0), ""
 	if l.Job != nil {
 		view["cores"], view["memory"], view["memory_bytes"], view["class"] = l.Job.Budget.Cores, strconv.FormatInt(l.Job.Budget.Memory, 10)+"B", l.Job.Budget.Memory, l.Job.Class
+		view["orphan_suspected"] = l.Job.OrphanSuspected
+		if view["expiring_soon"] == true {
+			view["warning"] = "expires in " + remaining.Round(time.Second).String() + " - job deadline cannot be extended"
+		}
 	}
 	return view
 }

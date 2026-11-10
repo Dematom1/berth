@@ -175,15 +175,25 @@ Normal completion also cleans up remaining group members before releasing the
 reservation. Cleanup failures go to stderr and retain the lease; they never
 replace the child's exit code. If berth itself is killed, `sweep --confirm`
 reclaims the job lease on owner death or expiry. Keep a host sweep timer. A
-matching live leader permits process-group cleanup; if the leader is missing or
-reaped, berth warns and releases the lease without signaling an unverifiable
-group. Orphan descendants may then require manual cleanup.
+matching live or unreaped leader permits process-group cleanup. If the leader
+is missing, reaped, or unverifiable, berth does not signal the group. It marks
+the lease `orphan-suspected`, shown in `ps`, and keeps its budget reserved until
+an inspection proves that no live group members remain. Failed inspections
+retain the reservation too. Orphan descendants may require manual cleanup.
+`berth release <id> --force --confirm` explicitly forgets an unverifiable job
+reservation without signaling. It warns because surviving processes can then
+overcommit the budget.
 
 Process groups are not a security boundary: programs that call `setsid` or
 change groups can escape cleanup. Container/cgroup enforcement is not part of
 local job admission. Cleanup verifies the recorded group leader's start identity
-before signaling and retains the record if identity is unknown or reused while
-the leader is present.
+before signaling. An orphan-suspected group is never signaled by subsequent
+cleanup attempts, even if its numeric process ID is reused.
+
+The parent arms its deadline timer before opening the child start gate. The
+helper receives the absolute deadline and refuses to exec at or after it,
+returning 124. This is a final wall-clock check, not a real-time scheduling
+guarantee: the OS can deschedule the helper between that check and `exec`.
 
 ### Machine budget and classes
 
@@ -317,7 +327,11 @@ Touch a heartbeat file at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. A lease is reclaimable when its owner is
 dead **or** when it has expired. A live owner that misses either cadence loses
 its resources. Unknown liveness alone never permits reclaim, but expiry still
-does. `extend` refuses expired leases and owners that are dead or unknown.
+does. This is the TTL-wins policy required by R-B3. `ps` warns for a live-owned
+lease in its last third of TTL, for example `expires in 4m0s - extend or it will
+be reclaimed`. AXI and JSON lease views expose `expiring_soon`. A job warning
+notes that its deadline cannot be extended. `extend` refuses expired leases and
+owners that are dead or unknown.
 
 ```sh
  touch /tmp/my-lab-heartbeat
@@ -386,7 +400,7 @@ heartbeat paths and numeric PID spellings without checking owner liveness.
 | `1` | Berth operation failed; cleanup records are retained on resource failure |
 | `2` | Invalid command, argument, or flag; no child was started |
 | Child's code | `berth job` when its child runs to completion |
-| `124` | `berth job` deadline killed the child (coreutils `timeout` convention) |
+| `124` | `berth job` deadline killed the child or the helper refused an expired start |
 | `75` | `berth job`: no slot frees within `--wait`, `EX_TEMPFAIL` |
 | `128 + signal` | Child terminated by a signal, e.g. 143 for SIGTERM |
 | `125` | Job child started, but its wait status could not be obtained |
@@ -488,10 +502,11 @@ timers.
 It requires Java 17 or newer, Python 3, and Go. The model checker download is
 version- and checksum-pinned. Read the [formal findings](verification/findings.md)
 first: TTL expiry may reclaim an Alive owner by policy; the model checks that
-an unexpired live owner is not reclaimed. Orphan-group cleanup and a deadline-
-check race remain counterexamples, not verified guarantees. CI reproduces those
-known failures explicitly. `python3 verification/check.py --strict` exits nonzero
-for F2 and F3.
+an unexpired live owner is not reclaimed. Automatic cleanup retains reservations
+for unverifiable surviving groups. The helper rejects an expired absolute
+deadline before its exec decision. These bounded F2 and F3 properties now pass
+in CI. Broken model and real-code variants must still fail their checks.
+`python3 verification/check.py --strict` requires every bounded property to pass.
 The [lease and job safety skill](.claude/skills/lease-job-safety/SKILL.md)
 records the code mapping, bounds, assumptions, and rerun procedure.
 

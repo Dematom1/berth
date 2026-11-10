@@ -571,55 +571,118 @@ func TestDeadlineProbeSeesCompletedUnreapedChild(t *testing.T) {
 }
 
 func TestDestroyDoesNotSignalGroupAfterLeaderReaped(t *testing.T) {
-	pidfile := filepath.Join(t.TempDir(), "child")
-	cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; read _; exit 0`, "_", pidfile)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	release, err := cmd.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
+	for _, force := range []bool{false, true} {
+		t.Run(fmt.Sprintf("force=%v", force), func(t *testing.T) {
+			pidfile := filepath.Join(t.TempDir(), "child")
+			cmd := exec.Command("sh", "-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; read _; exit 0`, "_", pidfile)
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			release, err := cmd.StdinPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = release.Close() })
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			pid := cmd.Process.Pid
+			registerProcessGroupCleanup(t, cmd)
+			leader, err := parseOwner("pid:"+strconv.Itoa(pid), 0, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			awaitJob(t, func() bool { _, err := os.Stat(pidfile); return err == nil })
+			if err := release.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.Wait(); err != nil {
+				t.Fatal(err)
+			}
+			lease, err := newLease(Owner{Kind: "heartbeat", ID: filepath.Join(t.TempDir(), "missing"), Stale: time.Minute}, time.Minute, "orphan", nil, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease.Resource.Adapter = "process"
+			lease.Job = &JobResource{Leader: leader, Budget: Budget{1, 1}, Class: "default"}
+			dir := t.TempDir()
+			t.Setenv("BERTH_STATE", dir)
+			jobStore(t, dir, func(s *Store) {
+				s.Leases[lease.ID] = lease
+				if err := s.Save(); err != nil {
+					t.Fatal(err)
+				}
+			})
+			invoke(t, 1, "sweep", "--confirm")
+			jobStore(t, dir, func(s *Store) {
+				l, ok := s.Leases[lease.ID]
+				if !ok || !l.Job.OrphanSuspected {
+					t.Fatal("orphan-suspected reservation was not durable")
+				}
+				if budgetFits(s, lease.Machine, Budget{1, 1}, Budget{1, 1}) {
+					t.Fatal("surviving orphan freed budget")
+				}
+			})
+			view := invoke(t, 0, "ps")["leases"].([]any)[0].(map[string]any)
+			if view["orphan_suspected"] != true {
+				t.Fatal("ps hid suspected orphan")
+			}
+			preview := invoke(t, 0, "release", lease.ID, "--force")
+			if preview["warning"] == nil || invoke(t, 0, "ps")["count"] != float64(1) {
+				t.Fatal("force preview must warn without dropping reservation")
+			}
+			alive, err := groupAlive(context.Background(), pid)
+			if err != nil || !alive {
+				t.Fatal("release signaled an unverifiable group")
+			}
+			if force {
+				result := invoke(t, 0, "release", lease.ID, "--force", "--confirm")
+				if result["warning"] == nil {
+					t.Fatal("force release did not warn")
+				}
+				alive, err := groupAlive(context.Background(), pid)
+				if err != nil || !alive {
+					t.Fatal("force release signaled an unverifiable group")
+				}
+			} else {
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
+				awaitJob(t, func() bool { alive, err := groupAlive(context.Background(), pid); return err == nil && !alive })
+				invoke(t, 0, "sweep", "--confirm")
+			}
+			if invoke(t, 0, "ps")["count"] != float64(0) {
+				t.Fatal("reservation release was not durable")
+			}
+		})
 	}
-	t.Cleanup(func() { _ = release.Close() })
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
+}
+
+func TestUnverifiableGroupScanRetainsReservation(t *testing.T) {
+	for _, script := range []string{"exit 1", "echo malformed"} {
+		t.Run(script, func(t *testing.T) {
+			dir, bin := t.TempDir(), t.TempDir()
+			t.Setenv("BERTH_STATE", dir)
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			if err := os.WriteFile(filepath.Join(bin, "ps"), []byte("#!/bin/sh\n"+script+"\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			lease := testLease(t)
+			lease.Resource.Adapter = "process"
+			lease.Job = &JobResource{Leader: Owner{Kind: "pid", ID: "2147483647", Start: "missing"}, Budget: Budget{1, 1}, Class: "default"}
+			jobStore(t, dir, func(s *Store) {
+				s.Leases[lease.ID] = lease
+				if err := s.Save(); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := releaseLease(context.Background(), s, lease.ID, lease.Machine, adapters(), false); !errors.Is(err, errOrphanSuspected) {
+					t.Fatalf("unverifiable group released: %v", err)
+				}
+			})
+			jobStore(t, dir, func(s *Store) {
+				l, ok := s.Leases[lease.ID]
+				if !ok || !l.Job.OrphanSuspected {
+					t.Fatal("uncertain group lost durable reservation")
+				}
+			})
+		})
 	}
-	pid := cmd.Process.Pid
-	registerProcessGroupCleanup(t, cmd)
-	leader, err := parseOwner("pid:"+strconv.Itoa(pid), 0, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	awaitJob(t, func() bool { _, err := os.Stat(pidfile); return err == nil })
-	if err := release.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	lease := Lease{Machine: "local", Resource: Resource{Adapter: "process"}, Job: &JobResource{Leader: leader}}
-	lease.ID = "orphaned-job"
-	dir := t.TempDir()
-	jobStore(t, dir, func(s *Store) {
-		s.Leases[lease.ID] = lease
-		if err := s.Save(); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := releaseLease(context.Background(), s, lease.ID, "local", adapters()); err != nil {
-			t.Fatalf("missing leader should permit lease release: %v", err)
-		}
-		if _, ok := s.Leases[lease.ID]; ok {
-			t.Fatal("unverifiable group lease was retained")
-		}
-	})
-	jobStore(t, dir, func(s *Store) {
-		if _, ok := s.Leases[lease.ID]; ok {
-			t.Fatal("lease release was not durable")
-		}
-	})
-	alive, err := groupAlive(context.Background(), pid)
-	if err != nil || !alive {
-		t.Fatal("release signaled an unverifiable group")
-	}
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
 }
 
 func TestDestroyRejectsReusedZombieGroupLeader(t *testing.T) {
@@ -653,19 +716,23 @@ func TestDestroyRejectsReusedZombieGroupLeader(t *testing.T) {
 }
 
 func TestDestroyRejectsReusedLeaderPID(t *testing.T) {
-	identity, live := processIdentity(os.Getpid())
+	cmd := exec.Command("sleep", "30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	registerProcessGroupCleanup(t, cmd)
+	pid := cmd.Process.Pid
+	identity, live := processIdentity(pid)
 	if live != Alive {
 		t.Fatal("test process identity unavailable")
 	}
-	lease := Lease{Job: &JobResource{Leader: Owner{ID: strconv.Itoa(os.Getpid()), Start: "not-the-current-start"}}}
-	if err := (processResource{}).Destroy(context.Background(), lease); err == nil {
-		t.Fatal("destroy accepted a reused process ID")
+	lease := Lease{Job: &JobResource{Leader: Owner{ID: strconv.Itoa(pid), Start: "not-the-current-start"}}}
+	if err := (processResource{}).Destroy(context.Background(), lease); !errors.Is(err, errOrphanSuspected) {
+		t.Fatalf("destroy accepted a reused process ID: %v", err)
 	}
-	if _, live := processIdentity(os.Getpid()); live != Alive {
+	if current, live := processIdentity(pid); live != Alive || current != identity {
 		t.Fatal("destroy signaled the unrelated process")
-	}
-	if current, _ := processIdentity(os.Getpid()); current != identity {
-		t.Fatal("test process identity changed")
 	}
 }
 
@@ -787,6 +854,23 @@ func TestJobQueuePrunesExpiredButKeepsUnknown(t *testing.T) {
 }
 
 func TestJobHelperEOFDoesNotRun(t *testing.T) {
+	testJobHelper(t, time.Now().Add(time.Hour).Format(time.RFC3339Nano), false, 125)
+}
+
+func TestJobHelperRefusesExpiredDeadline(t *testing.T) {
+	testJobHelper(t, time.Now().Add(-time.Second).Format(time.RFC3339Nano), true, 124)
+}
+
+func TestJobHelperAcceptsFutureDeadline(t *testing.T) {
+	testJobHelper(t, time.Now().Add(time.Hour).Format(time.RFC3339Nano), true, 0)
+}
+
+func TestJobHelperRejectsMalformedDeadline(t *testing.T) {
+	testJobHelper(t, "invalid-deadline", true, 125)
+}
+
+func testJobHelper(t *testing.T, deadline string, open bool, code int) {
+	t.Helper()
 	marker := filepath.Join(t.TempDir(), "must-not-run")
 	binary := filepath.Join(t.TempDir(), "berth")
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
@@ -796,12 +880,21 @@ func TestJobHelperEOFDoesNotRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(binary, "__job_exec", "/bin/sh", "-c", fmt.Sprintf("touch %s", strconv.Quote(marker)))
+	cmd := exec.Command(binary, "__job_exec", deadline, "/bin/sh", "-c", fmt.Sprintf("touch %s", strconv.Quote(marker)))
 	cmd.ExtraFiles = []*os.File{read}
+	if open {
+		if _, err := write.Write([]byte{1}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	write.Close()
 	defer read.Close()
-	childExit(t, cmd, 125)
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatal("helper ran without durable admission")
+	childExit(t, cmd, code)
+	_, err = os.Stat(marker)
+	if code == 0 && err != nil {
+		t.Fatal("admitted helper did not exec")
+	}
+	if code != 0 && !os.IsNotExist(err) {
+		t.Fatal("helper ran without durable, unexpired admission")
 	}
 }

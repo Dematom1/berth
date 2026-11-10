@@ -94,6 +94,9 @@ func TestSweepPreviewRetryAndIdempotence(t *testing.T) {
 	if len(r.Failures) != 1 || len(s.Leases) != 1 {
 		t.Fatalf("failed cleanup lost its lease: %+v", r)
 	}
+	if _, err := releaseLease(context.Background(), s, l.ID, l.Machine, map[string]Adapter{"none": failingAdapter{}}, true); err == nil || len(s.Leases) != 1 {
+		t.Fatal("force bypassed an adapter cleanup failure")
+	}
 	r = sweep(context.Background(), s, l.Machine, testNow, true, dead, adapters())
 	if len(r.Reclaimed) != 1 || len(s.Leases) != 0 {
 		t.Fatalf("retry did not converge: %+v", r)
@@ -102,7 +105,7 @@ func TestSweepPreviewRetryAndIdempotence(t *testing.T) {
 	if len(r.Reclaimed) != 0 || len(r.Failures) != 0 {
 		t.Fatalf("second sweep not a no-op: %+v", r)
 	}
-	if changed, err := releaseLease(context.Background(), s, l.ID, l.Machine, adapters()); err != nil || changed {
+	if changed, err := releaseLease(context.Background(), s, l.ID, l.Machine, adapters(), false); err != nil || changed {
 		t.Fatalf("release absent = %v, %v", changed, err)
 	}
 }

@@ -44,7 +44,7 @@ func integrationReady(t *testing.T, driver string) {
 		}
 		host, _ := machine()
 		for _, id := range s.IDs() {
-			if _, err := releaseLease(context.Background(), s, id, host, adapters()); err != nil {
+			if _, err := releaseLease(context.Background(), s, id, host, adapters(), false); err != nil {
 				t.Errorf("integration cleanup retained %s at %s: %v", id, dir, err)
 			}
 		}

@@ -95,7 +95,7 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 }
 
 // A cleanup failure keeps the durable intent; a later release or sweep retries it.
-func releaseLease(ctx context.Context, s *Store, id, host string, adapters map[string]Adapter) (bool, error) {
+func releaseLease(ctx context.Context, s *Store, id, host string, adapters map[string]Adapter, force bool) (bool, error) {
 	l, ok := s.Leases[id]
 	if !ok {
 		return false, nil
@@ -108,7 +108,17 @@ func releaseLease(ctx context.Context, s *Store, id, host string, adapters map[s
 		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible berth version", l.Resource.Adapter)
 	}
 	if err := a.Destroy(ctx, l); err != nil {
-		return false, err
+		if !errors.Is(err, errOrphanSuspected) || l.Job == nil {
+			return false, err
+		}
+		if !force {
+			l.Job.OrphanSuspected = true
+			s.Leases[id] = l
+			if saveErr := s.Save(); saveErr != nil {
+				return false, fmt.Errorf("%w; cannot save orphan-suspected status: %v", err, saveErr)
+			}
+			return false, err
+		}
 	}
 	delete(s.Leases, id)
 	if err := s.Save(); err != nil {
@@ -138,7 +148,7 @@ func sweep(ctx context.Context, s *Store, host string, now time.Time, confirm bo
 		}
 		r.Eligible = append(r.Eligible, id)
 		if confirm {
-			if _, err := releaseLease(ctx, s, id, host, adapters); err != nil {
+			if _, err := releaseLease(ctx, s, id, host, adapters, false); err != nil {
 				r.Failures[id] = err.Error()
 			} else {
 				r.Reclaimed = append(r.Reclaimed, id)
