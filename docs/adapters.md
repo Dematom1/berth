@@ -2,7 +2,7 @@
 
 An adapter creates and destroys the resource behind a lease. Berth ships five built-in adapters and no plugin mechanism yet. This page describes the adapter contract, each built-in adapter, and how berth pins the Docker endpoint for cleanup.
 
-Source: `adapter.go`, plus `processResource` in `job.go`. Tests: `adapter_test.go`, and `integration_test.go` (build tag `integration`, run with `make integration`).
+Source: `adapter.go`, plus `processResource` in `job.go`. Tests: `adapter_test.go`, and `integration_test.go` (build tag `integration`, run with `make integration`). Decisions: [ADR 0002](adr/0002-reclaim-with-proof.md), [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md).
 
 ## Contract
 
@@ -19,7 +19,7 @@ The comment on the interface states the contract, and the callers in `cli.go` an
 
 - `Create` runs only after the lease is saved. A failed `Create` keeps the lease.
 - `Destroy` tolerates a resource that is partly created or already gone.
-- `Destroy` returns nil only after it has verified that the resource is gone. Each built-in adapter deletes the resource and then lists what remains.
+- `Destroy` returns nil only after it has verified that the resource is gone (verify-gone). The `kind`, `k3d`, and `compose` adapters delete the resource and then list what remains. `none` has nothing to verify. `process` has one documented exception, described under [process](#process).
 - A `Destroy` error keeps the lease, and a later `release` or `sweep` retries it.
 
 `adapters()` returns the registry: `none`, `kind`, `k3d`, `compose`, and `process`. `berth create --adapter` accepts `none`, `kind`, `k3d`, and `compose`. Only `berth job` creates `process` leases.
@@ -94,11 +94,11 @@ Tests: `TestComposeSnapshotAndUnsafeNames`, `TestIntegrationCompose`.
 
 ### process
 
-`processResource` backs job reservations. `Create` does nothing. `Destroy` terminates the job's process group after it verifies the leader's identity. See [Jobs](jobs.md#process-group-cleanup).
+`processResource` backs job reservations. `Create` does nothing. `Destroy` terminates the job's process group after it verifies the leader's identity. If the leader is already gone and reaped, `Destroy` succeeds without signaling, and descendants may survive. [ADR 0002](adr/0002-reclaim-with-proof.md#existing-process-exception) records this exception. See [Jobs](jobs.md#process-group-cleanup).
 
 ## Invariants
 
-1. **A record is removed only after verify-gone.** `Destroy` returns nil only after it lists the remaining resources and finds none. A new adapter must do the same.
+1. **A record is removed only after verify-gone.** `Destroy` returns nil only after it lists the remaining resources and finds none. A new adapter must do the same. The only exception is the `process` adapter's reaped-leader case in ADR 0002, and a change to it needs its own decision.
 2. **`Destroy` is idempotent.** An already-absent resource is success, so retries converge. Test: `TestSweepPreviewRetryAndIdempotence`.
 3. **Cleanup never depends on the caller's environment.** Adapters use the pinned context, endpoint, and private files recorded in the lease, never the current `DOCKER_HOST`, `DOCKER_CONTEXT`, `KUBECONFIG`, or the original Compose file.
 4. **Berth touches only resources it named.** Names derive from the lease ID. Compose rejects fixed names that cleanup could share with another project. Berth never sweeps unleased resources.
@@ -107,7 +107,7 @@ Tests: `TestComposeSnapshotAndUnsafeNames`, `TestIntegrationCompose`.
 
 ## Planned
 
-The captain-approved scope (2026-11-09) plans these changes. None exists in the code today.
+The captain-approved scope (2026-11-09) and [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md) plan these changes. None exists in the code today. ADR 0005 places the contracts in `internal/adapter` and `internal/owner`, which do not exist yet.
 
 - A versioned Adapter contract with `create`, an idempotent `destroy`, `exists` (verify-gone), and `describe`. Today, verify-gone lives inside each `Destroy`.
 - A conformance kit, `berth adapter test <name>`, that checks idempotent destroy, tolerance of already-absent resources, truthful verify-gone, honored timeouts, and applied labels.

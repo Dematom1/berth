@@ -2,7 +2,7 @@
 
 Berth keeps all lease state in one JSON file per host and Unix user. A kernel lock serializes every reader and writer, and every write is atomic. This page describes where state lives, how the store reads and writes it, and the version 1 format.
 
-Source: `store.go`. Tests: `TestOpenStoreRestrictsExistingDirectory`, `TestStoreDurabilityLockAndCorruption`, `TestStoreLockReleasedByProcessDeath`, and `TestAtomicWriteRestoresOldStateWhenDirectorySyncFails` in `lease_test.go`, and `TestSessionWaiterStateRoundTrip` in `ssh_test.go`.
+Source: `store.go`. Decision: [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md#current-implementation-limits) records the version 1 limit. Tests: `TestOpenStoreRestrictsExistingDirectory`, `TestStoreDurabilityLockAndCorruption`, `TestStoreLockReleasedByProcessDeath`, and `TestAtomicWriteRestoresOldStateWhenDirectorySyncFails` in `lease_test.go`, and `TestSessionWaiterStateRoundTrip` in `ssh_test.go`.
 
 ## State directory
 

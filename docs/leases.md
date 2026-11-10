@@ -2,7 +2,7 @@
 
 A lease records who owns a resource on this machine and when the resource expires. Berth reclaims a lease only when its owner is dead or the lease has expired. This page describes the lease lifecycle and the owner liveness checks that decide reclaim.
 
-Source: `lease.go`, `owner.go`, and the lease commands in `cli.go`. Tests: `lease_test.go` and `cli_test.go`.
+Source: `lease.go`, `owner.go`, and the lease commands in `cli.go`. Tests: `lease_test.go`, `cli_test.go`, and `TestFormalLeaseDomain` in `formal_test.go` (build tag `formal`, run with `make formal`). Formal model: `verification/Lease.tla`. Decisions: [ADR 0001](adr/0001-lease-lifecycle-and-ttl.md), [ADR 0002](adr/0002-reclaim-with-proof.md), [ADR 0003](adr/0003-owner-identity-and-liveness.md).
 
 ## Lease record
 
@@ -143,7 +143,7 @@ A live owner that misses either cadence loses its resources, because expiry alon
 
 Reviewers check every change to `lease.go`, `owner.go`, and the lease commands in `cli.go` against these rules.
 
-1. **Never reclaim a live, unexpired owner.** Automatic reclaim (`sweep`, job admission) goes through `reclaimable`, which requires `dead` or expired. Tests: `TestReclaimAndExtend`, `TestSweepDecisions`.
+1. **Never reclaim a live, unexpired owner.** Automatic reclaim (`sweep`, job admission) goes through `reclaimable`, which requires `dead` or expired. Expiry wins even over a live owner, by policy (ADR 0001, finding F1 in `verification/findings.md`). Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestFormalLeaseDomain`.
 2. **`unknown` is never `dead`.** Any error that does not prove absence returns `unknown`. An `unknown` owner keeps its lease until expiry. Tests: `TestOwnerLiveness`, `TestOutOfRangePIDIsUnknownNotDead`.
 3. **A host acts only on its own leases.** `reclaimable`, `extendLease`, and `releaseLease` compare `Machine` with this host before anything else. Expired foreign leases stay. Test: `TestReclaimAndExtend` ("expired foreign machine").
 4. **A record is removed only after verify-gone.** `releaseLease` deletes the lease only after `Destroy` returns nil, and every adapter's `Destroy` verifies absence before returning nil. See [Adapters](adapters.md). Test: `TestSweepPreviewRetryAndIdempotence`.
@@ -154,7 +154,7 @@ Reviewers check every change to `lease.go`, `owner.go`, and the lease commands i
 
 ## Planned
 
-The captain-approved scope (2026-11-09) plans these owner extensions. None exists in the code today.
+The captain-approved scope (2026-11-09) and [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md) plan these owner extensions. None exists in the code today.
 
 - A versioned Owner contract: `check` returns `alive`, `dead`, or `unknown` with an identity.
 - An `exec` owner from a local script, such as `--owner exec:./check.sh`.

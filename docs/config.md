@@ -1,8 +1,8 @@
 # Configuration
 
-Berth reads one optional, strict JSON config file. It sets the job budget, owner room, job classes, and SSH machines. Lease commands without `--machine` never read it. This page describes where berth finds the file, the defaults it derives from the host, and every field.
+Berth reads one optional, strict JSON config file. It sets the job budget, owner room, job classes, and SSH machines. This page describes where berth finds the file, the defaults it derives from the host, and every field.
 
-Source: `config.go`, and `SSHMachine` in `ssh.go`. Tests: `TestJobBudgetAndConfig` and `TestPartialConfigKeepsDefaultClass` in `job_test.go`, and `TestSSHMachineValidation` and `TestRemoteConfigErrorHelp` in `ssh_test.go`.
+Source: `config.go`, and `SSHMachine` in `ssh.go`. Decision: [ADR 0004](adr/0004-fifo-admission-and-owner-room.md). Tests: `TestJobBudgetAndConfig` and `TestPartialConfigKeepsDefaultClass` in `job_test.go`, and `TestSSHMachineValidation` and `TestRemoteConfigErrorHelp` in `ssh_test.go`.
 
 ## Who reads the config
 
@@ -11,6 +11,9 @@ Source: `config.go`, and `SSHMachine` in `ssh.go`. Tests: `TestJobBudgetAndConfi
 - `berth job`, local or remote.
 - `berth machine install`.
 - `berth list --machine` and `berth sweep --machine`, to find the machine.
+- `berth list` without `--machine`, for its `budget` summary. A config error does not fail the listing. The summary then reads `jobs: budget unavailable (check BERTH_CONFIG)`. Test: `TestBudgetSummary`.
+
+`create`, `extend`, `release`, `sweep`, and `env` on this machine never read the config.
 
 On an SSH machine, the remote berth reads its own config. The client's budget and classes never cross the wire. See [Remote jobs over SSH](remote.md).
 
@@ -81,7 +84,9 @@ A memory string is a non-negative integer with an optional unit: `GiB`, `MiB`, `
 | `BERTH_CONFIG` | `loadJobConfig` | Config file path |
 | `BERTH_STATE` | `stateDir` | State directory. See [State](state.md). |
 | `BERTH_OWNER` | `run` (create) | Default `--owner` |
-| `XDG_CONFIG_HOME`, `XDG_STATE_HOME` | `loadJobConfig`, `stateDir` | Base directories |
+| `BERTH_AXI` | `outputMode.effective` | `1` selects AXI output when no `--axi` or `--json` flag is set. See [Output modes](output.md#mode-selection). |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` | `runSetup` | Agent config directories. See [Agent hooks](hooks.md). |
+| `XDG_CONFIG_HOME`, `XDG_STATE_HOME` | `loadJobConfig`, `runSetup`, `stateDir` | Base directories |
 | `DOCKER_HOST` | `prepareResource` | Must be unset for managed adapters |
 | `BERTH_LEASE` | Set by `startJob` | Lease ID, exported to the job child |
 

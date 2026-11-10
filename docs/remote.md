@@ -2,7 +2,7 @@
 
 `berth job --machine <name>`, `berth list --machine <name>`, and `berth sweep --machine <name>` run on a configured SSH machine. The client starts `berth agent` on the remote over `ssh`, and the two sides exchange newline-delimited JSON frames. The remote berth is authoritative for config, budget, admission, state, deadlines, and cleanup. This page describes the transport, the protocol, and the agent.
 
-Source: `ssh.go`. Tests: `ssh_test.go`, and `ssh_integration_test.go` (build tag `sshintegration`, run with `make ssh-integration`).
+Source: `ssh.go`. Tests: `ssh_test.go`, `ssh_integration_test.go` (build tag `sshintegration`, run with `make ssh-integration`), and `TestFormalEOF` and `TestFormalAuthoritativeResult` in `formal_test.go` (build tag `formal`, run with `make formal`). Formal model: `verification/JobSession.tla`. Decision: [ADR 0006](adr/0006-ssh-session-as-liveness.md).
 
 ## Machine config
 
@@ -32,10 +32,10 @@ Every value that berth puts into a remote shell script goes through `shellQuote`
 
 `runRemote` handles the client side:
 
-1. It forwards only explicitly set flags, as `--name=value`, except `--machine`. It then adds `--json` when set and, for `job`, `--` and the child argv. The client never sends its own budget, classes, or defaults.
+1. It forwards only explicitly set flags, as `--name=value`, except `--machine`, `--axi`, and `--json`. For `job`, it then adds `--` and the child argv. The client never sends its own budget, classes, or defaults.
 2. The remote script runs `<agent> --version` first. When the version differs from the client's `version`, the script prints one `error` frame and exits 0. This check also gives a clear refusal when the remote binary is too old to have the `agent` command.
 3. When the versions match, the script runs `cd <workdir> && exec <agent> agent`.
-4. The client sends a `request` frame and reads the first reply.
+4. The client sends a `request` frame and reads the first reply. The frame carries the client's resolved output mode in `output` and the machine name in `machine`, so the remote renders exactly what the local terminal, pipe, or flag selected.
 5. An `error` frame exits 1 with a hint to run `berth machine install`.
 6. A `ready` frame with the client's exact version starts the session. Anything else is a protocol failure.
 7. The client writes `output` frame data to stdout, byte for byte. Remote stderr passes through SSH to local stderr unframed.
@@ -56,7 +56,7 @@ The protocol is private to the SSH pipe. Users never see it.
 
 | Type | Direction | Fields | Meaning |
 | --- | --- | --- | --- |
-| `request` | client to agent | `version`, `args` | The command to run |
+| `request` | client to agent | `version`, `args`, `output`, `machine` | The command to run, the output mode to render, and the machine name for hints |
 | `ready` | agent to client | `version` | The agent accepted the request |
 | `output` | agent to client | `data` | A chunk of the command's stdout |
 | `result` | agent to client | `code` | The command's exit code. Always the last frame. |
@@ -68,11 +68,11 @@ A `result` frame carries the child's code, so a child that exits 255 is never mi
 
 `runAgent` runs once per SSH session. It is not a daemon.
 
-1. It reads one `request` frame. It refuses, with an `error` frame, a request that has the wrong type, a different version, no command, or a command other than `job`, `list`, or `sweep`.
+1. It reads one `request` frame. It refuses, with an `error` frame, a request that has the wrong type, a different version, an unknown output mode, no command, or a command other than `job`, `list`, or `sweep`.
 2. It refuses a `--machine` flag before `--`, so remote machines cannot chain.
 3. It sends `ready`.
 4. A goroutine reads stdin. EOF, or any further frame, cancels the context. The agent treats the end of SSH stdin as owner death.
-5. It runs `job` through `runJob` with owner kind `session`, so the agent process owns the reservation. It runs `list` and `sweep` through `run`. Command output goes out as `output` frames.
+5. It runs `job` through `runJob` with owner kind `session`, so the agent process owns the reservation. It runs `list` and `sweep` through `runWithOutput`. Both render in the requested mode, and their output goes out as `output` frames. Test: `TestAgentRequestedOutput`.
 6. It sends `result` with the exit code.
 
 When the context is cancelled, the job's process group is cleaned up and its reservation is released, including during admission. Test: `TestAgentProtocolRefusal`, and the `TestSSHIntegration` subtest "wait 75 and disconnect kills descendant and releases budget".
@@ -101,3 +101,4 @@ A size or version mismatch keeps the existing binary. Agents that are already ru
 6. **Every remote shell value is quoted** with `shellQuote`.
 7. **Remote state stays remote.** The client never forwards budget, classes, or state, and the agent refuses nested `--machine`.
 8. **Frames cannot be forged by output.** Output bytes travel base64-encoded inside `output` frames, and the reader rejects unknown fields.
+9. **The caller's output mode crosses the wire.** The agent renders in the requested mode, never in a mode detected from its own pipe.

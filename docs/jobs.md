@@ -2,7 +2,7 @@
 
 `berth job` runs one command under a reservation of logical cores and memory. The reservation is a lease with adapter `process`, owned by the `berth job` process. Admission is FIFO against a machine budget. The deadline starts at admission, and berth kills the process group when the deadline passes. This page describes that flow.
 
-Source: `job.go`, `job_wait_darwin.go`, `job_wait_linux.go`, and the budget types in `config.go`. Tests: `job_test.go`.
+Source: `job.go`, `job_wait_darwin.go`, `job_wait_linux.go`, and the budget types in `config.go`. Tests: `job_test.go`, and `TestFormalBudgetDomain` and `TestFormalConcurrentAdmission` in `formal_test.go` (build tag `formal`, run with `make formal`). Formal models: `verification/Admission.tla`, `verification/JobSession.tla`. Decisions: [ADR 0004](adr/0004-fifo-admission-and-owner-room.md), [ADR 0002](adr/0002-reclaim-with-proof.md#existing-process-exception).
 
 ## Reservation request
 
@@ -13,7 +13,7 @@ Source: `job.go`, `job_wait_darwin.go`, `job_wait_linux.go`, and the budget type
 3. With `--machine`, berth forwards the job to that SSH machine and stops here. See [Remote jobs over SSH](remote.md).
 4. The class sets cores, memory, and timeout. `--class` defaults to `default`.
 5. Explicit `--cores`, `--memory`, and `--timeout` flags override the class values independently.
-6. The request must be positive and fit within the usable budget, which is the totals minus owner room. Otherwise berth exits 2.
+6. Cores, memory, and timeout must be positive. The request must also fit within the usable budget, which is the totals minus owner room. Otherwise berth exits 2. An oversized request names the usable amount, the owner room, and a `--cores` or `--memory` value that fits.
 7. `exec.LookPath` resolves the child executable. If it fails, berth exits 1, and no child starts.
 8. The owner is `pid:<berth job pid>`, or `session:<agent pid>` when the SSH agent runs the job.
 9. `Resources` records only the executable's base name, never its arguments.
@@ -78,7 +78,7 @@ If berth cannot observe the exit or verify completion at the deadline, it kills 
 
 1. With no recorded leader, the reservation never started. `Destroy` succeeds.
 2. It reads the leader's current identity. If liveness is `unknown`, or the PID belongs to a different process, `Destroy` fails and keeps the lease. Tests: `TestDestroyRejectsReusedLeaderPID`, `TestDestroyRejectsReusedZombieGroupLeader`.
-3. If the leader is gone and already reaped, berth warns on stderr and succeeds without signaling a group it cannot verify. Test: `TestDestroyDoesNotSignalGroupAfterLeaderReaped`.
+3. If the leader is gone and already reaped, berth warns on stderr and succeeds without signaling a group it cannot verify. Descendants may survive. This is the process exception to verify-gone that [ADR 0002](adr/0002-reclaim-with-proof.md#existing-process-exception) records. Test: `TestDestroyDoesNotSignalGroupAfterLeaderReaped`.
 4. Otherwise it sends `SIGTERM` to the group, polls `ps -A -o pgid= -o stat=` for up to one second, then repeats with `SIGKILL`. Zombie members do not count as alive.
 5. If members survive both signals, `Destroy` fails and keeps the lease.
 
@@ -95,13 +95,22 @@ A program that calls `setsid` or changes its process group escapes cleanup. Proc
 - The child's exit code passes through when the child runs to completion, even when it equals 1, 2, 75, or 124.
 - Berth's own 1 and 2 apply only when no child started.
 - Cleanup errors after start go to stderr and never replace the child's code. Test: `TestJobsRealProcesses` subtest "cleanup failure retains child code and lease".
-- `--json` changes only errors before start. Child stdin, stdout, and stderr pass through unchanged.
+- `--axi` and `--json` change only errors before start. Child stdin, stdout, and stderr pass through unchanged. Test: `TestOutputProcessesAndTTY`.
+
+## Known limitations
+
+`verification/findings.md` records two limitations in the current code. Neither has a fix yet.
+
+- **F2: a reaped leader can leave an orphan group.** When the leader is gone and reaped, `Destroy` succeeds without signaling, and the lease is removed. Surviving descendants then use CPU and memory outside any reservation. `TestDestroyDoesNotSignalGroupAfterLeaderReaped` shows the behavior.
+- **F3: the last deadline check and the start gate are not atomic.** `startJob` checks the deadline and then writes the gate byte. If the process is descheduled between the two steps, user code can start after the deadline, until the timer cleanup runs.
+
+Reviewers treat changes in these areas as behavior changes that need a decision, not as cleanup.
 
 ## Invariants
 
 1. **No user code runs before the group identity is durable.** The helper waits on file descriptor 3 until the leader is saved. Test: `TestJobHelperEOFDoesNotRun`.
 2. **Berth signals only a verified group.** The leader's start identity must match before any signal. A reaped leader means no signal. Tests: `TestDestroyRejectsReusedLeaderPID`, `TestDestroyDoesNotSignalGroupAfterLeaderReaped`.
-3. **A record is removed only after verify-gone.** The lease is deleted only after `ps` shows no live group members.
+3. **A record is removed only after cleanup succeeds.** With a verified leader, the lease is deleted only after `ps` shows no live group members. The one exception is a leader that is already gone and reaped: berth then releases without proof that descendants are gone (ADR 0002). Changing that exception is a behavior change that needs its own decision.
 4. **FIFO with no backfill.** Only the first waiter for a machine can be admitted.
 5. **Job deadlines never move.** `extendLease` refuses job leases. The deadline starts at admission, not at command launch.
 6. **The child's exit code is authoritative.** Berth's codes 1, 2, and 75 apply only before start. 124 applies only when the deadline killed a running child.
