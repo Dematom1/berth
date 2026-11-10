@@ -46,7 +46,10 @@ func (a k3dAdapter) Destroy(ctx context.Context, l adapterpkg.Target) error {
 }
 
 func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapterpkg.CommandRunner) (ref adapterpkg.ResourceRef, err error) {
-	contextName, err := adapterpkg.DockerContext(ctx, run)
+	contextName := request.Existing.Context
+	if contextName == "" {
+		contextName, err = adapterpkg.DockerContext(ctx, run)
+	}
 	if err != nil {
 		return ref, err
 	}
@@ -63,11 +66,30 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 	if ref.DockerHost == "" {
 		return ref, errors.New("selected Docker context has no endpoint")
 	}
+	if request.Existing.Adopted {
+		ref.Name = request.Existing.Name
+		ref.Context = request.Existing.Context
+		ref.DockerHost = request.Existing.DockerHost
+		ref.Adopted = true
+		data, err := run(ctx, k3dEnv(ref), "k3d", "kubeconfig", "get", ref.Name)
+		if err != nil {
+			return ref, err
+		}
+		if len(strings.TrimSpace(string(data))) == 0 {
+			return ref, errors.New("cannot capture existing cluster kubeconfig")
+		}
+		if err := os.WriteFile(ref.File, data, 0600); err != nil {
+			return ref, err
+		}
+	}
 	return ref, nil
 }
 
 func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceRef) error {
-	if ref.Name != "berth-"+metadata.LeaseID[:26] || ref.Context == "" {
+	if ref.Adopted && (!adapterpkg.ValidResourceName(ref.Name) || ref.DockerHost == "") {
+		return errors.New("invalid adopted resource identity")
+	}
+	if (!ref.Adopted && ref.Name != "berth-"+metadata.LeaseID[:26]) || ref.Context == "" {
 		return errors.New("invalid managed resource identity")
 	}
 	if ref.DockerHost == "" {
@@ -80,7 +102,9 @@ func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceR
 }
 
 func New(run adapterpkg.CommandRunner) adapterpkg.Definition {
-	return adapterpkg.Definition{Name: "k3d", Adapter: k3dAdapter{run}, CreateAllowed: true, RequiresFile: false,
+	return adapterpkg.Definition{Discover: func(ctx context.Context, r adapterpkg.ResourceRef) ([]map[string]any, error) {
+		return adapterpkg.DiscoverDocker(ctx, r, "k3d", run)
+	}, Name: "k3d", Adapter: k3dAdapter{run}, CreateAllowed: true, RequiresFile: false,
 		Prepare: func(ctx context.Context, r adapterpkg.PrepareRequest) (adapterpkg.ResourceRef, error) {
 			return prepare(ctx, r, run)
 		}, Validate: validate,

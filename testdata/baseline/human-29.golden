@@ -1,7 +1,7 @@
 exit: 0
 stdout:
 berth: owner-and-expiry leases for local resources (macOS and Linux).
-Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job,
+Commands: create (up), adopt, orphans, list (ls, ps, who), extend, release (down), sweep, job,
 env, setup hooks, agent (internal SSH protocol), machine install.
 Global flags: --axi (agents), --json (scripts), --help. No --human flag.
 Human output on terminals; AXI when BERTH_AXI=1 or stdout is not a TTY.

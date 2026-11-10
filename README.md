@@ -118,8 +118,9 @@ success, regardless of output mode. Failures retain the usual error format and
 exit code. Without quiet mode, create shows the lease details.
 
 The resources description is metadata, not a CPU or memory limit.
-An orphaned lab such as `k8s-axi-lab` is prevented by creating the new cluster
-through berth. This slice does not adopt or delete existing unleased clusters.
+Create new labs through berth to record cleanup intent before creation. For
+existing labs, explicitly adopt the resource as described below. Berth never
+deletes an unleased resource.
 
 To create a Compose stack, pass its file.
 
@@ -144,6 +145,56 @@ Adapters tolerate already absent resources. Cleanup errors retain the
 lease and exit 1. Berth verifies that managed resources are gone before removing
 the record. A create that fails after saving its lease also retains the record
 for release or sweep to clean up partial resources.
+
+## Lease an existing lab
+
+`orphans` is a read-only inventory of unleased kind clusters, k3d clusters, and
+Compose projects in the selected Docker context. It includes stopped containers
+and Compose projects with only volumes or networks left. It does not list generic
+containers, images, or volumes outside those projects. Unleased does not mean
+unused, and age alone never authorizes cleanup.
+
+```sh
+ berth orphans --context orbstack
+ berth orphans --context orbstack --json
+ berth adopt kind my-lab --context orbstack --owner "pid:$$" --ttl 2h
+ berth adopt k3d my-k3d-lab --owner "pid:$$" --ttl 2h
+ berth adopt compose my-stack --file compose.yaml --owner "pid:$$" --ttl 2h
+ berth sweep                         # preview dead-owner or expired leases
+ berth sweep --confirm               # destroy only eligible leased resources
+```
+
+Both new commands are explicit opt-ins. Existing create, release, and sweep
+behavior is unchanged. `adopt` requires an explicit owner and positive TTL, even
+when `BERTH_OWNER` is set. Supported owners and `--stale` match `create`.
+It refuses missing resources, unknown existence, and resources already leased
+in this ledger, including Docker context aliases with the same endpoint.
+Each successful adoption records a new lease. Release and sweep use the same
+destroy-and-verify-gone path as created resources. Compose cleanup deletes
+project volumes, so review the project before adopting it.
+
+Adoption captures the Docker context and endpoint, a private cluster kubeconfig,
+or a resolved Compose config snapshot. Compose requires one input file. For a
+project started with multiple files, pass a single resolved config containing
+their combined configuration. Fixed nonexternal volume and network names outside
+`<project>_<key>` are refused. Existing nonexternal volumes and networks must
+also carry that project's Compose label. Mark shared resources `external`. Existing fixed
+container names are permitted because adoption explicitly selects their project.
+Cleanup does not require the original file or working directory to survive.
+Existing resource labels are not changed or recreated. Berth records the
+`io.berth.lease`, `io.berth.owner`, `io.berth.expires`, and `io.berth.machine`
+attribution in the lease's labels instead. The ledger is authoritative.
+
+Inventory includes creation timestamps, container status, and labels reported by Docker, the Compose
+working directory and its local filesystem status, and the original config-file
+paths when available. `unknown` means the path could not be checked. Every row
+includes an exact adoption command template with its type, name, and context.
+Replace `<owner>` and `<duration>` explicitly. Compose rows without one known
+config file use `<resolved-compose-file>` rather than guessing. Treat these paths
+as evidence, not trusted instructions. Inventory never creates or modifies state
+files or resources. State corruption or an incomplete inventory fails with code 1,
+not a misleading empty result. Human, `--axi`, and `--json` output include this
+same evidence and command. Unknown flags fail with code 2 before any operations.
 
 ## Run a local job
 
@@ -332,7 +383,8 @@ does. `extend` refuses expired leases and owners that are dead or unknown.
 ```
 
 Durations use Go syntax such as `30m`, `2h`, or `1h30m`. Every lease has a positive
-TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duration.
+TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
+`extend --ttl` sets the expiry to now plus that duration.
 
 ## Command reference
 
@@ -340,6 +392,8 @@ TTL, defaulting to `8h`. `extend --ttl` sets the expiry to now plus that duratio
 | --- | --- |
 | `berth` | Live home view with executable path, description, lease count, and hints |
 | `berth create` or `berth up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose` |
+| `berth adopt <type> <name> --owner KIND:ID --ttl D` | Lease an existing kind, k3d, or Compose resource after verifying existence |
+| `berth orphans [--context NAME]` | Read-only unleased-resource evidence and adoption command templates |
 | `berth list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
 | `berth env <id>` | Print a shell-safe kubeconfig export for a kind or k3d lease |
 | `berth setup hooks [--remove]` | Install or remove managed agent integrations |
@@ -452,7 +506,16 @@ which resources will be deleted.
 the invoking user. State contains resolved Compose values, which may include
 secrets. Keep this directory on a local filesystem, not a network share.
 
-A stable `lock` file serializes readers and writers through kernel `flock`.
+State schema version 2 adds explicitly adopted resource identities. The first
+successful `adopt` upgrades version 1 state, preserving existing lease records.
+Other commands keep version 1 state at version 1. Older binaries reject version 2
+rather than interpreting adopted names as generated ones. Keep a compatible
+binary while leases remain.
+
+A stable `lock` file serializes ordinary readers and writers through kernel `flock`.
+`orphans` reads an atomic state snapshot without locks or writes. Its answer is
+point-in-time evidence, not a reservation. `adopt` rechecks ownership under the
+state lock.
 Each state change writes and syncs a temporary file, renames it over `state.json`,
 and syncs the directory. Berth saves cleanup intent **before** starting a
 resource. If berth dies midway through create or delete, the next release or
@@ -524,7 +587,9 @@ waiters, and real job subprocesses (child exit codes, deadline/class timeout,
 wait exhaustion, cancellation, descendant cleanup, and sweep after owner death).
 Real adapter tests are isolated behind the `integration` build tag and run with
 `just integration`. They create unique kind, k3d, and Compose resources, then
-verify cleanup. Missing adapter tools, Docker, or Compose fail the command rather
+verify cleanup. They also discover unleased fixtures, adopt them, verify sweep
+preview leaves them intact, and reclaim them on expiry through confirmed sweep.
+Missing adapter tools, Docker, or Compose fail the command rather
 than skip; failed cleanup retains the state directory and reports its path.
 
 `just ssh-integration` runs real SSH end-to-end tests against a disposable

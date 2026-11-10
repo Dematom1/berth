@@ -11,6 +11,7 @@ import (
 // ResourceRef captures the cleanup scope before a resource is created.
 
 type ResourceRef struct {
+	Adopted    bool   `json:"adopted,omitempty"`
 	Adapter    string `json:"adapter"`
 	Name       string `json:"name,omitempty"`
 	Context    string `json:"docker_context,omitempty"`
@@ -29,6 +30,7 @@ type Target struct {
 	Metadata Metadata
 }
 type PrepareRequest struct {
+	Existing    ResourceRef
 	Metadata    Metadata
 	SnapshotDir string
 	File        string
@@ -45,6 +47,7 @@ type Adapter interface {
 	Destroy(context.Context, Target) error
 }
 type Definition struct {
+	Discover      func(context.Context, ResourceRef) ([]map[string]any, error)
 	Name          string
 	Adapter       Adapter
 	CreateAllowed bool

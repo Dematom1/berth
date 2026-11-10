@@ -49,7 +49,10 @@ func (a composeAdapter) Destroy(ctx context.Context, l adapterpkg.Target) error 
 // never depends on the original worktree, environment, or Compose file surviving.
 func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapterpkg.CommandRunner) (ref adapterpkg.ResourceRef, err error) {
 	file := request.File
-	contextName, err := adapterpkg.DockerContext(ctx, run)
+	contextName := request.Existing.Context
+	if contextName == "" {
+		contextName, err = adapterpkg.DockerContext(ctx, run)
+	}
 	if err != nil {
 		return ref, err
 	}
@@ -63,6 +66,12 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 	resourceName := "berth-" + request.Metadata.LeaseID
 
 	ref = adapterpkg.ResourceRef{Adapter: "compose", Name: resourceName, Context: contextName, File: filepath.Join(dir, resourceFile)}
+	if request.Existing.Adopted {
+		ref.Name = request.Existing.Name
+		ref.Context = request.Existing.Context
+		ref.DockerHost = request.Existing.DockerHost
+		ref.Adopted = true
+	}
 	out, err = run(ctx, adapterpkg.DockerEnv(ref), "docker", "--context", contextName, "compose", "-p", ref.Name, "-f", file, "config", "--format", "json")
 	if err != nil {
 		return ref, err
@@ -86,7 +95,7 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 			if external, _ := object["external"].(bool); external {
 				continue
 			}
-			if section == "services" && object["container_name"] != nil {
+			if section == "services" && object["container_name"] != nil && !ref.Adopted {
 				return ref, errors.New("fixed container_name is unsupported; remove it so berth owns a unique project")
 			}
 			if section != "services" {
@@ -104,6 +113,11 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 			object["labels"] = labels
 		}
 	}
+	if ref.Adopted {
+		if err := verifyComposeAdoption(ctx, ref, config, run); err != nil {
+			return ref, err
+		}
+	}
 	data, err := json.Marshal(config)
 	if err != nil {
 		return ref, err
@@ -113,7 +127,10 @@ func prepare(ctx context.Context, request adapterpkg.PrepareRequest, run adapter
 }
 
 func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceRef) error {
-	if ref.Name != "berth-"+metadata.LeaseID || ref.Context == "" {
+	if ref.Adopted && (!adapterpkg.ValidResourceName(ref.Name) || ref.DockerHost == "") {
+		return errors.New("invalid adopted resource identity")
+	}
+	if (!ref.Adopted && ref.Name != "berth-"+metadata.LeaseID) || ref.Context == "" {
 		return errors.New("invalid managed resource identity")
 	}
 	if ref.File != filepath.Join(dir, "compose.json") {
@@ -123,7 +140,9 @@ func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceR
 }
 
 func New(run adapterpkg.CommandRunner) adapterpkg.Definition {
-	return adapterpkg.Definition{Name: "compose", Adapter: composeAdapter{run}, CreateAllowed: true, RequiresFile: true,
+	return adapterpkg.Definition{Discover: func(ctx context.Context, r adapterpkg.ResourceRef) ([]map[string]any, error) {
+		return adapterpkg.DiscoverDocker(ctx, r, "compose", run)
+	}, Name: "compose", Adapter: composeAdapter{run}, CreateAllowed: true, RequiresFile: true,
 		Prepare: func(ctx context.Context, r adapterpkg.PrepareRequest) (adapterpkg.ResourceRef, error) {
 			return prepare(ctx, r, run)
 		}, Validate: validate,

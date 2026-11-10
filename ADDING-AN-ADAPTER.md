@@ -8,6 +8,15 @@ Start with an issue and agree on scope and validation under [CONTRIBUTING.md](CO
 4. Add one ordinary import and constructor entry in [`cli.newAdapters`](internal/cli/adapters.go). Do not use `init`, blank imports, or another operational allowlist. The CLI derives create choices from the registry.
 5. Retain exact command, environment, snapshot, survivor, and tool-failure tests. Add real isolated integration coverage that fails when prerequisites are missing. Run `just check`, `just integration`, `just ssh-integration`, and the published verification flows.
 
+An adapter can optionally provide `Definition.Discover` for read-only inventory.
+Discovery reports Docker evidence without creating or deleting resources. For
+adoption, `PrepareRequest.Existing` carries the verified resource identity with
+`Adopted` set. Preparation captures cleanup files without recreating the resource,
+and stored-reference validation accepts adopted names only when that flag is set.
+The lease manager checks existence and duplicate ownership under its state lock
+before recording an adopted lease. The CLI derives adoption support from the
+registry's discovery capability.
+
 The lifecycle owner is [`internal/lease`](internal/lease). It owns locking, durable state, admission, start and finish, and record removal. The job facade never writes state. Process reservations are private lifecycle records, not external adapters.
 
 Owner integrations have a separate registry in [`cli.newOwners`](internal/cli/owners.go). References, raw observations, and pinned-identity decisions live in [`internal/owner`](internal/owner).
