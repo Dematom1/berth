@@ -1,0 +1,6 @@
+exit: 2
+stdout:
+code: VALIDATION_ERROR
+error: use berth machine install <name> --file <binary>
+exit_code: 2
+help[1]: Run berth machine --help for options

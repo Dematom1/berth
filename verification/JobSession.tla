@@ -13,12 +13,12 @@ Init == s \in [phase: {"request"}, match: BOOLEAN, connected: {TRUE},
                 lostGroup: {FALSE}, lateStart: {FALSE}, premature: {FALSE},
                 code: {0, 37, 255}, selected: {-1}, frame: {-1}, client: {-1}]
 
-\* ssh.go: runAgent validates version before ready, then calls runJob.
+\* internal/remote/agent.go: Serve validates version before ready, then invokes the local handler.
 Handshake == /\ s.phase = "request"
              /\ s' = [s EXCEPT !.phase = IF s.match THEN "ready" ELSE "refused"]
 Reserve == /\ s.phase = "ready" /\ ~s.canceled
            /\ s' = [s EXCEPT !.phase = "reserved"]
-\* job.go: startJob creates helper waiting on fd 3, persists group identity,
+\* internal/lease/job_start.go: Manager.startJob creates helper waiting on fd 3, persists group identity,
 \* checks ctx/deadline, THEN writes gate byte. These are separate steps:
 \* flock does not stop real time advancing or the SSH reader canceling ctx.
 Helper == /\ s.phase = "reserved" /\ s.parent /\ ~s.canceled /\ ~s.expired

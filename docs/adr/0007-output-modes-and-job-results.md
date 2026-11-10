@@ -12,4 +12,4 @@ R-B4 preserves the child's exit code on completion, returns 124 when the deadlin
 
 The [AXI exit-code table](../../README.md#axi-exit-codes) and `berth job --help` are the public lookup points for these results. Restructuring output must preserve both the content and the stdout or stderr channel, not merely the exit code.
 
-Evidence: [rendering](../../output.go), [command output and help](../../cli.go), [job results](../../job.go), [SSH results](../../ssh.go), and [R-B4 in the local-job change](https://github.com/Dematom1/berth/pull/2).
+Evidence: [rendering](../../internal/output/output.go), [command output and help](../../internal/cli/cli.go), [job results](../../internal/lease/job_run.go), [SSH results](../../internal/remote/ssh.go), and [R-B4 in the local-job change](https://github.com/Dematom1/berth/pull/2).

@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: invalid value "bad" for flag -label: --label requires key=value
+Run berth create --help for options

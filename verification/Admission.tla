@@ -6,7 +6,7 @@ Requests == {<<1,1>>, <<1,2>>, <<2,1>>, <<2,2>>}
 VARIABLES request, waiting, active, done, queue, expired, dead, lock, badFIFO
 vars == <<request, waiting, active, done, queue, expired, dead, lock, badFIFO>>
 
-\* job.go: budgetFits subtracts both dimensions from available owner-room
+\* internal/lease/job_admission.go: budgetFits subtracts both dimensions from available owner-room
 \* capacity. Units are abstract positive tokens, capacity is <<2,2>>.
 RECURSIVE Sum(_, _)
 Sum(s, d) == IF s = {} THEN 0 ELSE
@@ -21,7 +21,7 @@ Init == /\ request \in [Callers -> Requests]
         /\ active = {} /\ done = {} /\ queue = <<>>
         /\ expired = {} /\ dead = {} /\ lock = 0 /\ badFIFO = FALSE
 
-\* store.go: openStore holds one host/state-dir flock until Close. Other
+\* internal/lease/store.go: Manager.openStore holds one host/state-dir flock until Close. Other
 \* invocations cannot observe local append/prune/remove/insertion until Save.
 \* A successful critical section is therefore one state transition. Save
 \* failure is a stutter (old durable state, no child may start). No crashes

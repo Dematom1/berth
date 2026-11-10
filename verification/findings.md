@@ -12,7 +12,7 @@ Authorized policy clarification R-B3: TTL expiry permits reclaim even when the o
 
 Property: successful cleanup does not delete the only reservation while its workload group still lives.
 Harm: an orphan consumes CPU/memory after the reservation is deleted; subsequent admissions can exceed the intended workload budget even though reservation arithmetic is correct.
-Code: `job.go:processResource.Destroy`, `live == Dead && identity == ""` branch; `releaseLease` then deletes and saves the lease.
+Code: `internal/lease/job_process.go:processResource.Destroy`, `live == Dead && identity == ""` branch; `releaseLease` then deletes and saves the lease.
 Trace: reserve -> start gated child with durable identity -> parent dies -> group leader exits but descendant survives -> OS reaps leader -> sweep -> Destroy returns nil without signaling unverifiable group -> lease removed, descendant/group still alive.
 The existing real-process test `TestDestroyDoesNotSignalGroupAfterLeaderReaped` explicitly demonstrates both durable lease deletion and a surviving group. Avoiding a signal to a potentially reused PGID is deliberate and safe; forgetting the reservation is the budget/cleanup limitation. No fix here.
 
@@ -20,7 +20,7 @@ The existing real-process test `TestDestroyDoesNotSignalGroupAfterLeaderReaped` 
 
 Property: user code never starts after its absolute job deadline.
 Harm: under descheduling, a job can start after timeout and briefly execute side effects before the timer cleanup branch runs.
-Code: `job.go:startJob`, final `!time.Now().Before(current.Expires)` check, then creation of observation goroutine and `start.Write([]byte{1})`; `jobExec` checks only gate byte, not deadline. `runJob` starts its timer after `startJob` returns.
+Code: `internal/lease/job_start.go:Manager.startJob`, final `!time.Now().Before(current.Expires)` check, then creation of observation goroutine and `start.Write([]byte{1})`; `Exec` checks only gate byte, not deadline. `Manager.RunJob` starts its timer after `startJob` returns.
 Trace: reserve -> helper waits -> persist group identity -> final deadline check succeeds -> parent descheduled, deadline expires -> parent resumes and writes gate -> helper may exec user code -> timer/cleanup is only installed afterward.
 This is a faithful split at real instructions, not a reproduced timing failure against an unmodified binary. Treat it as a hard-deadline design limitation needing review, not evidence of a measured timing incident. A hard wall-clock guarantee across exec/scheduling needs a precisely stated contract. No fix here.
 

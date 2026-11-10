@@ -1,0 +1,6 @@
+exit: 2
+stdout:
+code: VALIDATION_ERROR
+error: invalid or unexpected arguments
+exit_code: 2
+help[1]: Run berth release --help for options

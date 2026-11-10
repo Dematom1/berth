@@ -1,0 +1,4 @@
+exit: 1
+stdout:
+Error: lease does not exist; use berth create for a new lease
+Run berth ps to inspect retained leases; retry berth extend --help for options

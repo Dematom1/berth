@@ -1,0 +1,27 @@
+exit: 0
+stdout:
+berth: owner-and-expiry leases for local resources (macOS and Linux).
+Commands: create (up), list (ls, ps, who), extend, release (down), sweep, job,
+env, setup hooks, agent (internal SSH protocol), machine install.
+Global flags: --axi (agents), --json (scripts), --help. No --human flag.
+Human output on terminals; AXI when BERTH_AXI=1 or stdout is not a TTY.
+--axi and --json are mutually exclusive; either overrides BERTH_AXI.
+Version: --version, -v, -V.
+Environment: BERTH_OWNER; BERTH_STATE (default $XDG_STATE_HOME/berth or
+~/.local/state/berth). State is local to one host and one Unix user.
+Examples:
+  berth
+  berth create --adapter kind --ttl 1h --resources '2 CPUs, test lab'
+  berth sweep --confirm
+Run berth <command> --help for command flags.
+Output: --axi for agents, --json for scripts (mutually exclusive).
+Default: human on terminals; AXI for pipes or BERTH_AXI=1.
+Lease commands: --full restores complete AXI records/text; JSON is always complete.
+
+Exit codes: 0 success (including no-ops), 1 operation failed, 2 invalid usage.
+berth job: child's exit code on completion; 124 deadline killed child;
+75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only when no child
+was started. Signal termination returns 128 + signal number. Helper/wait
+failures after start use 125/126 and diagnostics on stderr.
+76 is SSH transport/protocol failure with unknown remote result (stderr).
+Child exit 255 is preserved and is not confused with SSH failure.

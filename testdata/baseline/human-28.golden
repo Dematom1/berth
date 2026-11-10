@@ -1,0 +1,6 @@
+exit: 2
+stdout:
+code: VALIDATION_ERROR
+error: "--json and --axi are mutually exclusive"
+exit_code: 2
+help[1]: Choose --axi for agents or --json for scripts

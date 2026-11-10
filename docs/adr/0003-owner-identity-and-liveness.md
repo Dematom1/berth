@@ -10,4 +10,4 @@ PID identity currently uses `ps` start time with one-second precision, not a col
 
 Creation requires a verified live owner. Renewal also requires alive, while [expiry still permits reclaim](0001-lease-lifecycle-and-ttl.md) for an unknown owner. Lease creation defaults to the parent PID after `--owner` and `BERTH_OWNER`; jobs instead use their own berth process, or the SSH agent's session holder. List filtering compares canonical owner selectors without requiring a fresh liveness check to resolve the selector.
 
-Evidence: [owner parsing and checks](../../owner.go), [lease eligibility](../../lease.go), [owner precedence and list filtering](../../cli.go), and [owner tests](../../lease_test.go).
+Evidence: [owner parsing](../../internal/owner/reference.go), [registered identity checks](../../internal/owner/registry.go), [lease eligibility](../../internal/lease/lease.go), [owner precedence and list filtering](../../internal/cli/cli.go), and [owner tests](../../internal/owner/reference_test.go).

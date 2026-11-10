@@ -12,4 +12,4 @@ The same binary implements a private, version-checked framed protocol that separ
 
 This design provides liveness and cleanup coordination, not isolation for untrusted code. Worktree transfer and Kubernetes-backed machines remain deferred.
 
-Evidence: [SSH transport and agent](../../ssh.go), [session owners](../../owner.go), [remote-placement change](https://github.com/Dematom1/berth/pull/3), and [SSH operations and limitations](../../README.md#run-jobs-over-ssh).
+Evidence: [SSH transport](../../internal/remote/ssh.go), [session agent](../../internal/remote/agent.go), [session owners](../../internal/owner/reference.go), [remote-placement change](https://github.com/Dematom1/berth/pull/3), and [SSH operations and limitations](../../README.md#run-jobs-over-ssh).

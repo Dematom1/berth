@@ -1,0 +1,6 @@
+exit: 2
+stdout:
+code: VALIDATION_ERROR
+error: owner PID must be a positive signed 32-bit integer
+exit_code: 2
+help[1]: Run berth create --help for options

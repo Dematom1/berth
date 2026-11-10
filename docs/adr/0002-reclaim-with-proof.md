@@ -14,4 +14,4 @@ The process adapter does not provide universal verify-gone proof. If its recorde
 
 This exception is current behavior, covered by `TestDestroyDoesNotSignalGroupAfterLeaderReaped`, not a guarantee that descendants are absent. Process-group escape is also outside the cleanup guarantee. The approved [extension contract](0005-adapter-and-owner-extension-contracts.md) requires explicit verify-gone before forgetting. Reconciling that stronger contract with the process exception needs a separate behavior-change decision, not a restructure that silently changes cleanup semantics.
 
-Evidence: [resource adapter cleanup](../../adapter.go), [record removal](../../lease.go), [process cleanup](../../job.go), [process exception test](../../job_test.go), and [documented safety limits](../../README.md#run-a-local-job).
+Evidence: [resource adapter cleanup](../../internal/adapter/compose/compose.go), [record removal](../../internal/lease/lease.go), [process cleanup](../../internal/lease/job_process.go), [process exception test](../../internal/lease/job_test.go), and [documented safety limits](../../README.md#run-a-local-job).

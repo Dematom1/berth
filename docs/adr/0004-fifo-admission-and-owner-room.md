@@ -12,4 +12,4 @@ The wait deadline is distinct from the job deadline. Dead or expired local waite
 
 A request larger than usable budget fails before starting a child. An exhausted admission wait returns 75, and `--wait 0` makes one admission attempt without joining the queue or bypassing existing waiters. Each machine applies its own config and ledger. Config changes affect new requests, not the budget or deadline already recorded for running jobs.
 
-Evidence: [budget and class definitions](../../config.go), [queue and admission](../../job.go), [R-B4 and local-job rationale](https://github.com/Dematom1/berth/pull/2), and [budget configuration](../../README.md#machine-budget-and-classes).
+Evidence: [budget and class definitions](../../internal/config/config.go), [queue and admission](../../internal/lease/job_admission.go), [R-B4 and local-job rationale](https://github.com/Dematom1/berth/pull/2), and [budget configuration](../../README.md#machine-budget-and-classes).

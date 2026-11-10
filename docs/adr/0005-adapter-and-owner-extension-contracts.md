@@ -18,8 +18,8 @@ Built-ins require widespread use and CI-testable behavior, with issue-first revi
 
 ## Current implementation limits
 
-The current Go `Adapter` interface has only `Create` and `Destroy`, with verification inside built-in cleanup. Owner checks are concrete functions over a recorded `Owner`, not an extension registry. Exec integration, the plugin protocol, the conformance commands, and schema migrations are not implemented. The existing state format is version 1 and rejects unsupported versions. Label application currently described for managed resources is Compose-specific.
+The current Go `Adapter` interface has only `Create` and `Destroy`, with verification inside built-in cleanup. Native owner checks operate on a recorded `owner.Reference` through an explicit internal registry. Neither registry is a versioned public extension interface. Exec integration, the plugin protocol, the conformance commands, and schema migrations are not implemented. The existing state format is version 1 and rejects unsupported versions. Label application currently described for managed resources is Compose-specific.
 
 The [process cleanup exception](0002-reclaim-with-proof.md#existing-process-exception) must remain visible when designing the stronger contract. This decision records the approved destination. It does not authorize changing existing behavior in the docs or restructure slice.
 
-Evidence for current behavior: [adapter interface and registry](../../adapter.go), [owner model](../../owner.go), [state validation](../../store.go), and [current supported commands](../../README.md#command-reference).
+Evidence for current behavior: [adapter interface and registry](../../internal/adapter/adapter.go), [explicit registration](../../internal/cli/adapters.go), [owner model](../../internal/owner/reference.go), [state validation](../../internal/lease/store.go), and [current supported commands](../../README.md#command-reference).

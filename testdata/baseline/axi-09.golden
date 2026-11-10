@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+code: COMMAND_FAILED
+error: lease does not exist; use berth create for a new lease
+exit_code: 1
+help[1]: Run berth ps to inspect retained leases; retry berth extend --help for options

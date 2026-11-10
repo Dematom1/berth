@@ -1,0 +1,3 @@
+exit: 2
+stdout:
+{"code":"VALIDATION_ERROR","error":"--ttl must be positive","exit_code":2,"help":["Run berth create --help for options"]}

@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: use --adapter none, kind, k3d, or compose; --file is required only for compose
+Run berth create --help for options

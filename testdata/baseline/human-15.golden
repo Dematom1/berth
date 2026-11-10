@@ -1,0 +1,4 @@
+exit: 2
+stdout:
+Error: --ttl must be positive
+Run berth create --help for options

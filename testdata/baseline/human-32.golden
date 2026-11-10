@@ -1,0 +1,23 @@
+exit: 0
+stdout:
+berth extend <id> --ttl D [--json]
+Set expiry to now + D (positive Go duration). Only an unexpired lease with a
+verified live owner on this machine can be extended. It cannot be resurrected.
+Examples:
+  berth extend <id> --ttl 2h
+  berth extend <id> --ttl 30m --json
+
+Touch heartbeat files at most every staleness/3. Extend a lease at the latest
+when one third of its TTL remains. Owner death OR expiry makes a lease
+reclaimable: a live owner missing either cadence loses its resources.
+Output: --axi for agents, --json for scripts (mutually exclusive).
+Default: human on terminals; AXI for pipes or BERTH_AXI=1.
+Lease commands: --full restores complete AXI records/text; JSON is always complete.
+
+Exit codes: 0 success (including no-ops), 1 operation failed, 2 invalid usage.
+berth job: child's exit code on completion; 124 deadline killed child;
+75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only when no child
+was started. Signal termination returns 128 + signal number. Helper/wait
+failures after start use 125/126 and diagnostics on stderr.
+76 is SSH transport/protocol failure with unknown remote result (stderr).
+Child exit 255 is preserved and is not confused with SSH failure.

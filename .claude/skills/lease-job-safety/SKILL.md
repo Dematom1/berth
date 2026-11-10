@@ -1,6 +1,6 @@
 ---
 name: lease-job-safety
-description: "Check lease reclaim, FIFO admission and budgets, job deadlines and cleanup, or SSH owner-channel liveness after changing lease.go, store.go, owner.go, job.go, or ssh.go. Runs bounded TLA+ models and real-code mutation checks."
+description: "Check lease reclaim, FIFO admission and budgets, job deadlines and cleanup, or SSH owner-channel liveness after changing internal/lease, internal/owner, or internal/remote. Runs bounded TLA+ models and real-code mutation checks."
 ---
 
 # Check lease and job safety
@@ -22,18 +22,18 @@ CI runs `just formal` for these checks. Docker, a remote machine, and paid servi
 
 ## Check the code mapping
 
-Last confirmed source commit: `17c0265225197abd1010bec959eed501be5cc02f`.
+The package mapping below was rechecked with `just formal` after the behavior-preserving restructure of baseline `11e1da46ff0c479a5027661622dbda459350d755`.
 
-Run `git diff 17c0265225197abd1010bec959eed501be5cc02f -- lease.go store.go owner.go job.go job_wait_linux.go job_wait_darwin.go ssh.go config.go cli.go adapter.go`. Re-read changed covered functions before trusting a pass.
+Run `git diff 11e1da46ff0c479a5027661622dbda459350d755 -- internal/lease internal/owner internal/remote internal/config internal/cli internal/adapter internal/atomicfile internal/budget internal/job internal/output`. Re-read changed covered functions before trusting a pass.
 
-- `verification/Lease.tla` covers `lease.go:reclaimable`, `extendLease`, `releaseLease`, and `sweep`. A sweep uses owner evidence at its eligibility decision. Explicit release may destroy a live resource. Destroy or Save failure retains the cleanup intent.
-- `verification/Admission.tla` covers `job.go:admitJob`, `budgetFits`, `pruneWaiters`, and `removeWaiter`, plus `store.go:openStore`, `Save`, and `Close`. A successful locked store transaction is one model step. This is valid only while read, prune, FIFO check, budget check, insertion, and Save share the same flock. Do not preserve this abstraction if the lock scope changes.
-- `verification/JobSession.tla` covers `job.go:startJob`, `jobExec`, `childCompletion`, `processResource.Destroy`, `runJob`, and `finishJob`; `job_wait_linux.go` and `job_wait_darwin.go` supply unreaped completion observations. Persist, final deadline check, and gate write are separate steps. Time and owner-channel EOF can advance between them.
-- The same model covers `ssh.go:runAgent` and `runRemote`. Ready follows version validation, child output cannot create a result frame, delivered stdin EOF cancels the remote context, and a received result is authoritative during transport teardown.
-- `owner.go:checkOwner` and `processIdentity` supply Alive, Dead, and Unknown evidence. `config.go:available` supplies a common capacity after owner room. The models assume these observations and parsed positive requests are valid. `formal_test.go` and existing tests execute the real functions at these boundaries.
-- `cli.go` and `adapter.go` provide command routing and Destroy semantics. External adapter implementations are not proved. `releaseLease` trusts a successful Destroy.
+- `verification/Lease.tla` covers `internal/lease/lease.go:reclaimable`, `extendLease`, `releaseLease`, and `sweep`. A sweep uses owner evidence at its eligibility decision. Explicit release may destroy a live resource. Destroy or Save failure retains the cleanup intent.
+- `verification/Admission.tla` covers `internal/lease/job_admission.go:Manager.admitJob`, `budgetFits`, `pruneWaiters`, and `removeWaiter`, plus `internal/lease/store.go:Manager.openStore`, `Save`, and `Close`. A successful locked store transaction is one model step. This is valid only while read, prune, FIFO check, budget check, insertion, and Save share the same flock. Do not preserve this abstraction if the lock scope changes.
+- `verification/JobSession.tla` covers `internal/lease/job_start.go:Manager.startJob`, `Exec`, `childCompletion`, `processResource.Destroy`, `internal/lease/job_run.go:Manager.RunJob`, and `internal/lease/job_finish.go:Manager.finishJob`; `internal/lease/job_wait_linux.go` and `internal/lease/job_wait_darwin.go` supply unreaped completion observations. Persist, final deadline check, and gate write are separate steps. Time and owner-channel EOF can advance between them.
+- The same model covers `internal/remote/agent.go:Serve` and `internal/remote/ssh.go:Run`. Ready follows version validation, child output cannot create a result frame, delivered stdin EOF cancels the remote context, and a received result is authoritative during transport teardown.
+- `internal/owner/registry.go:Registry.Check` and `internal/owner/reference.go:ProcessIdentity` supply Alive, Dead, and Unknown evidence. `internal/config/config.go:Config.Available` supplies a common capacity after owner room. The models assume these observations and parsed positive requests are valid. `internal/lease/formal_test.go` and `internal/cli/formal_test.go` and existing tests execute the real functions at these boundaries.
+- `internal/cli/cli.go` and `internal/adapter/{kind,k3d,compose}` provide command routing and Destroy semantics. External adapter implementations are not proved. `releaseLease` trusts a successful Destroy.
 
-Move the source commit forward only after confirming that these abstractions still describe the code and rerunning every check. Use `/maintain-formal-verification-skill` after changes that did not recheck this record.
+Move the source baseline forward only after confirming that these abstractions still describe the code and rerunning every check. Use `/maintain-formal-verification-skill` after changes that did not recheck this record.
 
 ## Interpret the properties
 
@@ -60,6 +60,6 @@ A pass covers these finite models, not arbitrary queue lengths or the Go binary.
 
 ## Reject a broken change
 
-`just formal` checks intentionally broken model variants and runs `verification/mutations.py`. The latter copies the Go package into temporary directories and changes real code only in those copies. It removes unknown-owner protection, locking, budget checks, FIFO gating, helper EOF protection, cleanup retention, completion probing, EOF cancellation, and result preservation. Each variant must fail a behavior test, not compilation or source-text matching. The checkout stays unchanged.
+`just formal` checks intentionally broken model variants and runs `verification/mutations.py`. The latter copies the Go source tree and golden fixtures into temporary directories and changes real code only in those copies. It removes unknown-owner protection, locking, budget checks, FIFO gating, helper EOF protection, cleanup retention, completion probing, EOF cancellation, and result preservation. Each variant must fail a behavior test, not compilation or source-text matching. The checkout stays unchanged.
 
 For an unexpected trace, map each action to the named function and check the atomicity boundary first. If the code permits the sequence, record a finding before proposing a product fix. If the model invented a sequence, correct the abstraction and rerun the mutation checks. Never weaken a safety promise to make a failing code path green.
