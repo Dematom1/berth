@@ -18,7 +18,7 @@ Read [the findings](../../../verification/findings.md) first. F1 is resolved by 
 
 `check.py` downloads the checksum-pinned `tla2tools.jar` v1.7.4 release. `TLA2TOOLS_JAR` selects an already downloaded copy, which still needs the same checksum. `JAVA` selects the Java executable. `FORMAL_LOG_DIR` selects a directory outside the checkout for configs, traces, and checker state. Without it, the checker creates a temporary directory and prints its path.
 
-CI does not currently run these formal checks. Docker, a remote machine, and paid services are not required.
+CI runs `just formal` for these checks. Docker, a remote machine, and paid services are not required.
 
 ## Check the code mapping
 
