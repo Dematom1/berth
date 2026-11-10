@@ -370,6 +370,19 @@ for F2 and F3.
 The [lease and job safety skill](.claude/skills/lease-job-safety/SKILL.md)
 records the code mapping, bounds, assumptions, and rerun procedure.
 
+The project-local [verify skill](.claude/skills/verify/SKILL.md) drives the demo
+through the real CLI, including Compose HTTP, Ready kind/k3d nodes, FIFO jobs,
+and SSH session cleanup. To run every flow and retain proof outside the checkout:
+
+```sh
+PROOF=$(mktemp -d "${TMPDIR:-/tmp}/berth-proof.XXXXXX")
+.claude/skills/verify/verify.py all --evidence "$PROOF/all"
+```
+
+The helper needs Python 3 and the real adapter/SSH tools; missing prerequisites
+fail rather than skip. CI runs these workflows and uploads `berth-verification`
+evidence, including failed runs, for seven days.
+
 `make check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
 owner, unknown liveness, machine boundaries, retry, state corruption, locking,

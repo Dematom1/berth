@@ -31,6 +31,7 @@ func TestSSHIntegration(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+		t.Logf("command=%q output=%q error=%v", append([]string{name}, args...), out, err)
 		if err != nil {
 			t.Fatalf("%s %v: %v\n%s", name, args, err, out)
 		}
