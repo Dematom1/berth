@@ -8,7 +8,10 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pr-title:
@@ -24,15 +27,46 @@ jobs:
             echo 'Use a conventional commit title, for example: feat: add leases'
             exit 1
           fi
-  no-mistakes:
-    name: PR must be raised via no-mistakes
-    if: github.event_name == 'pull_request'
+  check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Verify pipeline attestation
-        uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
-  main-required-ci:
-    name: main-required-ci
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+      - name: Format and vet
+        run: just lint
+      - name: Dependency integrity
+        run: just deps-check
+      - name: Vulnerabilities
+        run: just vulncheck
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+      - name: Race tests
+        run: just test
+      - name: Build
+        run: just build
+
+  integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -43,21 +77,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6
-        with:
-          distribution: goreleaser
-          version: latest
-          args: check
-      - name: Format, vet, test, and build
-        run: |
-          test -z "$(gofmt -l .)"
-          go vet ./...
-          go test -race ./...
-          go build -o "$RUNNER_TEMP/berth" .
-          GOOS=linux GOARCH=amd64 go build -o "$RUNNER_TEMP/berth-linux" .
-          GOOS=darwin GOARCH=arm64 go build -o "$RUNNER_TEMP/berth-darwin" .
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
       - name: Real SSH agent integration
-        run: make ssh-integration
+        run: just ssh-integration
       - name: Install kind and k3d for real adapter integration
         run: |
           curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o "$RUNNER_TEMP/kind-linux-amd64"
@@ -71,4 +93,16 @@ jobs:
           docker info
           docker compose version
       - name: Real kind, k3d, and Compose adapter integration
-        run: make integration
+        run: just integration
+
+  main-required-ci:
+    name: main-required-ci
+    needs: [check, test, integration]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"

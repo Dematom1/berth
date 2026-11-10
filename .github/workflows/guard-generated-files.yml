@@ -1,0 +1,42 @@
+name: Guard generated files
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guard-generated-files-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Generated files must not be hand-edited
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: >-
+      github.event.pull_request.user.login != 'github-actions[bot]' &&
+      github.event.pull_request.user.login != 'release-please[bot]'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Protect release-please outputs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          files=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")
+          for path in CHANGELOG.md .release-please-manifest.json; do
+            # Allow initial adoption only; release-please owns subsequent edits.
+            if git cat-file -e "${BASE_SHA}:${path}" 2>/dev/null &&
+               grep -qxF -- "$path" <<< "$files"; then
+              echo "::error file=${path}::Only release-please may update generated release files"
+              exit 1
+            fi
+          done

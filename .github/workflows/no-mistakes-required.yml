@@ -1,0 +1,28 @@
+name: Require no-mistakes
+run-name: "PR #${{ github.event.pull_request.number }} body compliance - ${{ github.event.action }} - run ${{ github.run_id }}"
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: no-mistakes-required-${{ github.event.pull_request.number }}-${{ (github.event.action == 'opened' || github.event.action == 'edited') && github.run_id || 'head-change' }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: PR must be raised via no-mistakes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: >-
+      github.event.pull_request.user.login != 'github-actions[bot]' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.user.login != 'release-please[bot]'
+    steps:
+      - name: Verify pipeline attestation
+        uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1

@@ -17,8 +17,8 @@ berth --version
 The module path is case-sensitive; `github.com/dematom1/berth` fails. Prebuilt
 Linux and macOS binaries are available from the [GitHub Releases](https://github.com/Dematom1/berth/releases) page.
 
-From a checkout, `make install` installs to Go's binary directory. `make build`
-writes `bin/berth`. Resource adapters also require `kind`, `k3d`, `docker`,
+From a checkout, `just install` installs to Go's binary directory. `just build`
+writes `bin/berth`. `go install` does not require just. Resource adapters also require `kind`, `k3d`, `docker`,
 and Docker Compose, plus a running Docker engine.
 
 ## Start a leased test lab
@@ -70,7 +70,7 @@ for release or sweep to clean up partial resources.
 
 ```sh
  berth job --cores 2 --memory 2GiB --timeout 10m -- go test ./...
- berth job --class suite --wait 5m -- make check
+ berth job --class suite --wait 5m -- just check
  berth ps                           # includes each job's cores, memory and class
 ```
 
@@ -352,36 +352,27 @@ timers.
 
 ## Develop and verify
 
+Install [just](https://just.systems), or run `nix develop` for Go, just, and
+GoReleaser. List the available recipes with `just`.
+
 ```sh
- make check
- make integration
- make ssh-integration
- make formal
+ just check
+ just integration
+ just ssh-integration
 ```
 
-`make formal` runs bounded TLA+ models, real-code checks, and mutation checks.
-It requires Java 17 or newer, Python 3, and Go. The model checker download is
-version- and checksum-pinned. Read the [formal findings](verification/findings.md)
-first: TTL expiry may reclaim an Alive owner by policy; the model checks that
-an unexpired live owner is not reclaimed. Orphan-group cleanup and a deadline-
-check race remain counterexamples, not verified guarantees. CI reproduces those
-known failures explicitly. `python3 verification/check.py --strict` exits nonzero
-for F2 and F3.
-The [lease and job safety skill](.claude/skills/lease-job-safety/SKILL.md)
-records the code mapping, bounds, assumptions, and rerun procedure.
-
-`make check` runs formatting checks, vet, race-enabled tests, and build. Unit
+`just check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
 owner, unknown liveness, machine boundaries, retry, state corruption, locking,
 the CLI lifecycle, budget/owner-room math, FIFO/no-backfill queueing, dead
 waiters, and real job subprocesses (child exit codes, deadline/class timeout,
 wait exhaustion, cancellation, descendant cleanup, and sweep after owner death).
 Real adapter tests are isolated behind the `integration` build tag and run with
-`make integration`. They create unique kind, k3d, and Compose resources, then
+`just integration`. They create unique kind, k3d, and Compose resources, then
 verify cleanup. Missing adapter tools, Docker, or Compose fail the command rather
 than skip; failed cleanup retains the state directory and reports its path.
 
-`make ssh-integration` runs real SSH end-to-end tests against a disposable
+`just ssh-integration` runs real SSH end-to-end tests against a disposable
 Alpine container with OpenSSH and procps. It requires Docker, SSH, ssh-keygen,
 and Go. It fails rather than skips when a prerequisite is absent. Tests use
 isolated keys and a strict private known-hosts file. They cover quoting, binary
@@ -389,10 +380,26 @@ output, remote budget and owner room, child exit codes including 255, deadline
 124, wait 75, session disconnect cleanup, remote listing and sweep, version
 refusal, atomic upgrades, and transport failure 76.
 
-CI runs on GitHub-hosted `ubuntu-24.04` and executes vet, unit tests, build,
-cross-builds, `make ssh-integration`, and `make integration`. It installs pinned,
-checksum-verified kind and k3d binaries; the integration target fails if Docker
+CI runs race-enabled unit tests and builds on GitHub-hosted `ubuntu-24.04`
+and `macos-15`. Linux also runs `just lint`, dependency integrity checks,
+`govulncheck`, `just ssh-integration`, and `just integration`. It installs pinned,
+checksum-verified kind and k3d binaries; the integration recipe fails if Docker
 or any adapter prerequisite is unavailable.
+
+`just fmt` formats Go files. `just lint` checks formatting and runs vet.
+`just release-check` validates GoReleaser configuration; `just release-snapshot`
+builds local archives and checksums without publishing. Release-please opens
+version PRs and creates draft releases after merge. CI uploads all four Linux
+and macOS archives before publishing a prerelease. Stable promotion is manual.
+macOS Developer ID signing is disabled until signing credentials and identity
+are configured.
+
+Build with `nix build`, or use
+`nix-build default.nix -A packages.x86_64-linux.default` without flakes.
+The flake provides `packages.<system>.berth` for `x86_64-linux`, `aarch64-linux`,
+and `aarch64-darwin`; NixOS and home-manager can use that package in their
+package lists. The Nix binary reports the version in
+`.release-please-manifest.json`.
 The live `main-required-ci` ruleset requires the checks `PR title` and
 `PR must be raised via no-mistakes`; the workflow also provides the Go validation
 check named `main-required-ci`.
