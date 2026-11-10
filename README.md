@@ -356,7 +356,19 @@ timers.
  make check
  make integration
  make ssh-integration
+ make formal
 ```
+
+`make formal` runs bounded TLA+ models, real-code checks, and mutation checks.
+It requires Java 17 or newer, Python 3, and Go. The model checker download is
+version- and checksum-pinned. Read the [formal findings](verification/findings.md)
+first: TTL expiry may reclaim an Alive owner by policy; the model checks that
+an unexpired live owner is not reclaimed. Orphan-group cleanup and a deadline-
+check race remain counterexamples, not verified guarantees. CI reproduces those
+known failures explicitly. `python3 verification/check.py --strict` exits nonzero
+for F2 and F3.
+The [lease and job safety skill](.claude/skills/lease-job-safety/SKILL.md)
+records the code mapping, bounds, assumptions, and rerun procedure.
 
 `make check` runs formatting checks, vet, race-enabled tests, and build. Unit
 tests cover owner death, PID reuse, heartbeat staleness, expiry with a live
