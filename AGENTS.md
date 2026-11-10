@@ -6,11 +6,11 @@ Read `VISION.md` first; it is the accept/resist test for every change.
 ## Rules for changes
 
 - Berth owns only the lease lifecycle and its guarantees; task-runner, repo-agent-runtime, secrets, and network-policy features are out of scope.
-- New resource types and liveness sources go through the Adapter and Owner contracts: exec or a plugin first, built in only when widely used and CI-testable, and proposed as an issue before a pull request.
+- New resource types and liveness sources go through the Adapter and Owner contracts; berth ships one as a built-in, off until an opt-in setting enables it, only when it is widely used and CI-testable and was proposed as an issue first; anything berth does not ship stays an exec file or plugin.
 - Every adapter or owner must pass the conformance kit; every call runs under a timeout, and extensions never write berth state.
 - Record cleanup intent before creating a resource, and forget a lease only after destroy and verify-gone succeed.
 - Never reclaim a resource that is not under a lease (adoption is an explicit `adopt`), never reclaim on unknown liveness, and never act on another machine's leases.
-- New behavior is opt-in, off until a named config setting or environment variable enables it, and leaves defaults unchanged; a change to existing behavior needs manual maintainer review, while opt-in, non-breaking changes may merge once the automated review approves.
+- New behavior is opt-in: off until a named setting in the user `config.json` or a `BERTH_*` environment variable enables it (never a project file a leased job could edit), and unchanged when the setting is absent; a change to existing behavior needs manual maintainer review, while opt-in, non-breaking changes may merge once the automated review approves.
 - Keep berth one Go binary whose guarantees never require a resident process; the SSH agent lives only for its session.
 - Treat the state schema, CLI, AXI output, and exit codes as stable contracts: version and migrate state, follow semver, and deprecate before removing.
 - Every command serves humans and agents as first-class audiences: a readable default at a terminal, AXI output for agents (detected when stdout is not a terminal, or via `--axi`), and `--json` for scripts, with no prompts.

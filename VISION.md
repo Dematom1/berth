@@ -27,8 +27,9 @@ An existing resource enters berth only through an explicit `adopt` by a named ow
 An Adapter implements create, idempotent destroy, exists or verify-gone, and describe.
 An Owner implements check, returning alive, dead, or unknown with an identity.
 Both contracts are small and versioned, and the conformance kit (`berth adapter test <name>` and its owner equivalent) proves idempotent destroy, tolerance of already-absent resources, truthful verify-gone, honored timeouts, and applied labels.
-Extensions arrive in a fixed order of preference: the contracts first, then the exec adapter and exec owner from a local file or command, then out-of-process `berth-adapter-<name>` and `berth-owner-<name>` plugins on PATH speaking a small JSON protocol over stdin and stdout, listed in a community catalog.
-Installing a plugin enables nothing by itself; like every opt-in, it stays off until a named setting turns it on.
+Berth ships the adapters and owners it supports in its own binary, and each optional one stays off until a named setting in the user config or a `BERTH_*` environment variable turns it on.
+For what berth does not ship, the escape hatch is an exec adapter or exec owner from a local file or command, or an out-of-process `berth-adapter-<name>` or `berth-owner-<name>` plugin on PATH speaking a small JSON protocol over stdin and stdout, listed in a community catalog.
+Exec files and plugins extend berth; they are never how berth's own capabilities are switched on.
 An extension that cannot pass the conformance kit does not ship as conforming.
 
 ## Extensions cannot weaken the guarantees
@@ -40,7 +41,9 @@ A plugin that times out, crashes, or answers ambiguously yields unknown or a ret
 
 ## Growth is opt-in, contracts are stable
 
-New behavior is opt-in by default: it ships off and turns on through a named config setting or environment variable, never by installing something.
+New behavior ships in the binary and is opt-in by default: it stays off until a named setting in the user's berth config or a `BERTH_*` environment variable turns it on, never by installing something, and with the setting absent berth behaves exactly as before.
+Opt-ins never live in a project file or anything else a leased job could edit.
+Anything that adds significant latency or cost, or expands what berth decides on its own, is opt-in and never a silent default flip.
 Existing behavior changes only through a manual review by the maintainer.
 Opt-in, non-breaking changes merge once the automated review process approves them.
 Opt-in capabilities in vision include a resident sweeper, deadline-bounded backfill, owner preemption of lower-class jobs, cgroup or container enforcement of reservations, Kubernetes namespaces as machines through API calls, worktree sync into a per-lease remote directory, and interactive remote jobs.
@@ -63,7 +66,7 @@ Nothing prompts outside an explicitly interactive job, unknown flags fail with 2
 
 ## Future scope
 
-Berth grows through new owners and adapters, delivered as exec, plugins, or earned built-ins; the lease core stays the same size.
+Berth grows through new owners and adapters, shipped as built-ins behind opt-in settings once they earn it and reachable through exec or plugins until then; the lease core stays the same size.
 
 ## Non-goals
 
