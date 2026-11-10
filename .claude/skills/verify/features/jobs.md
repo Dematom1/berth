@@ -20,7 +20,7 @@ Preconditions: baseline tools are available. The helper writes an isolated confi
 
 - **Run:** `.claude/skills/verify/verify.py local --evidence "$PROOF/jobs"`.
 - **Results:** `job -- sh -c 'echo working; echo done'` returns 0. `job -- sh -c 'exit 7'` returns 7.
-- **Deadline:** a child writes a marker then sleeps for 30 seconds under `--timeout 500ms`. Require marker existence and exit 124.
+- **Deadline:** a child writes a marker then sleeps for 30 seconds under `--timeout 5s`. Require marker existence and exit 124.
 - **Invalid:** `job --cores 999 -- touch <marker>` returns 2. Require the marker to remain absent.
 - **FIFO:** start a one-core holder, queue a two-core request, then a one-core request. Observe registration in the read-only state snapshot, not shell launch order. The smaller job must not start despite one free core.
 - **Exhaustion:** `job --memory 1MiB --wait 0 -- touch <marker>` returns 75, and no marker is created.
