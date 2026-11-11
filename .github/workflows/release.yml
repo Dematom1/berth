@@ -109,10 +109,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Publish complete draft as prerelease
+      - name: Publish complete draft as latest release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.release-please.outputs.tag_name }}
-        # Promotion to stable/latest stays a deliberate release decision.
-        run: gh release edit "$TAG" --draft=false --prerelease=true --latest=false
+        run: gh release edit "$TAG" --draft=false --prerelease=false --latest=true
