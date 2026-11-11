@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/Dematom1/berth/compare/v0.2.1...v0.2.2) (2026-11-11)
+
+
+### Bug Fixes
+
+* **release:** publish completed releases as latest ([#30](https://github.com/Dematom1/berth/issues/30)) ([7e021a1](https://github.com/Dematom1/berth/commit/7e021a19ca6b8b60456274ade758ad5e78793d1e))
+
 ## [0.2.1](https://github.com/Dematom1/berth/compare/v0.1.0...v0.2.1) (2026-11-10)
 
 
