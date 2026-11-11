@@ -16,7 +16,7 @@ The authoritative collection of recorded leases and admission waiters for cooper
 _Avoid_: cluster inventory, cross-host ledger
 
 **Owner**:
-The identifiable process, session holder, or heartbeat source whose liveness supports a lease.
+The identifiable process, session holder, heartbeat source, or pull request whose liveness supports a lease.
 An owner is distinct from the machine's interactive user and from the job's child process.
 _Avoid_: user, child, resource
 

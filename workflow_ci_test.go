@@ -112,7 +112,7 @@ func TestCIWorkflowRequiredCoverage(t *testing.T) {
 		command string
 	}{
 		{check, "just lint"}, {check, "just cross"}, {check, "just deps-check"}, {check, "just vulncheck"},
-		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"},
+		{testJob, "just test"}, {testJob, "just build"}, {integration, "just integration"}, {integration, "just pr-owner-integration"},
 		{integration, ".claude/skills/verify/verify.py local --evidence \"$RUNNER_TEMP/verify/local\""}, {integration, ".claude/skills/verify/verify.py ssh --evidence \"$RUNNER_TEMP/verify/ssh\""}, {integration, ".claude/skills/verify/verify.py adapters --evidence \"$RUNNER_TEMP/verify/adapters\""},
 	} {
 		require(t, hasRun(pair.job, pair.command), "missing CI command: "+pair.command)
