@@ -107,7 +107,7 @@ func TestReleaseWorkflowLifecycle(t *testing.T) {
 	condition, _ := finalize["if"].(string)
 	require(t, len(gotNeeds) == 2 && gotNeeds["release-please"] && gotNeeds["build-and-upload"], "publication must depend on release creation and assets")
 	require(t, condition == "!cancelled() && needs.release-please.result == 'success' && needs.build-and-upload.result == 'success' && needs.release-please.outputs.release_created == 'true'", "publication must require successful complete release")
-	require(t, hasRun(finalize, `gh release edit "$TAG" --draft=false --prerelease=true --latest=false`), "complete draft must be published as prerelease, not latest")
+	require(t, hasRun(finalize, `gh release edit "$TAG" --draft=false --prerelease=false --latest=true`), "complete draft must be published as latest")
 }
 
 func testReleaseUploadScript(t *testing.T, script string) {
