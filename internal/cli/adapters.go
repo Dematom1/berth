@@ -1,12 +1,12 @@
 package cli
 
 import (
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	composepkg "github.com/Dematom1/berth/internal/adapter/compose"
-	k3dpkg "github.com/Dematom1/berth/internal/adapter/k3d"
-	kindpkg "github.com/Dematom1/berth/internal/adapter/kind"
-	nonepkg "github.com/Dematom1/berth/internal/adapter/none"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	composepkg "github.com/Dematom1/dibs/internal/adapter/compose"
+	k3dpkg "github.com/Dematom1/dibs/internal/adapter/k3d"
+	kindpkg "github.com/Dematom1/dibs/internal/adapter/kind"
+	nonepkg "github.com/Dematom1/dibs/internal/adapter/none"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
 )
 
 func newAdapters() adapterpkg.Registry {

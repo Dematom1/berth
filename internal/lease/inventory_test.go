@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	composepkg "github.com/Dematom1/berth/internal/adapter/compose"
-	k3dpkg "github.com/Dematom1/berth/internal/adapter/k3d"
-	kindpkg "github.com/Dematom1/berth/internal/adapter/kind"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	composepkg "github.com/Dematom1/dibs/internal/adapter/compose"
+	k3dpkg "github.com/Dematom1/dibs/internal/adapter/k3d"
+	kindpkg "github.com/Dematom1/dibs/internal/adapter/kind"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 func inventoryRunner(t *testing.T, driver, name string) adapterpkg.CommandRunner {
@@ -33,7 +33,7 @@ func inventoryRunner(t *testing.T, driver, name string) adapterpkg.CommandRunner
 			return []byte("abc"), nil
 		case strings.Contains(joined, "container inspect"):
 			label := map[string]string{"kind": "io.x-k8s.kind.cluster", "k3d": "k3d.cluster", "compose": "com.docker.compose.project"}[driver]
-			return json.Marshal([]any{map[string]any{"Name": "test", "Created": "2026-01-01T00:00:00Z", "Config": map[string]any{"Labels": map[string]string{label: name, "custom": "preserved", "com.docker.compose.project.working_dir": "/missing-berth-test-dir", "com.docker.compose.project.config_files": "/missing-berth-test-dir/compose.yaml"}}}})
+			return json.Marshal([]any{map[string]any{"Name": "test", "Created": "2026-01-01T00:00:00Z", "Config": map[string]any{"Labels": map[string]string{label: name, "custom": "preserved", "com.docker.compose.project.working_dir": "/missing-dibs-test-dir", "com.docker.compose.project.config_files": "/missing-dibs-test-dir/compose.yaml"}}}})
 		case strings.Contains(joined, "volume ls"), strings.Contains(joined, "network ls"):
 			return nil, nil
 		}
@@ -84,7 +84,7 @@ func TestAdoptRefusalsAndDurability(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !l.ResourceRef.Adopted || l.ResourceRef.Name != r.Resource.Name || l.Labels["io.berth.lease"] != l.ID {
+			if !l.ResourceRef.Adopted || l.ResourceRef.Name != r.Resource.Name || l.Labels["io.dibs.lease"] != l.ID {
 				t.Fatal("lost adopted identity")
 			}
 			disk, err := m.readInventoryStore(m.options.Directory)

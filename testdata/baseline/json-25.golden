@@ -1,3 +1,3 @@
 exit: 2
 stdout:
-{"code":"VALIDATION_ERROR","error":"use berth job [flags] -- \u003ccmd\u003e; --wait must be nonnegative","exit_code":2,"help":["Run berth job --help for options"]}
+{"code":"VALIDATION_ERROR","error":"use dibs job [flags] -- \u003ccmd\u003e; --wait must be nonnegative","exit_code":2,"help":["Run dibs job --help for options"]}

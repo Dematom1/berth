@@ -13,32 +13,32 @@ import (
 	"regexp"
 	"strings"
 
-	atomicfilepkg "github.com/Dematom1/berth/internal/atomicfile"
-	outputpkg "github.com/Dematom1/berth/internal/output"
+	atomicfilepkg "github.com/Dematom1/dibs/internal/atomicfile"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
 	"github.com/pelletier/go-toml/v2"
 )
 
 // Inline commands need neither a persistent executable path nor path repair.
 
-const hookMarker = "# berth-axi"
+const hookMarker = "# dibs-axi"
 
 const sessionHook = hookMarker + `
 env_file=${CODEX_ENV_FILE:-${CLAUDE_ENV_FILE:-}}
 if [ -n "$env_file" ]; then
-  printf '%s\n' 'export BERTH_AXI=1' >> "$env_file"
+  printf '%s\n' 'export DIBS_AXI=1' >> "$env_file"
 else
-  printf '%s\n' 'Use berth --axi for agent output, or export BERTH_AXI=1.'
+  printf '%s\n' 'Use dibs --axi for agent output, or export DIBS_AXI=1.'
 fi`
 
-const piHook = `// berth-axi: managed by berth setup hooks
+const piHook = `// dibs-axi: managed by dibs setup hooks
 export default function (pi: { on(event: "session_start", handler: () => void): void }) {
-  pi.on("session_start", () => { process.env.BERTH_AXI = "1"; });
+  pi.on("session_start", () => { process.env.DIBS_AXI = "1"; });
 }
 `
 
-const opencodeHook = `// berth-axi: managed by berth setup hooks
-export const BerthAXI = async () => ({
-  "shell.env": async (_input, output) => { output.env.BERTH_AXI = "1"; },
+const opencodeHook = `// dibs-axi: managed by dibs setup hooks
+export const DibsAXI = async () => ({
+  "shell.env": async (_input, output) => { output.env.DIBS_AXI = "1"; },
 });
 `
 
@@ -52,7 +52,7 @@ func configHome(env, fallback string) string {
 func runSetup(args []string, out io.Writer, mode outputpkg.Mode) int {
 	fs := flag.NewFlagSet("setup hooks", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	remove := fs.Bool("remove", false, "remove berth-managed hooks")
+	remove := fs.Bool("remove", false, "remove dibs-managed hooks")
 	wantHelp := fs.Bool("help", false, "help")
 	outputpkg.Flags(fs, &mode)
 	if len(args) == 1 && args[0] == "--help" {
@@ -60,7 +60,7 @@ func runSetup(args []string, out io.Writer, mode outputpkg.Mode) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] != "hooks" {
-		return outputpkg.Error(out, mode, 2, "expected setup hooks", "Run berth setup hooks [--remove]")
+		return outputpkg.Error(out, mode, 2, "expected setup hooks", "Run dibs setup hooks [--remove]")
 	}
 	if err := parseFlags(fs, args[1:]); err != nil {
 		return outputpkg.Error(out, mode, 2, err.Error(), help("setup"))
@@ -74,7 +74,7 @@ func runSetup(args []string, out io.Writer, mode outputpkg.Mode) int {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return outputpkg.Error(out, mode, 1, err.Error(), "Set HOME and retry berth setup hooks")
+		return outputpkg.Error(out, mode, 1, err.Error(), "Set HOME and retry dibs setup hooks")
 	}
 	claude := configHome("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	codex := configHome("CODEX_HOME", filepath.Join(home, ".codex"))
@@ -88,8 +88,10 @@ func runSetup(args []string, out io.Writer, mode outputpkg.Mode) int {
 		{filepath.Join(claude, "settings.json"), editSessionHook},
 		{filepath.Join(codex, "hooks.json"), editSessionHook},
 		{filepath.Join(codex, "config.toml"), editCodexFeature},
-		{filepath.Join(pi, "extensions", "berth-axi.ts"), managedPlugin(piHook)},
-		{filepath.Join(xdg, "opencode", "plugins", "berth-axi.js"), managedPlugin(opencodeHook)},
+		{filepath.Join(pi, "extensions", "dibs-axi.ts"), managedPlugin(piHook)},
+		{filepath.Join(xdg, "opencode", "plugins", "dibs-axi.js"), managedPlugin(opencodeHook)},
+		{filepath.Join(pi, "extensions", "berth-axi.ts"), removeLegacyPlugin},
+		{filepath.Join(xdg, "opencode", "plugins", "berth-axi.js"), removeLegacyPlugin},
 	}
 	type change struct {
 		path string
@@ -99,11 +101,11 @@ func runSetup(args []string, out io.Writer, mode outputpkg.Mode) int {
 	for _, target := range targets {
 		data, readErr := os.ReadFile(target.path)
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			return outputpkg.Error(out, mode, 1, readErr.Error(), "Check config permissions and retry berth setup hooks")
+			return outputpkg.Error(out, mode, 1, readErr.Error(), "Check config permissions and retry dibs setup hooks")
 		}
 		next, editErr := target.edit(data, *remove)
 		if editErr != nil {
-			return outputpkg.Error(out, mode, 1, target.path+": "+editErr.Error(), "Fix the config and retry berth setup hooks")
+			return outputpkg.Error(out, mode, 1, target.path+": "+editErr.Error(), "Fix the config and retry dibs setup hooks")
 		}
 		if !bytes.Equal(data, next) {
 			changes = append(changes, change{target.path, next})
@@ -120,7 +122,7 @@ func runSetup(args []string, out io.Writer, mode outputpkg.Mode) int {
 			}
 		}
 		if err != nil {
-			return outputpkg.Error(out, mode, 1, err.Error(), "Earlier changes may be installed; fix permissions and rerun berth setup hooks")
+			return outputpkg.Error(out, mode, 1, err.Error(), "Earlier changes may be installed; fix permissions and rerun dibs setup hooks")
 		}
 		changed = append(changed, change.path)
 	}
@@ -179,7 +181,7 @@ func editSessionHook(data []byte, remove bool) ([]byte, error) {
 				return nil, errors.New("hook must be an object")
 			}
 			text, _ := hook["command"].(string)
-			if strings.HasPrefix(text, hookMarker+"\n") {
+			if strings.HasPrefix(text, hookMarker+"\n") || strings.HasPrefix(text, "# berth-axi\n") {
 				continue
 			}
 			remaining = append(remaining, hook)
@@ -210,9 +212,16 @@ func editSessionHook(data []byte, remove bool) ([]byte, error) {
 	return append(next, '\n'), err
 }
 
+func removeLegacyPlugin(data []byte, _ bool) ([]byte, error) {
+	if bytes.HasPrefix(data, []byte("// berth-axi: managed by berth setup hooks\n")) {
+		return nil, nil
+	}
+	return data, nil
+}
+
 func managedPlugin(content string) func([]byte, bool) ([]byte, error) {
 	return func(data []byte, remove bool) ([]byte, error) {
-		if len(data) != 0 && !bytes.HasPrefix(data, []byte("// berth-axi: managed by berth setup hooks\n")) {
+		if len(data) != 0 && !bytes.HasPrefix(data, []byte("// dibs-axi: managed by dibs setup hooks\n")) {
 			return nil, errors.New("refusing to replace an unmanaged file")
 		}
 		if remove {
@@ -288,30 +297,33 @@ func editCodexFeatureText(data []byte, remove bool) ([]byte, error) {
 			return nil, errors.New("duplicate hooks feature")
 		}
 		found = true
-		managed := match[3] == " # berth-axi" || strings.HasPrefix(match[3], " # berth-axi was-false")
+		if strings.HasPrefix(match[3], " # berth-axi") {
+			match[3] = strings.Replace(match[3], " # berth-axi", " # dibs-axi", 1)
+		}
+		managed := match[3] == " # dibs-axi" || strings.HasPrefix(match[3], " # dibs-axi was-false")
 		if remove {
 			if managed {
-				if strings.HasPrefix(match[3], " # berth-axi was-false") {
-					lines[i] = match[1] + "false" + strings.TrimPrefix(match[3], " # berth-axi was-false")
+				if strings.HasPrefix(match[3], " # dibs-axi was-false") {
+					lines[i] = match[1] + "false" + strings.TrimPrefix(match[3], " # dibs-axi was-false")
 				} else {
 					lines[i] = "\x00"
 				}
 			}
 		} else if match[2] == "false" {
-			lines[i] = match[1] + "true # berth-axi was-false" + match[3]
+			lines[i] = match[1] + "true # dibs-axi was-false" + match[3]
 		}
 	}
 	if !found && !remove {
 		for i, line := range lines {
 			if featuresHeader.MatchString(line) {
-				lines[i] += "\nhooks = true # berth-axi"
+				lines[i] += "\nhooks = true # dibs-axi"
 				return []byte(strings.Join(lines, "\n")), nil
 			}
 			if strings.HasPrefix(strings.TrimSpace(line), "features") && strings.Contains(line, "=") && !strings.Contains(line, ".") {
 				return nil, errors.New("inline features table is unsupported; use [features] with hooks = true")
 			}
 		}
-		return []byte("features.hooks = true # berth-axi\n" + text), nil
+		return []byte("features.hooks = true # dibs-axi\n" + text), nil
 	}
 	kept := lines[:0]
 	for _, line := range lines {

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	configpkg "github.com/Dematom1/berth/internal/config"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 func LeaseRecord(l leasepkg.Lease, kubeconfig string) map[string]any {

@@ -3,4 +3,4 @@ stdout:
 code: VALIDATION_ERROR
 error: "invalid value \"bad\" for flag -label: --label requires key=value"
 exit_code: 2
-help[1]: Run berth create --help for options
+help[1]: Run dibs create --help for options

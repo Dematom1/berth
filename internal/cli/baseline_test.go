@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	outputpkg "github.com/Dematom1/berth/internal/output"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
 // Captured from flat main at 56bf0b3 before the move, then recaptured from
@@ -17,7 +17,7 @@ import (
 // UPDATE_GOLDEN does not regenerate these accepted command bytes.
 
 func TestBaselineCommands(t *testing.T) {
-	t.Setenv("BERTH_STATE", t.TempDir())
+	t.Setenv("DIBS_STATE", t.TempDir())
 	fixedBudget(t)
 	id := strings.Repeat("a", 32)
 	cases := [][]string{{"list"}, {"ls"}, {"ps"}, {"who"}, {"sweep"}, {"sweep", "--confirm"}, {"release", id}, {"down", id, "--confirm"}, {"env", id}, {"extend", id, "--ttl", "1h"}, {"help"}, {"help", "unknown"}, {"unknown"}, {"ps", "--typo"}, {"ps", "extra"}, {"create", "--ttl", "0s"}, {"create", "--adapter", "unknown"}, {"create", "--adapter", "compose"}, {"create", "--file", "x"}, {"create", "--label", "bad"}, {"create", "--owner", "pid:-2"}, {"release"}, {"job"}, {"job", "--cores", "999", "--", "true"}, {"job", "--memory", "999GiB", "--", "true"}, {"job", "--wait", "-1s", "--", "true"}, {"machine"}, {"setup"}, {"--axi", "--json", "ps"}}

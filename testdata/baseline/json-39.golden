@@ -1,16 +1,16 @@
 exit: 0
 stdout:
-berth agent
+dibs agent
 Internal, version-checked JSON protocol over SSH stdin/stdout. EOF on stdin
 cancels the session's job and releases its remote reservation. No daemon.
-Use berth job --machine <name> -- <cmd> rather than invoking the protocol.
+Use dibs job --machine <name> -- <cmd> rather than invoking the protocol.
 Examples:
-  berth job --machine lenovo -- go test ./...
-  berth ps --machine lenovo
+  dibs job --machine lenovo -- go test ./...
+  dibs ps --machine lenovo
 
 Exit codes: 0 success (including no-ops), 1 operation failed, 2 invalid usage.
-berth job: child's exit code on completion; 124 deadline killed child;
-75 (EX_TEMPFAIL) no slot within wait. Berth's own 1/2 apply only when no child
+dibs job: child's exit code on completion; 124 deadline killed child;
+75 (EX_TEMPFAIL) no slot within wait. Dibs's own 1/2 apply only when no child
 was started. Signal termination returns 128 + signal number. Helper/wait
 failures after start use 125/126 and diagnostics on stderr.
 76 is SSH transport/protocol failure with unknown remote result (stderr).

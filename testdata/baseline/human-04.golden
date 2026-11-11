@@ -4,4 +4,4 @@ confirmed: false
 eligible: none
 reclaimed: none
 unknown: none
-Run berth sweep --confirm to reclaim eligible leases
+Run dibs sweep --confirm to reclaim eligible leases

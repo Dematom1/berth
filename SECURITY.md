@@ -6,7 +6,7 @@ Security fixes target the latest release. Upgrade before reporting a problem tha
 
 ## Report a vulnerability privately
 
-Use [GitHub private vulnerability reporting](https://github.com/Dematom1/berth/security/advisories/new). Do not open a public issue or pull request for a vulnerability.
+Use [GitHub private vulnerability reporting](https://github.com/Dematom1/dibs/security/advisories/new). Do not open a public issue or pull request for a vulnerability.
 
 Include the affected version, operating system, prerequisites, impact, and a minimal reproduction using disposable resources. Remove SSH keys, tokens, kubeconfigs, private hostnames, and production data. Do not attach live credentials.
 
@@ -14,4 +14,4 @@ Coordinate disclosure with the maintainer in the private report. No response dea
 
 ## Trust boundaries
 
-Berth runs commands and manages resources with your local user's permissions. Configured SSH machines and adapter executables must be trusted. Do not run commands supplied by untrusted issues or pull requests against production machines, containers, or services. Use isolated test resources and temporary state directories.
+Dibs runs commands and manages resources with your local user's permissions. Configured SSH machines and adapter executables must be trusted. Do not run commands supplied by untrusted issues or pull requests against production machines, containers, or services. Use isolated test resources and temporary state directories.

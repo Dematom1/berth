@@ -1,4 +1,4 @@
-# Berth verification map
+# Dibs verification map
 
 This map is the maintained source for the demo's user journeys. Run the matching helper flow from the checkout root. Each invocation needs a new absolute `--evidence` directory outside the checkout.
 

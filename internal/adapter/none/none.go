@@ -3,7 +3,7 @@ package none
 import (
 	"context"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 )
 
 type resource struct{}

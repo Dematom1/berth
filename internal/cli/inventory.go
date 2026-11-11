@@ -3,18 +3,18 @@ package cli
 import (
 	"context"
 	"flag"
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
-	remotepkg "github.com/Dematom1/berth/internal/remote"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	remotepkg "github.com/Dematom1/dibs/internal/remote"
 	"io"
 	"strings"
 	"time"
 )
 
 func adoptionCommand(row map[string]any) string {
-	command := "berth adopt " + row["type"].(string) + " " + remotepkg.ShellQuote(row["name"].(string)) + " --context " + remotepkg.ShellQuote(row["docker_context"].(string))
+	command := "dibs adopt " + row["type"].(string) + " " + remotepkg.ShellQuote(row["name"].(string)) + " --context " + remotepkg.ShellQuote(row["docker_context"].(string))
 	if row["type"] == "compose" {
 		// Multiple original files need an explicitly resolved single config, not a guessed split on commas.
 		file, _ := row["config_files"].(string)
@@ -48,7 +48,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		emitHelp(out, mode, command)
 		return 0
 	}
-	out = &outputpkg.Writer{Writer: out, Mode: mode.Effective(out), Full: *full, FullCommand: "berth --axi ps --full"}
+	out = &outputpkg.Writer{Writer: out, Mode: mode.Effective(out), Full: *full, FullCommand: "dibs --axi ps --full"}
 	var parsedOwner ownerpkg.Reference
 	if command == "adopt" {
 		d, known := app.resources.Lookup(fs.Arg(0))
@@ -65,7 +65,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	}
 	r, err := adapterpkg.ResolveDockerContext(ctx, *contextName, adapterpkg.RunCommand)
 	if err != nil {
-		return outputpkg.Error(out, mode, 1, err.Error(), "Select a reachable Docker context and retry berth "+command)
+		return outputpkg.Error(out, mode, 1, err.Error(), "Select a reachable Docker context and retry dibs "+command)
 	}
 	if command == "adopt" {
 		r.Adapter, r.Name = fs.Arg(0), fs.Arg(1)
@@ -74,7 +74,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 			return app.leaseError(out, mode, command, err)
 		}
 		kube := kubeconfigFor(app.resources, l)
-		outputpkg.Emit(out, mode, map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, l.Created, kube), "record": outputpkg.LeaseRecord(l, kube), "help": []string{"Run berth release " + l.ID + " to preview cleanup"}})
+		outputpkg.Emit(out, mode, map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, l.Created, kube), "record": outputpkg.LeaseRecord(l, kube), "help": []string{"Run dibs release " + l.ID + " to preview cleanup"}})
 		return 0
 	}
 	rows, err := app.leases.Orphans(ctx, r)

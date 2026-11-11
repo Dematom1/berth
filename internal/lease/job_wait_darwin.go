@@ -5,7 +5,7 @@ package lease
 import (
 	"errors"
 
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 	"golang.org/x/sys/unix"
 )
 

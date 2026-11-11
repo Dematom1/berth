@@ -1,4 +1,4 @@
 exit: 2
 stdout:
 Error: requested 999 cores; usable 11 after owner room 3
-Try --cores 11 or set BERTH_CONFIG
+Try --cores 11 or set DIBS_CONFIG

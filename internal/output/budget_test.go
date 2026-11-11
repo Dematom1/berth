@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	configpkg "github.com/Dematom1/berth/internal/config"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 func TestBudgetSummary(t *testing.T) {

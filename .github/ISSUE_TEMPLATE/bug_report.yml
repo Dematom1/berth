@@ -6,12 +6,12 @@ body:
     attributes:
       value: |
         Never paste secrets, SSH keys, kubeconfigs, environment credentials, or unredacted production output. Redact private hostnames and identifiers.
-        Report security problems privately as described in [SECURITY.md](https://github.com/Dematom1/berth/blob/main/SECURITY.md).
+        Report security problems privately as described in [SECURITY.md](https://github.com/Dematom1/dibs/blob/main/SECURITY.md).
   - type: input
     id: version
     attributes:
       label: Version
-      description: The exact version you ran, from `berth --version`.
+      description: The exact version you ran, from `dibs --version`.
     validations:
       required: true
   - type: textarea

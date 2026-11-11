@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 type ReservationView struct {
@@ -72,7 +72,7 @@ func (m *Manager) admitJob(ctx context.Context, dir string, l Lease, capacity bu
 			defer s.Close()
 			removeWaiter(s, l.ID)
 			if err := s.Save(); err != nil {
-				fmt.Fprintln(os.Stderr, "berth: waiter cleanup failed; it expires automatically:", err)
+				fmt.Fprintln(os.Stderr, "dibs: waiter cleanup failed; it expires automatically:", err)
 			}
 		}
 	}()
@@ -108,7 +108,7 @@ func (m *Manager) admitJob(ctx context.Context, dir string, l Lease, capacity bu
 			if existing.Reservation != nil {
 				if eligible, _ := reclaimable(existing, l.Machine, now, m.checkOwner); eligible {
 					if _, err := releaseLease(cleanupCtx, s, id, l.Machine, m.options.Adapters); err != nil {
-						fmt.Fprintln(os.Stderr, "berth: retaining job reservation after cleanup failure:", err)
+						fmt.Fprintln(os.Stderr, "dibs: retaining job reservation after cleanup failure:", err)
 					}
 				}
 			}

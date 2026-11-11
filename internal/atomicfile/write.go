@@ -23,7 +23,7 @@ func Write(path string, data []byte) error {
 		return readErr
 	}
 	existed := readErr == nil
-	f, err := os.CreateTemp(filepath.Dir(path), ".berth-*")
+	f, err := os.CreateTemp(filepath.Dir(path), ".dibs-*")
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func Write(path string, data []byte) error {
 		var rollbackErr error
 		if existed {
 			var restore *os.File
-			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".berth-rollback-*")
+			restore, rollbackErr = os.CreateTemp(filepath.Dir(path), ".dibs-rollback-*")
 			if rollbackErr == nil {
 				_, rollbackErr = restore.Write(previous)
 				if rollbackErr == nil {

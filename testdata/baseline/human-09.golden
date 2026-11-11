@@ -1,4 +1,4 @@
 exit: 1
 stdout:
-Error: lease does not exist; use berth create for a new lease
-Run berth ps to inspect retained leases; retry berth extend --help for options
+Error: lease does not exist; use dibs create for a new lease
+Run dibs ps to inspect retained leases; retry dibs extend --help for options

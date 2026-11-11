@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	nonepkg "github.com/Dematom1/berth/internal/adapter/none"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	nonepkg "github.com/Dematom1/dibs/internal/adapter/none"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
@@ -207,8 +207,8 @@ func TestStoreDurabilityLockAndCorruption(t *testing.T) {
 }
 
 func TestStoreLockReleasedByProcessDeath(t *testing.T) {
-	if os.Getenv("BERTH_TEST_HOLD_LOCK") != "" {
-		s, err := testManager().openStore(context.Background(), os.Getenv("BERTH_TEST_HOLD_LOCK"))
+	if os.Getenv("DIBS_TEST_HOLD_LOCK") != "" {
+		s, err := testManager().openStore(context.Background(), os.Getenv("DIBS_TEST_HOLD_LOCK"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,7 +219,7 @@ func TestStoreLockReleasedByProcessDeath(t *testing.T) {
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestStoreLockReleasedByProcessDeath$")
 	dir := t.TempDir()
-	cmd.Env = append(os.Environ(), "BERTH_TEST_HOLD_LOCK="+dir)
+	cmd.Env = append(os.Environ(), "DIBS_TEST_HOLD_LOCK="+dir)
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

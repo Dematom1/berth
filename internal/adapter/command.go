@@ -23,7 +23,7 @@ func RunCommand(ctx context.Context, env []string, name string, args ...string) 
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Fprint(os.Stderr, diagnostics.String())
-		return nil, errors.New("resource operation failed; check installed resource tools and their connectivity, then retry berth release or berth sweep --confirm")
+		return nil, errors.New("resource operation failed; check installed resource tools and their connectivity, then retry dibs release or dibs sweep --confirm")
 	}
 	return out, nil
 }

@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	outputpkg "github.com/Dematom1/berth/internal/output"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
 // Newline-delimited JSON is private to the SSH pipe, never user-facing. Byte

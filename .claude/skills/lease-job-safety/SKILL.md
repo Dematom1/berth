@@ -56,7 +56,7 @@ The independent safety promises and their harms are:
 - Admission explores every ordering for three distinct callers, all core and memory requests in `{1,2} x {1,2}`, capacity `{2,2}`, every combination of waiting and zero-wait callers, and queued expiry or death. An unexpired Unknown waiter is retained, not treated as dead. Jobs finish at most once. All invocations share a host, state directory, and capacity configuration.
 - Job and session exploration uses one job, a boolean deadline boundary, matching or mismatching versions, five group-identity observations, and child codes 0, 37, and 255. Failed cleanup can retry. Weak fairness applies only to consuming delivered owner-channel EOF.
 
-A pass covers these finite models, not arbitrary queue lengths or the Go binary. The checks do not prove crash durability during filesystem rollback, PID birth-token precision, operating-system signal delivery, external cleanup, escaped process groups, real-time scheduling bounds, or detection of a silent network partition. They do not guarantee eventual admission or cleanup if capacity or inspectability never returns. Different invocations using different `BERTH_CONFIG` capacities have no common budget invariant.
+A pass covers these finite models, not arbitrary queue lengths or the Go binary. The checks do not prove crash durability during filesystem rollback, PID birth-token precision, operating-system signal delivery, external cleanup, escaped process groups, real-time scheduling bounds, or detection of a silent network partition. They do not guarantee eventual admission or cleanup if capacity or inspectability never returns. Different invocations using different `DIBS_CONFIG` capacities have no common budget invariant.
 
 ## Reject a broken change
 

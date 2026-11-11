@@ -11,9 +11,9 @@ import (
 func Error(w io.Writer, mode Mode, code int, message, hint string) int {
 	if strings.Contains(hint, "\n") {
 		command := strings.Fields(strings.SplitN(hint, "\n", 2)[0])
-		hint = "Run berth --help for usage"
-		if len(command) > 1 && command[0] == "berth" {
-			hint = "Run berth " + command[1] + " --help for options"
+		hint = "Run dibs --help for usage"
+		if len(command) > 1 && command[0] == "dibs" {
+			hint = "Run dibs " + command[1] + " --help for options"
 		}
 	}
 	if mode.Effective(w) == Human {
@@ -38,7 +38,7 @@ func Emit(w io.Writer, mode Mode, value map[string]any) {
 		json.NewEncoder(w).Encode(value)
 	case Human:
 		if message, ok := value["error"].(string); ok {
-			hint := "Run berth ps to inspect retained leases"
+			hint := "Run dibs ps to inspect retained leases"
 			if hints, ok := value["help"].([]string); ok && len(hints) > 0 {
 				hint = hints[0]
 			}
@@ -49,7 +49,7 @@ func Emit(w io.Writer, mode Mode, value map[string]any) {
 	default:
 		writer, _ := w.(*Writer)
 		if writer == nil || !writer.Full {
-			command := "berth --axi ps --full"
+			command := "dibs --axi ps --full"
 			if writer != nil && writer.FullCommand != "" {
 				command = writer.FullCommand
 			}

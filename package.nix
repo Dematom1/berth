@@ -1,7 +1,7 @@
 { lib, buildGoModule, version ? (builtins.fromJSON (builtins.readFile ./.release-please-manifest.json))."." }:
 
 buildGoModule {
-  pname = "berth";
+  pname = "dibs";
   inherit version;
   src = lib.cleanSource ./.;
   vendorHash = "sha256-9cmLdpULRzacfwiOrAGhvgcWHnJYEbIt9Mtb0BViU0w=";
@@ -15,9 +15,9 @@ buildGoModule {
 
   meta = {
     description = "Daemonless resource leases and budgeted jobs";
-    homepage = "https://github.com/Dematom1/berth";
+    homepage = "https://github.com/Dematom1/dibs";
     license = lib.licenses.asl20;
-    mainProgram = "berth";
+    mainProgram = "dibs";
     platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }

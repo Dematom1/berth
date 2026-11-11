@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
 )
 
 func humanText(s string) string {

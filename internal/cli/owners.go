@@ -1,7 +1,7 @@
 package cli
 
 import (
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 func newOwners() ownerpkg.Registry {

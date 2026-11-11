@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 	"os"
 	"path/filepath"
 	"time"
@@ -62,7 +62,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, error) {
 	}
 	defer s.Close()
 	if m.checkOwner(r.Owner, now) != ownerpkg.Alive {
-		return Lease{}, errors.New("owner became unavailable while waiting; refresh the owner and retry berth adopt")
+		return Lease{}, errors.New("owner became unavailable while waiting; refresh the owner and retry dibs adopt")
 	}
 	l, err := newLease(r.Owner, r.TTL, "adopted existing resource", nil, now)
 	if err != nil {
@@ -77,7 +77,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, error) {
 		return Lease{}, err
 	}
 	if leased {
-		return Lease{}, errors.New("resource is already under a lease; inspect berth ps")
+		return Lease{}, errors.New("resource is already under a lease; inspect dibs ps")
 	}
 	rows, err := d.Discover(ctx, r.Resource)
 	if err != nil {
@@ -97,7 +97,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, error) {
 	if err != nil {
 		return Lease{}, err
 	}
-	l.Labels = map[string]string{"io.berth.lease": l.ID, "io.berth.owner": l.Owner.String(), "io.berth.expires": l.Expires.Format(time.RFC3339Nano), "io.berth.machine": l.Machine}
+	l.Labels = map[string]string{"io.dibs.lease": l.ID, "io.dibs.owner": l.Owner.String(), "io.dibs.expires": l.Expires.Format(time.RFC3339Nano), "io.dibs.machine": l.Machine}
 	s.Version = 2
 	s.Leases[l.ID] = l
 	if err := s.Save(); err != nil {
@@ -118,7 +118,11 @@ func (m *Manager) Orphans(ctx context.Context, r adapterpkg.ResourceRef) ([]map[
 		}
 		rows = append(rows, found...)
 	}
-	dir, err := m.directory()
+	dir := m.options.Directory
+	var err error
+	if dir == "" {
+		dir, err = resolveStateDir(false)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/Dematom1/dibs/internal/compat"
 	"golang.org/x/sys/unix"
 )
 
@@ -33,7 +34,7 @@ func (mode Mode) Effective(w io.Writer) Mode {
 	if writer, ok := w.(*Writer); ok {
 		return writer.Mode
 	}
-	if os.Getenv("BERTH_AXI") == "1" {
+	if compat.Env("AXI") == "1" {
 		return AXI
 	}
 	if file, ok := w.(*os.File); ok {

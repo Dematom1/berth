@@ -13,9 +13,9 @@ leases[1]:
     memory: 0B
     memory_bytes: 0
     owner: "pid:123"
-    resource: "kind:berth-lab"
+    resource: "kind:dibs-lab"
     resource_adapter: kind
-    resource_name: berth-lab
+    resource_name: dibs-lab
     resources: "test, lab"
 records[1]:
   - created: "2026-11-09T11:55:00Z"
@@ -31,6 +31,6 @@ records[1]:
     resource:
       adapter: kind
       file: /tmp/lab's kubeconfig
-      name: berth-lab
+      name: dibs-lab
     resources: "test, lab"
     ttl: 3600000000000

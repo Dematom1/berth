@@ -17,15 +17,15 @@ type listedPackage struct {
 
 func TestPackageGraph(t *testing.T) {
 	allowed := map[string]string{
-		"cli":          "lease owner adapter adapter/none adapter/kind adapter/k3d adapter/compose job config output remote budget atomicfile",
+		"cli":          "lease owner adapter adapter/none adapter/kind adapter/k3d adapter/compose job config output remote budget atomicfile compat",
 		"job":          "lease owner budget config output remote",
 		"remote":       "config output",
-		"output":       "lease owner config budget",
-		"lease":        "adapter owner budget atomicfile",
+		"output":       "lease owner config budget compat",
+		"lease":        "adapter owner budget atomicfile compat",
 		"adapter/none": "adapter", "adapter/kind": "adapter", "adapter/k3d": "adapter", "adapter/compose": "adapter atomicfile",
-		"config": "budget", "adapter": "", "owner": "", "budget": "", "atomicfile": "",
+		"config": "budget compat", "adapter": "", "owner": "", "budget": "", "atomicfile": "", "compat": "",
 	}
-	const prefix = "github.com/Dematom1/berth/internal/"
+	const prefix = "github.com/Dematom1/dibs/internal/"
 	cmd := exec.Command("go", "list", "-json", "./...")
 	output, err := cmd.Output()
 	if err != nil {
@@ -57,7 +57,7 @@ func TestPackageGraph(t *testing.T) {
 				}
 			}
 		}
-		if pkg.ImportPath == "github.com/Dematom1/berth" {
+		if pkg.ImportPath == "github.com/Dematom1/dibs" {
 			for _, file := range pkg.GoFiles {
 				if file != "main.go" {
 					t.Errorf("root implementation must stay in internal packages: %s", file)

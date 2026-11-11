@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Dematom1/dibs/internal/compat"
 )
 
 // Cache the OS identity, not the hostname: a rename during a process's lifetime
@@ -71,7 +73,7 @@ func (s *store) migrateMachines() error {
 	if err != nil || hostname == "" {
 		return errors.New("cannot determine hostname for legacy state migration")
 	}
-	alias := os.Getenv("BERTH_LEGACY_MACHINE")
+	alias := compat.Env("LEGACY_MACHINE")
 	local := func(name string) bool {
 		return !strings.Contains(name, ":") && (name == hostname || (alias != "" && name == alias))
 	}

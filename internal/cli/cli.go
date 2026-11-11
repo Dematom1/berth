@@ -12,13 +12,14 @@ import (
 	"strings"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	configpkg "github.com/Dematom1/berth/internal/config"
-	jobpkg "github.com/Dematom1/berth/internal/job"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
-	remotepkg "github.com/Dematom1/berth/internal/remote"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	"github.com/Dematom1/dibs/internal/compat"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	jobpkg "github.com/Dematom1/dibs/internal/job"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	remotepkg "github.com/Dematom1/dibs/internal/remote"
 )
 
 type application struct {
@@ -34,16 +35,16 @@ func Run(ctx context.Context, args []string, out io.Writer, version string) int 
 	return app.runWithOutput(ctx, args, out, outputpkg.Auto)
 }
 func (app application) leaseError(out io.Writer, mode outputpkg.Mode, command string, err error) int {
-	hint := "Run berth ps to inspect retained leases; retry berth " + command + " --help for options"
+	hint := "Run dibs ps to inspect retained leases; retry dibs " + command + " --help for options"
 	var failure *leasepkg.Failure
 	if errors.As(err, &failure) {
 		switch failure.Stage {
 		case leasepkg.ResolveDirectory:
-			hint = "Set BERTH_STATE to a writable private directory and retry berth " + command
+			hint = "Set DIBS_STATE to a writable private directory and retry dibs " + command
 		case leasepkg.ReadLedger:
-			hint = "Check BERTH_STATE permissions and state.json; retry berth " + command
+			hint = "Check DIBS_STATE permissions and state.json; retry dibs " + command
 		case leasepkg.ResolveMachine:
-			hint = "Retry berth " + command + " after the OS machine identity is available"
+			hint = "Retry dibs " + command + " after the OS machine identity is available"
 		}
 	}
 	return outputpkg.Error(out, mode, 1, err.Error(), hint)
@@ -180,7 +181,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			return outputpkg.Error(out, jsonOutput, 2, err.Error(), help(command))
 		}
 	}
-	fullCommand := "berth --axi ps"
+	fullCommand := "dibs --axi ps"
 	hintMachine := machineName
 	if hintMachine == "" {
 		hintMachine = outputpkg.WriterMachine(out)
@@ -211,7 +212,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	var newOwner ownerpkg.Reference
 	if command == "create" {
 		if owner == "" {
-			owner = os.Getenv("BERTH_OWNER")
+			owner = compat.Env("OWNER")
 		}
 		if owner == "" {
 			owner = "pid:" + strconv.Itoa(os.Getppid())
@@ -239,13 +240,13 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			views = append(views, outputpkg.LeaseView(l, observed.Liveness, listing.At, kube))
 			records = append(records, outputpkg.LeaseRecord(l, kube))
 		}
-		budget := map[string]any{"summary": "jobs: budget unavailable (check BERTH_CONFIG)"}
+		budget := map[string]any{"summary": "jobs: budget unavailable (check DIBS_CONFIG)"}
 		if configErr == nil {
 			budget = outputpkg.BudgetView(config, listing.Reserved)
 		}
-		hints := []string{"Run berth create --help to lease a resource", "Run berth sweep to preview reclamation"}
+		hints := []string{"Run dibs create --help to lease a resource", "Run dibs sweep to preview reclamation"}
 		if hintMachine != "" {
-			hints = []string{"Run berth job --machine " + remotepkg.ShellQuote(hintMachine) + " -- <cmd> to reserve resources", "Run berth sweep --machine " + remotepkg.ShellQuote(hintMachine) + " to preview reclamation"}
+			hints = []string{"Run dibs job --machine " + remotepkg.ShellQuote(hintMachine) + " -- <cmd> to reserve resources", "Run dibs sweep --machine " + remotepkg.ShellQuote(hintMachine) + " to preview reclamation"}
 		}
 		result = map[string]any{"budget": budget, "count": len(views), "leases": views, "help": hints}
 		result["records"] = records
@@ -263,7 +264,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			break
 		}
 		now = l.Created
-		result = map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l)), "help": []string{"Run berth extend " + l.ID + " --ttl " + ttl.String(), "Run berth release " + l.ID + " --confirm to reclaim"}}
+		result = map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l)), "help": []string{"Run dibs extend " + l.ID + " --ttl " + ttl.String(), "Run dibs release " + l.ID + " --confirm to reclaim"}}
 		result["record"] = outputpkg.LeaseRecord(l, kubeconfigFor(app.resources, l))
 		if quiet {
 			fmt.Fprintln(out, l.ID)
@@ -275,11 +276,11 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			return app.leaseError(out, jsonOutput, command, getErr)
 		}
 		if !exists {
-			return outputpkg.Error(out, jsonOutput, 2, "lease does not exist", "Run berth ps to find a lease")
+			return outputpkg.Error(out, jsonOutput, 2, "lease does not exist", "Run dibs ps to find a lease")
 		}
 		path := kubeconfigFor(app.resources, l)
 		if path == "" {
-			return outputpkg.Error(out, jsonOutput, 2, "lease has no kubeconfig", "Create a kind or k3d lease with berth create --adapter kind or --adapter k3d")
+			return outputpkg.Error(out, jsonOutput, 2, "lease has no kubeconfig", "Create a kind or k3d lease with dibs create --adapter kind or --adapter k3d")
 		}
 		fmt.Fprintln(out, "export KUBECONFIG="+remotepkg.ShellQuote(path))
 		return 0
@@ -311,13 +312,13 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		}
 		result = map[string]any{"confirmed": confirm, "eligible": r.Eligible, "reclaimed": r.Reclaimed, "unknown": r.Unknown}
 		if !confirm {
-			result["help"] = []string{"Run berth sweep --confirm to reclaim eligible leases"}
+			result["help"] = []string{"Run dibs sweep --confirm to reclaim eligible leases"}
 		}
 		if len(r.Failures) > 0 {
 			result["failures"] = r.Failures
-			result["error"] = "cleanup failed; leases retained; retry berth sweep --confirm"
+			result["error"] = "cleanup failed; leases retained; retry dibs sweep --confirm"
 			result["code"], result["exit_code"] = "COMMAND_FAILED", 1
-			retry := "Run berth sweep"
+			retry := "Run dibs sweep"
 			if hintMachine != "" {
 				retry += " --machine " + remotepkg.ShellQuote(hintMachine)
 			}

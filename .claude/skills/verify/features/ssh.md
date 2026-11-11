@@ -12,7 +12,7 @@ A user installs a matching agent binary and runs jobs on a configured SSH machin
 
 ## How to get to it (user POV)
 
-Configure `machines.<name>` with host, user, workdir, agent, port, and identity_file. Run `berth machine install <name> --file <linux-binary>`, `berth job --machine <name> -- <command...>`, `berth ps --machine <name>`, and `berth sweep --machine <name> --confirm`.
+Configure `machines.<name>` with host, user, workdir, agent, port, and identity_file. Run `dibs machine install <name> --file <linux-binary>`, `dibs job --machine <name> -- <command...>`, `dibs ps --machine <name>`, and `dibs sweep --machine <name> --confirm`.
 
 ## Driving it with verify.py
 

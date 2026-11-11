@@ -26,6 +26,6 @@ func (m *Manager) finishJob(dir string, l Lease, groupCleaned bool) {
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "berth: job cleanup incomplete; retry berth sweep --confirm:", err)
+		fmt.Fprintln(os.Stderr, "dibs: job cleanup incomplete; retry dibs sweep --confirm:", err)
 	}
 }

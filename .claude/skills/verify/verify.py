@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive the real berth CLI; retain commands, output, exit codes, and observations."""
+"""Drive the real dibs CLI; retain commands, output, exit codes, and observations."""
 
 import argparse
 import json
@@ -19,13 +19,14 @@ class Driver:
         self.evidence = evidence
         evidence.mkdir(parents=True, exist_ok=False)
         self.log = (evidence / "events.jsonl").open("w")
-        self.scratch = Path(tempfile.mkdtemp(prefix="berth-verify-"))
+        self.scratch = Path(tempfile.mkdtemp(prefix="dibs-verify-"))
         self.env = os.environ.copy()
+        self.env.pop("DIBS_OWNER", None)
         self.env.pop("BERTH_OWNER", None)
         self.env.pop("DOCKER_HOST", None)
         self.env.update(
-            BERTH_STATE=str(self.scratch / "state"),
-            BERTH_CONFIG=str(self.scratch / "config.json"),
+            DIBS_STATE=str(self.scratch / "state"),
+            DIBS_CONFIG=str(self.scratch / "config.json"),
             KUBECONFIG=str(self.scratch / "caller-kubeconfig"),
         )
         self.config = self.scratch / "config.json"
@@ -34,12 +35,12 @@ class Driver:
                 {"cores": 3, "room_cores": 1, "memory": "3GiB", "room_memory": "1GiB"}
             )
         )
-        self.binary = str(self.scratch / "berth")
+        self.binary = str(self.scratch / "dibs")
         self.children = []
         self.record(
             scratch=str(self.scratch),
             config=json.loads(self.config.read_text()),
-            state=self.env["BERTH_STATE"],
+            state=self.env["DIBS_STATE"],
             kubeconfig=self.env["KUBECONFIG"],
         )
 
@@ -79,8 +80,18 @@ class Driver:
         )
         return result.stdout
 
-    def berth(self, *args, code=0):
+    def dibs(self, *args, code=0):
         return json.loads(self.run(self.binary, *args, "--json", code=code))
+
+    def docker_resources(self, *args, lease):
+        resources = set()
+        for namespace in ("io.dibs.lease", "io.berth.lease"):
+            resources.update(
+                self.run(
+                    "docker", *args, "--filter", f"label={namespace}={lease}"
+                ).split()
+            )
+        return resources
 
     def observe(self, condition, message):
         self.record(observation=message, passed=bool(condition))
@@ -111,10 +122,10 @@ class Driver:
         assert actual == code, (process.pid, actual, code)
 
     def count(self, expected):
-        self.observe(self.berth("ps")["count"] == expected, f"lease count = {expected}")
+        self.observe(self.dibs("ps")["count"] == expected, f"lease count = {expected}")
 
     def create(self, *args):
-        return self.berth(
+        return self.dibs(
             "create", "--owner", f"pid:{os.getpid()}", "--ttl", "5m", *args
         )["record"]["id"]
 
@@ -124,39 +135,39 @@ class Driver:
         self.count(0)
         lease = self.create("--label", "demo=plain")
         for alias in ("list", "ls", "ps", "who"):
-            listing = self.berth(alias)
+            listing = self.dibs(alias)
             self.observe(
                 listing["count"] == 1 and listing["leases"][0]["id"] == lease,
                 f"{alias} shows the created lease",
             )
-        before = self.berth("ps")["records"][0]["expires"]
-        self.berth("extend", lease, "--ttl", "30m")
-        after = self.berth("ps")["records"][0]["expires"]
+        before = self.dibs("ps")["records"][0]["expires"]
+        self.dibs("extend", lease, "--ttl", "30m")
+        after = self.dibs("ps")["records"][0]["expires"]
         self.observe(after > before, "extend moves expiry forward")
-        self.berth("release", lease)
+        self.dibs("release", lease)
         self.count(1)
-        self.berth("release", lease, "--confirm")
-        self.berth("down", lease, "--confirm")
+        self.dibs("release", lease, "--confirm")
+        self.dibs("down", lease, "--confirm")
         self.count(0)
 
         owner = self.start("owner", "sleep", "60")
-        dead = self.berth("up", "--owner", f"pid:{owner.pid}", "--ttl", "1h")["record"][
+        dead = self.dibs("up", "--owner", f"pid:{owner.pid}", "--ttl", "1h")["record"][
             "id"
         ]
-        self.berth("sweep", "--confirm")
+        self.dibs("sweep", "--confirm")
         self.count(1)
         owner.terminate()
         self.finish(owner, -15)
         self.observe(
-            dead in self.berth("sweep")["eligible"], "dead owner eligible before expiry"
+            dead in self.dibs("sweep")["eligible"], "dead owner eligible before expiry"
         )
         self.count(1)
-        self.berth("sweep", "--confirm")
+        self.dibs("sweep", "--confirm")
         self.count(0)
 
         heartbeat = self.scratch / "heartbeat"
         heartbeat.touch()
-        hb = self.berth(
+        hb = self.dibs(
             "create",
             "--owner",
             f"heartbeat:{heartbeat}",
@@ -166,12 +177,12 @@ class Driver:
             "1h",
         )["record"]["id"]
         time.sleep(1.2)
-        self.observe(hb in self.berth("sweep")["eligible"], "stale heartbeat eligible")
+        self.observe(hb in self.dibs("sweep")["eligible"], "stale heartbeat eligible")
         heartbeat.touch()
-        self.berth("sweep", "--confirm")
+        self.dibs("sweep", "--confirm")
         self.count(1)
         heartbeat.unlink()
-        self.berth("sweep", "--confirm")
+        self.dibs("sweep", "--confirm")
         self.count(0)
 
         self.run(self.binary, "job", "--", "sh", "-c", "echo working; echo done")
@@ -257,7 +268,7 @@ class Driver:
             not never.exists() and not (self.scratch / "small-started").exists(),
             "no backfill; exhausted waiter did not start",
         )
-        self.berth("ps")
+        self.dibs("ps")
         (self.scratch / "holder-go").touch()
         self.finish(holder)
         self.await_(
@@ -291,9 +302,7 @@ class Driver:
             'services:\n  web:\n    image: nginx:alpine\n    ports: ["127.0.0.1::80"]\n  cache:\n    image: redis:7-alpine\n    volumes: [data:/data]\nvolumes:\n  data: {}\n'
         )
         lease = self.create("--adapter", "compose", "--file", str(compose))
-        ids = self.run(
-            "docker", "ps", "-q", "--filter", "label=io.berth.lease=" + lease
-        ).split()
+        ids = self.docker_resources("ps", "-q", lease=lease)
         self.observe(len(ids) == 2, "two attributed Compose containers")
         containers = json.loads(self.run("docker", "inspect", *ids))
         for container in containers:
@@ -302,10 +311,10 @@ class Driver:
                 all(
                     key in labels
                     for key in (
-                        "io.berth.lease",
-                        "io.berth.owner",
-                        "io.berth.expires",
-                        "io.berth.machine",
+                        "io.dibs.lease",
+                        "io.dibs.owner",
+                        "io.dibs.expires",
+                        "io.dibs.machine",
                     )
                 ),
                 "container has lease attribution labels",
@@ -329,17 +338,12 @@ class Driver:
 
         self.await_(http_ready, "real Compose HTTP response")
         compose.unlink()
-        self.berth("release", lease)  # Preview must leave the service running.
+        self.dibs("release", lease)  # Preview must leave the service running.
         self.observe(
-            len(
-                self.run(
-                    "docker", "ps", "-q", "--filter", "label=io.berth.lease=" + lease
-                ).split()
-            )
-            == 2,
+            len(self.docker_resources("ps", "-q", lease=lease)) == 2,
             "release preview preserves containers",
         )
-        self.berth("release", lease, "--confirm")
+        self.dibs("release", lease, "--confirm")
         self.assert_no_resources(lease)
 
         caller = Path(self.env["KUBECONFIG"])
@@ -382,18 +386,18 @@ class Driver:
                 ),
                 adapter + " has Ready nodes",
             )
-            self.berth("ps")
+            self.dibs("ps")
             self.observe(
                 caller.read_text() == original,
                 adapter + " leaves caller kubeconfig unchanged",
             )
-            self.berth("release", lease, "--confirm")
+            self.dibs("release", lease, "--confirm")
             clusters = (
                 self.run("kind", "get", "clusters")
                 if adapter == "kind"
                 else self.run("k3d", "cluster", "list", "-o", "json")
             )
-            name = "berth-" + (lease if adapter == "kind" else lease[:26])
+            name = "dibs-" + (lease if adapter == "kind" else lease[:26])
             self.observe(
                 name not in clusters, adapter + " cluster absent after release"
             )
@@ -405,8 +409,8 @@ class Driver:
 
     def assert_no_resources(self, lease):
         for args in (("ps", "-aq"), ("volume", "ls", "-q"), ("network", "ls", "-q")):
-            out = self.run("docker", *args, "--filter", "label=io.berth.lease=" + lease)
-            self.observe(not out.strip(), "managed " + " ".join(args) + " absent")
+            resources = self.docker_resources(*args, lease=lease)
+            self.observe(not resources, "managed " + " ".join(args) + " absent")
 
     def ssh(self):
         # Existing harness drives the built binary against real isolated OpenSSH.
@@ -425,8 +429,8 @@ class Driver:
             self.record(cleanup_pid=process.pid, name=name, exit=process.returncode)
         try:
             if Path(self.binary).exists():
-                for lease in self.berth("ps")["leases"]:
-                    self.berth("release", lease["id"], "--confirm")
+                for lease in self.dibs("ps")["leases"]:
+                    self.dibs("release", lease["id"], "--confirm")
                 self.count(0)
         except Exception as error:
             success = False

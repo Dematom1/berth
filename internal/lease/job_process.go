@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 type processResource struct{}
@@ -60,7 +60,7 @@ func (processResource) Destroy(ctx context.Context, l Lease) error {
 		return errors.New("job group identity cannot be verified; lease retained")
 	}
 	if live == ownerpkg.Dead && identity == "" {
-		fmt.Fprintln(os.Stderr, "berth: job leader is gone; releasing lease without signaling an unverifiable process group")
+		fmt.Fprintln(os.Stderr, "dibs: job leader is gone; releasing lease without signaling an unverifiable process group")
 		return nil
 	}
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
@@ -91,7 +91,7 @@ func stopJob(l Lease, cmd *exec.Cmd) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := (processResource{}).Destroy(ctx, l); err != nil {
-		fmt.Fprintln(os.Stderr, "berth: group cleanup incomplete; sweep will retry:", err)
+		fmt.Fprintln(os.Stderr, "dibs: group cleanup incomplete; sweep will retry:", err)
 		cmd.Process.Kill()
 		return err
 	}

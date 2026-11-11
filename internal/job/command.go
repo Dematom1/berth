@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"time"
 
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	configpkg "github.com/Dematom1/berth/internal/config"
-	leasepkg "github.com/Dematom1/berth/internal/lease"
-	outputpkg "github.com/Dematom1/berth/internal/output"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
-	remotepkg "github.com/Dematom1/berth/internal/remote"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	configpkg "github.com/Dematom1/dibs/internal/config"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	remotepkg "github.com/Dematom1/dibs/internal/remote"
 )
 
 type Options struct {
@@ -60,7 +60,7 @@ func Run(ctx context.Context, args []string, input io.Reader, out io.Writer, jso
 		return 0
 	}
 	if fs.NArg() != 0 || split < 0 || split == len(args)-1 || *wait < 0 {
-		return usageError(errors.New("use berth job [flags] -- <cmd>; --wait must be nonnegative"))
+		return usageError(errors.New("use dibs job [flags] -- <cmd>; --wait must be nonnegative"))
 	}
 	explicit := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
@@ -104,28 +104,28 @@ func Run(ctx context.Context, args []string, input io.Reader, out io.Writer, jso
 		return usageError(errors.New("cores, memory and timeout must be positive"))
 	}
 	if request.Cores > capacity.Cores {
-		return outputpkg.Error(out, jsonOutput, 2, fmt.Sprintf("requested %d cores; usable %d after owner room %d", request.Cores, capacity.Cores, config.RoomCores), fmt.Sprintf("Try --cores %d or set BERTH_CONFIG", capacity.Cores))
+		return outputpkg.Error(out, jsonOutput, 2, fmt.Sprintf("requested %d cores; usable %d after owner room %d", request.Cores, capacity.Cores, config.RoomCores), fmt.Sprintf("Try --cores %d or set DIBS_CONFIG", capacity.Cores))
 	}
 	if request.Memory > capacity.Memory {
-		return outputpkg.Error(out, jsonOutput, 2, fmt.Sprintf("requested %d bytes memory; usable %d after owner room %s", request.Memory, capacity.Memory, config.RoomMemory), fmt.Sprintf("Try --memory %d or set BERTH_CONFIG", capacity.Memory))
+		return outputpkg.Error(out, jsonOutput, 2, fmt.Sprintf("requested %d bytes memory; usable %d after owner room %s", request.Memory, capacity.Memory, config.RoomMemory), fmt.Sprintf("Try --memory %d or set DIBS_CONFIG", capacity.Memory))
 	}
 	child := append([]string(nil), args[split+1:]...)
 	child[0], err = exec.LookPath(child[0])
 	if err != nil {
-		return outputpkg.Error(out, jsonOutput, 1, "child executable not found; no child started", "Check the command and PATH, then retry berth job")
+		return outputpkg.Error(out, jsonOutput, 1, "child executable not found; no child started", "Check the command and PATH, then retry dibs job")
 	}
 	owner, err := opts.Owners.Bind(ctx, opts.OwnerKind+":"+strconv.Itoa(os.Getpid()), 0, time.Now())
 	if err != nil {
-		return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry berth job when the process is inspectable")
+		return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry dibs job when the process is inspectable")
 	}
 	reservation, err := opts.Leases.Admit(ctx, leasepkg.AdmissionRequest{Owner: owner, TTL: duration, Description: filepath.Base(child[0]), Request: request, Capacity: capacity, Class: *class, Wait: *wait})
 	var failure *leasepkg.Failure
 	if errors.As(err, &failure) {
 		switch failure.Stage {
 		case leasepkg.ResolveDirectory:
-			return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Set BERTH_STATE to a private writable directory")
+			return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Set DIBS_STATE to a private writable directory")
 		case leasepkg.Transition:
-			return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry berth job")
+			return outputpkg.Error(out, jsonOutput, 1, err.Error(), "Retry dibs job")
 		}
 	}
 	if err != nil {
@@ -133,11 +133,11 @@ func Run(ctx context.Context, args []string, input io.Reader, out io.Writer, jso
 		if errors.Is(err, leasepkg.ErrNoCapacity) {
 			code = 75
 		}
-		return outputpkg.Error(out, jsonOutput, code, err.Error(), "Run berth ps to inspect reservations; retry berth job with --wait")
+		return outputpkg.Error(out, jsonOutput, code, err.Error(), "Run dibs ps to inspect reservations; retry dibs job with --wait")
 	}
 	result := opts.Leases.RunJob(ctx, reservation, child, input, out)
 	if result.Err != nil {
-		return outputpkg.Error(out, jsonOutput, 1, result.Err.Error(), "Run berth ps to inspect retained reservations")
+		return outputpkg.Error(out, jsonOutput, 1, result.Err.Error(), "Run dibs ps to inspect retained reservations")
 	}
 	return result.Code
 }

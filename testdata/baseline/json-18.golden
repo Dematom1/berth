@@ -1,3 +1,3 @@
 exit: 2
 stdout:
-{"code":"VALIDATION_ERROR","error":"use --adapter none, kind, k3d, or compose; --file is required only for compose","exit_code":2,"help":["Run berth create --help for options"]}
+{"code":"VALIDATION_ERROR","error":"use --adapter none, kind, k3d, or compose; --file is required only for compose","exit_code":2,"help":["Run dibs create --help for options"]}

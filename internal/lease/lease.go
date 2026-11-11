@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	adapterpkg "github.com/Dematom1/berth/internal/adapter"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 type Lease struct {
@@ -53,10 +53,10 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 		return errors.New("--ttl must be positive")
 	}
 	if l.Machine != host {
-		return errors.New("run berth extend on the lease's machine")
+		return errors.New("run dibs extend on the lease's machine")
 	}
 	if l.Reservation != nil {
-		return errors.New("job deadlines cannot be extended; start a new berth job with --timeout")
+		return errors.New("job deadlines cannot be extended; start a new dibs job with --timeout")
 	}
 	if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != ownerpkg.Alive {
 		return errors.New("lease is expired, dead, or its owner cannot be verified; create a new lease")
@@ -72,11 +72,11 @@ func releaseLease(ctx context.Context, s *store, id, host string, adapters adapt
 		return false, nil
 	}
 	if l.Machine != host {
-		return false, errors.New("run berth release on the lease's machine")
+		return false, errors.New("run dibs release on the lease's machine")
 	}
 	a, ok := adapters.Lookup(l.ResourceRef.Adapter)
 	if !ok && l.ResourceRef.Adapter != "process" {
-		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible berth version", l.ResourceRef.Adapter)
+		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible dibs version", l.ResourceRef.Adapter)
 	}
 	var cleanupErr error
 	if l.ResourceRef.Adapter == "process" {

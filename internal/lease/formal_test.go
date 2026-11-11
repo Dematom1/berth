@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
-	ownerpkg "github.com/Dematom1/berth/internal/owner"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
 // Executable bindings, not a proof of the Go binary. Independent truth-table

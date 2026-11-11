@@ -14,7 +14,8 @@ import (
 	"strings"
 	"time"
 
-	budgetpkg "github.com/Dematom1/berth/internal/budget"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	"github.com/Dematom1/dibs/internal/compat"
 )
 
 const gib = int64(1 << 30)
@@ -78,7 +79,7 @@ func (c Config) Available() (budgetpkg.Amount, error) {
 func (c Config) Class(name string) (budgetpkg.Amount, time.Duration, error) {
 	class, ok := c.Classes[name]
 	if !ok || name == "" {
-		return budgetpkg.Amount{}, 0, fmt.Errorf("unknown class %q; define it in BERTH_CONFIG or use --class default", name)
+		return budgetpkg.Amount{}, 0, fmt.Errorf("unknown class %q; define it in DIBS_CONFIG or use --class default", name)
 	}
 	memory, err := budgetpkg.ParseMemory(class.Memory)
 	if err != nil {
@@ -97,7 +98,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c := defaultJobConfig(runtime.NumCPU(), memory)
-	path := os.Getenv("BERTH_CONFIG")
+	path := compat.Env("CONFIG")
 	explicit := path != ""
 	if !explicit {
 		// Use XDG on both macOS and Linux for a consistent CLI config location.
@@ -109,7 +110,10 @@ func Load() (Config, error) {
 			}
 			base = filepath.Join(home, ".config")
 		}
-		path = filepath.Join(base, "berth", "config.json")
+		path = filepath.Join(base, "dibs", "config.json")
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			path = filepath.Join(base, "berth", "config.json")
+		}
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) && !explicit {
@@ -149,7 +153,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// SSH config aliases may supply proxying, keys, and host-key policy. Berth never
+// SSH config aliases may supply proxying, keys, and host-key policy. Dibs never
 // disables host-key checking or falls back to interactive authentication.
 type Target struct {
 	Host         string `json:"host"`

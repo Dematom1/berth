@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	outputpkg "github.com/Dematom1/berth/internal/output"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +23,7 @@ func TestInventoryUsageBeforeSideEffects(t *testing.T) {
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "untouched")
-			t.Setenv("BERTH_STATE", dir)
+			t.Setenv("DIBS_STATE", dir)
 			t.Setenv("PATH", "")
 			var out bytes.Buffer
 			if code := run(context.Background(), args, &out); code != 2 {
@@ -42,7 +42,7 @@ func TestInventoryOutputModes(t *testing.T) {
 	for _, mode := range []outputpkg.Mode{outputpkg.Human, outputpkg.AXI, outputpkg.JSON} {
 		var out bytes.Buffer
 		outputpkg.Emit(&out, mode, map[string]any{"count": 1, "orphans": []map[string]any{row}})
-		if !strings.Contains(out.String(), "berth adopt compose") || !strings.Contains(out.String(), "preserved") {
+		if !strings.Contains(out.String(), "dibs adopt compose") || !strings.Contains(out.String(), "preserved") {
 			t.Fatalf("missing evidence/command in %s: %s", mode, out.String())
 		}
 		out.Reset()

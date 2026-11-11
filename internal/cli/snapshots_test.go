@@ -33,5 +33,5 @@ func fixedBudget(t *testing.T) {
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BERTH_CONFIG", path)
+	t.Setenv("DIBS_CONFIG", path)
 }
