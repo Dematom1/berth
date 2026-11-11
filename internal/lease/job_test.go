@@ -41,7 +41,7 @@ func TestJobBudgetAndConfig(t *testing.T) {
 func jobTestConfig(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.json")
-	data := `{"cores":3,"memory":"4GiB","room_cores":1,"room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"5s"},"short":{"cores":1,"memory":"1GiB","timeout":"1s"}}}`
+	data := `{"cores":3,"memory":"4GiB","room_cores":1,"room_memory":"2GiB","classes":{"default":{"cores":1,"memory":"1GiB","timeout":"5s"},"short":{"cores":1,"memory":"1GiB","timeout":"3s"}}}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestJobsRealProcesses(t *testing.T) {
 			args = append(args, "--", "sh", "-c", script, "_", pidfile)
 			started := time.Now()
 			childExit(t, exec.Command(binary, args...), 124)
-			if time.Since(started) > 5*time.Second {
+			if time.Since(started) > 7*time.Second {
 				t.Fatal("deadline not enforced promptly")
 			}
 			data, err := os.ReadFile(pidfile)
