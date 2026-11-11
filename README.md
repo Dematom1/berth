@@ -658,7 +658,7 @@ job is named `main-required-ci`. Required-check policy is managed separately.
 `just release-check` validates GoReleaser configuration; `just release-snapshot`
 builds local archives and checksums without publishing. Release-please opens
 version PRs and creates draft releases after merge. CI uploads all four Linux
-and macOS archives before publishing a release marked Latest ([#29](https://github.com/Dematom1/berth/issues/29)).
+and macOS archives before publishing a release marked Latest ([#29](https://github.com/Dematom1/dibs/issues/29)).
 macOS Developer ID signing is disabled until signing credentials and identity
 are configured. Prebuilt macOS binaries are not Developer ID signed and may be
 quarantined by Gatekeeper. Prefer `go install github.com/Dematom1/dibs@latest`;
