@@ -141,6 +141,8 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 | `job.leader` | `ReservationView.Leader` | `pid` owner of the process group leader. Empty until the child starts. |
 | `protect_live_owner` | `Lease.ProtectLiveOwner` | `true` for live-owner protection. Version 3 or later. Omitted when false. |
 | `key` | `Lease.Key` | Idempotency key from `--key`. At most one lease per machine has a given key. Version 4 only. Omitted when empty. |
+| `pending_file` | `Lease.PendingFile` | The caller's absolute Compose file, kept on pending and keyed Compose leases so a keyed retry with another file is refused. Version 4 only. Omitted when empty. |
+| `keyed_by` | `Lease.KeyedBy` | The request a key named: `create`, `pending`, or `adopt`. A retry in another mode is a different request. Only with `key`; omitted otherwise. |
 | `resource.pending` | `ResourceRef.Pending` | `true` while a pending lease waits for its resource. `name` is then the pinned handle or empty, and `file` is the caller's absolute Compose file. Version 4 only. |
 
 ## Invariants

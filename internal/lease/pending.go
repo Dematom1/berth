@@ -50,6 +50,13 @@ var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+=-]{0,199}$`)
 
 func ValidKey(key string) bool { return keyPattern.MatchString(key) }
 
+func createMode(pending bool) string {
+	if pending {
+		return "pending"
+	}
+	return "create"
+}
+
 // sameOwner includes the pinned identity, so a reused PID never inherits a keyed lease.
 func sameOwner(a, b ownerpkg.Reference) bool {
 	return a.String() == b.String() && a.Identity == b.Identity

@@ -60,6 +60,9 @@ func (e *fakeEngine) run(_ context.Context, _ []string, tool string, args ...str
 			return nil, errors.New("no cluster")
 		}
 		return []byte("apiVersion: v1\nkind: Config\n"), nil
+	case tool == "kind" && strings.HasPrefix(joined, "create cluster"):
+		e.clusters[args[3]] = nil
+		return nil, nil
 	case tool == "kind" && strings.HasPrefix(joined, "delete cluster"):
 		delete(e.clusters, args[3])
 		e.deleted = append(e.deleted, args[3])
@@ -648,5 +651,52 @@ func TestProtectedOnlyLedgerStaysVersionThree(t *testing.T) {
 	delete(s.Leases, keyed.ID)
 	if err := s.Save(); err != nil || s.Version != 3 {
 		t.Fatalf("ledger did not return to version 3: %d %v", s.Version, err)
+	}
+}
+
+// A key names one request mode: a pending acquire, a dibs-built create, or a plain adopt.
+func TestKeyedRetryModeAndScope(t *testing.T) {
+	ctx := context.Background()
+	m, engine, _ := pendingManager(t)
+	if _, _, err := m.Create(ctx, pendingRequest("lab", "task-1:lab")); err != nil {
+		t.Fatal(err)
+	}
+	engine.clusters["lab"] = nil
+	adopt := AdoptRequest{Owner: fakeRef, TTL: time.Hour, Resource: adapterpkg.ResourceRef{Adapter: "kind", Name: "lab", Context: "test-context", DockerHost: "unix:///test.sock"}, Key: "task-1:lab"}
+	if _, _, err := m.Adopt(ctx, adopt); reason(err) != "key_conflict" {
+		t.Fatalf("plain adopt reused a pending key: %v", err)
+	}
+	engine.clusters["existing"] = nil
+	adopt.Resource.Name, adopt.Key = "existing", "task-2:existing"
+	if _, _, err := m.Adopt(ctx, adopt); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.Create(ctx, pendingRequest("existing", "task-2:existing")); reason(err) != "key_conflict" {
+		t.Fatalf("pending create reused a plain adopt key: %v", err)
+	}
+
+	created := CreateRequest{Owner: fakeRef, TTL: time.Hour, Adapter: "kind", Key: "task-3:cluster", Scope: testScope}
+	first, done, err := m.Create(ctx, created)
+	if err != nil || done {
+		t.Fatalf("keyed create: %v %v", done, err)
+	}
+	if again, done, err := m.Create(ctx, created); err != nil || !done || again.ID != first.ID {
+		t.Fatalf("same-scope retry: %v %v", done, err)
+	}
+	moved := created
+	moved.Scope = adapterpkg.ResourceRef{Context: "other-context", DockerHost: "unix:///other.sock"}
+	if _, _, err := m.Create(ctx, moved); reason(err) != "key_conflict" {
+		t.Fatalf("retry in another Docker context reused the lease: %v", err)
+	}
+	unreachable := created
+	unreachable.Scope, unreachable.ScopeUnavailable = adapterpkg.ResourceRef{}, errors.New("engine unavailable")
+	if again, done, err := m.Create(ctx, unreachable); err != nil || !done || again.ID != first.ID {
+		t.Fatalf("retry without a reachable engine: %v %v", done, err)
+	}
+	fresh := unreachable
+	fresh.Key = "task-4:cluster"
+	before := len(engine.clusters)
+	if _, _, err := m.Create(ctx, fresh); err == nil || !strings.Contains(err.Error(), "engine unavailable") || len(engine.clusters) != before {
+		t.Fatalf("created without a resolved scope: %v", err)
 	}
 }

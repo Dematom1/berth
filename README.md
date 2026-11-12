@@ -234,9 +234,9 @@ its exit codes and output exactly.
 ```
 
 With `--pending` or `--key`, `--quiet` prints exactly the lease ID and a newline
-on success, including the same ID on an idempotent retry, and nothing on
-failure; the exit code carries the outcome. It cannot be combined with an
-explicit `--axi` or `--json` on those creates.
+on success, including the same ID on an idempotent retry, and no ID on
+failure; the exit code carries the outcome, and errors keep their usual output.
+It cannot be combined with an explicit `--axi` or `--json` on those creates.
 
 `--pending` works with kind, k3d, and Compose (which also needs `--file`). It
 records the selected Docker context and, with `--name`, the handle, which must
@@ -245,7 +245,7 @@ not exist yet. When your tool picks the handle, label the resource
 pending lease; age and names never do. A matching resource is not an orphan,
 and plain `adopt` refuses it. `reconcile` previews by default and binds only a
 single unclaimed match. Release and sweep of a pending lease bind its match and
-destroy it, or forget the lease when nothing was built; an ambiguous match, a
+destroy it, or forget the lease when no resource carries its evidence; an ambiguous match, a
 match under another lease, or failed discovery keeps the lease. Keep a pending
 Compose lease's file readable until the lease is bound: binding resolves it,
 and release keeps the lease if it cannot.
@@ -686,7 +686,7 @@ for the same state and do not name the versions.
 State schema version 3 is version 2 plus at least one lease with live-owner
 protection. Older binaries reject it rather than ignoring the protection and
 reclaiming the lease at expiry. The state returns to version 2 once no
-protected lease remains.
+protected lease remains, unless a keyed or pending lease keeps it at version 4.
 
 State schema version 4 adds the consumer contract's idempotency keys and pending
 leases. Dibs writes version 4 while any lease has a key or is pending, version 3

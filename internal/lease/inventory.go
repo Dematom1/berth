@@ -60,7 +60,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 	}
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		return sameOwner(l.Owner, r.Owner) && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost && (r.Resource.Adapter != "compose" || l.PendingFile == r.File)
+		return l.KeyedBy == "adopt" && sameOwner(l.Owner, r.Owner) && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost && (r.Resource.Adapter != "compose" || l.PendingFile == r.File)
 	}); done || err != nil {
 		return l, done, err
 	}
@@ -72,6 +72,9 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 		return Lease{}, false, err
 	}
 	l.Key = r.Key
+	if r.Key != "" {
+		l.KeyedBy = "adopt"
+	}
 	l.ProtectLiveOwner = r.ProtectLiveOwner
 	if r.Key != "" && r.Resource.Adapter == "compose" {
 		l.PendingFile = r.File

@@ -198,7 +198,7 @@ func (app application) runContract(ctx context.Context, command string, args []s
 	if len(rows) == 0 {
 		hints = []string{"Nothing to reconcile; dibs create --pending records a pending lease"}
 	} else if *confirm {
-		hints = []string{"Create the resource for each absent lease, then run dibs adopt <type> <handle> --pending <id>"}
+		hints = []string{"For each absent lease, check for a resource built without its handle or label, then build it and run dibs adopt <type> <handle> --pending <id>"}
 	}
 	result := contractResult(status, map[string]any{"count": len(results), "results": results, "help": hints})
 	if code == 1 {

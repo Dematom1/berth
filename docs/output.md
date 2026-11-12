@@ -49,7 +49,7 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 | `reconcile` | `contract`, `count`, `help`, `results`, `status`. Each result has `id`, `status`, `resource_adapter`, `resource_name`, `matches`, and `conflicts`. |
 | `reclaim` | `contract`, `help`, `id`, `status`. Adds `liveness` unless the lease was already gone. |
 | `explain` | `contract`, `expired`, `help`, `lease`, `liveness`, `reclaim_would_reclaim`, `record`, `status`, `sweep_would_reclaim`, `this_machine`, `why` |
-| A consumer contract refusal | `code`, `contract`, `error`, `exit_code` (3), `help`, `id`, `reason` |
+| A consumer contract refusal | `code`, `contract`, `error`, `exit_code` (3), `help`, `reason`, and `id` when the command names a lease (absent on a refused `create`) |
 | `sweep` | `confirmed`, `eligible`, `reclaimed`, `unknown`. Adds `help` when not confirmed. Adds `code`, `error`, `exit_code`, and `failures` on failure. |
 | `adopt` | `help`, `lease`, `record` |
 | `orphans` | `count`, `help`, `orphans`. Each row has `type`, `name`, `docker_context`, `created`, `labels`, `working_dir`, `working_dir_status`, `config_files`, `evidence`, and `adopt` (the command template). |

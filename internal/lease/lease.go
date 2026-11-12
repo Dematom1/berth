@@ -12,19 +12,22 @@ import (
 )
 
 type Lease struct {
-	ID               string                 `json:"id"`
-	Machine          string                 `json:"machine"`
-	Owner            ownerpkg.Reference     `json:"owner"`
-	Created          time.Time              `json:"created"`
-	Expires          time.Time              `json:"expires"`
-	TTL              time.Duration          `json:"ttl"`
-	Description      string                 `json:"resources"`
-	Labels           map[string]string      `json:"labels"`
-	ProtectLiveOwner bool                   `json:"protect_live_owner,omitempty"`
-	Key              string                 `json:"key,omitempty"`
-	PendingFile      string                 `json:"pending_file,omitempty"`
-	ResourceRef      adapterpkg.ResourceRef `json:"resource"`
-	Reservation      *ReservationView       `json:"job,omitempty"`
+	ID               string             `json:"id"`
+	Machine          string             `json:"machine"`
+	Owner            ownerpkg.Reference `json:"owner"`
+	Created          time.Time          `json:"created"`
+	Expires          time.Time          `json:"expires"`
+	TTL              time.Duration      `json:"ttl"`
+	Description      string             `json:"resources"`
+	Labels           map[string]string  `json:"labels"`
+	ProtectLiveOwner bool               `json:"protect_live_owner,omitempty"`
+	Key              string             `json:"key,omitempty"`
+	// KeyedBy records which request a key named (create, pending, or adopt), so a
+	// retry in another mode is a different request even after a pending lease binds.
+	KeyedBy     string                 `json:"keyed_by,omitempty"`
+	PendingFile string                 `json:"pending_file,omitempty"`
+	ResourceRef adapterpkg.ResourceRef `json:"resource"`
+	Reservation *ReservationView       `json:"job,omitempty"`
 }
 
 func newLease(owner ownerpkg.Reference, ttl time.Duration, resources string, labels map[string]string, now time.Time) (Lease, error) {

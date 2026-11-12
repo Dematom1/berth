@@ -59,13 +59,14 @@ contract: 1
 error: owner pid:4242 is alive; reclaim refused
 exit_code: 3
 help[1]: Wait for the owner to end, or have its owner run dibs release 3f2a9c...0e1d --confirm
+id: 3f2a9c...0e1d
 reason: owner_alive
 ```
 
-JSON has the same keys. The full lease record is under `record`, which AXI shows with `--full`.
+JSON has the same keys. The full lease record is under `record`, which AXI shows with `--full`. A refusal carries `id` only when the command names a lease, so a refused `create` has no `id`.
 
 ```json
-{"code":"COMMAND_FAILED","contract":1,"error":"owner pid:4242 is alive; reclaim refused","exit_code":3,"help":["Wait for the owner to end, or have its owner run dibs release 3f2a9c...0e1d --confirm"],"reason":"owner_alive"}
+{"code":"COMMAND_FAILED","contract":1,"error":"owner pid:4242 is alive; reclaim refused","exit_code":3,"help":["Wait for the owner to end, or have its owner run dibs release 3f2a9c...0e1d --confirm"],"id":"3f2a9c...0e1d","reason":"owner_alive"}
 ```
 
 Lease views add `pending: true` while a pending lease waits for its resource, and `key` when the lease has an idempotency key. Both fields are absent otherwise.
@@ -150,14 +151,14 @@ A resource matches a pending lease only by evidence recorded before it existed: 
 After a crash, the restarted caller runs the same keyed `create --pending` and gets the same lease back. It then runs `dibs reconcile ID`:
 
 - `bindable`: the resource exists. Run `dibs reconcile ID --confirm` (or `adopt --pending`) to register it. Do not build it again.
-- `absent`: nothing was built. Build it now, then register it.
+- `absent`: no resource carries the lease's pinned handle or `io.dibs.lease` label. That is not proof nothing was built: a caller that crashed after building but before labeling leaves an unmatched resource. Check for one before you build again, and register it with `dibs adopt T HANDLE --pending ID` if you find it.
 - `ambiguous`: several resources match. dibs binds none of them. Register the right one explicitly, and release the others.
 - `conflict`: the match is under another lease. dibs binds nothing.
 - `unknown`: discovery failed. Retry later.
 
 `dibs reconcile` without an ID previews every pending lease on this machine, and `--confirm` binds each single unclaimed match.
 
-Release and sweep finish a pending lease too. `release --confirm`, `reclaim --confirm`, and an eligible `sweep --confirm` first look for the lease's match. A single match is registered, destroyed, and verified gone. No match and no conflict means nothing was built, and dibs forgets the lease. An ambiguous match retains the lease: `release` exits 3 with `ambiguous`, `sweep` exits 1, and `reclaim` exits 3. A match already claimed by another lease retains this pending lease and refuses with `already_leased`; failed discovery retains the lease and exits 1.
+Release and sweep finish a pending lease too. `release --confirm`, `reclaim --confirm`, and an eligible `sweep --confirm` first look for the lease's match. A single match is registered, destroyed, and verified gone. No match and no conflict means no resource carries the lease's evidence, and dibs forgets the lease; a resource built but never labeled is then not under any lease, so label a resource before anything else when your tool picks its handle. An ambiguous match retains the lease: `release` exits 3 with `ambiguous`, `sweep` exits 1, and `reclaim` exits 3. A match already claimed by another lease retains this pending lease and refuses with `already_leased`; failed discovery retains the lease and exits 1.
 
 If sweep forgets a pending lease while its caller is still building the resource, the later `adopt --pending` exits 3 with `not_found`. The caller still holds the resource it built and must destroy it or adopt it under a new lease.
 

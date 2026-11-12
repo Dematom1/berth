@@ -118,13 +118,16 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 	defer s.Close()
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		if !sameOwner(l.Owner, r.Owner) || l.ProtectLiveOwner != r.ProtectLiveOwner || ref.Adapter != r.Adapter || (ref.Pending || ref.Adopted) != r.Pending || (r.Name != "" && ref.Name != r.Name) {
+		if !sameOwner(l.Owner, r.Owner) || l.ProtectLiveOwner != r.ProtectLiveOwner || ref.Adapter != r.Adapter || l.KeyedBy != createMode(r.Pending) || (r.Name != "" && ref.Name != r.Name) {
 			return false
 		}
-		if !r.Pending {
-			return r.Adapter != "compose" || l.PendingFile == r.File
+		if r.ScopeUnavailable == nil && r.Scope.Context != "" {
+			// A created kind or Compose lease records only its context name; k3d and pending leases also record the endpoint.
+			if ref.Context != r.Scope.Context || (ref.DockerHost != "" && ref.DockerHost != r.Scope.DockerHost) {
+				return false
+			}
 		}
-		return (r.ScopeUnavailable != nil || (ref.Context == r.Scope.Context && ref.DockerHost == r.Scope.DockerHost)) && l.PendingFile == r.File
+		return r.Adapter != "compose" || l.PendingFile == r.File
 	}); done || err != nil {
 		return l, done, err
 	}
@@ -139,6 +142,9 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 		return Lease{}, false, err
 	}
 	l.Key = r.Key
+	if r.Key != "" {
+		l.KeyedBy = createMode(r.Pending)
+	}
 	l.ProtectLiveOwner = r.ProtectLiveOwner
 	if r.Key != "" && r.Adapter == "compose" {
 		l.PendingFile = r.File

@@ -56,7 +56,8 @@ Resolve pending leases after a crash between creating a resource and dibs adopt
 --pending. A resource matches only by evidence recorded before it existed: the
 handle pinned with create --name, or the label io.dibs.lease=<id>. Preview by
 default. --confirm binds each single unclaimed match. Per lease: bindable, bound,
-absent (nothing created; create it now), ambiguous (several matches, never
+absent (no resource carries the handle or label; check for one built without
+that evidence before building again), ambiguous (several matches, never
 bound), conflict (match under another lease), unknown (discovery failed).
 With <id>: a lease that is no longer pending reports already_done; ambiguous
 and conflict exit 3. Unknown exits 1. Age and names never decide a match.

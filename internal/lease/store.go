@@ -204,6 +204,9 @@ func (s *store) validate() error {
 		if l.ProtectLiveOwner && s.Version < 3 {
 			return errors.New("invalid live-owner protection")
 		}
+		if l.KeyedBy != "" && l.KeyedBy != "create" && l.KeyedBy != "pending" && l.KeyedBy != "adopt" || l.KeyedBy != "" && l.Key == "" {
+			return errors.New("invalid lease key mode")
+		}
 		if l.Key != "" {
 			if s.Version < 4 || !ValidKey(l.Key) || keys[l.Machine+"\x00"+l.Key] {
 				return errors.New("invalid lease key")
