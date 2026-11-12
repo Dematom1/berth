@@ -91,6 +91,10 @@ jobs:
         run: .claude/skills/verify/verify.py adapters --evidence "$RUNNER_TEMP/verify/adapters"
       - name: Real kind, k3d, and Compose adapter integration
         run: just integration
+      - name: Real read-only GitHub pr owner integration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just pr-owner-integration
       - name: Retain verification evidence, including failures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

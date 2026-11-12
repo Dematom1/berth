@@ -378,6 +378,44 @@ workers. The supported owner kinds are:
   `--stale` defaults to `15m`. A missing file or a stale heartbeat means dead;
   an unreadable file or a timestamp in the future means unknown. Create the
   file before creating the lease.
+- `pr:OWNER/REPO#N`, `pr:HOST/OWNER/REPO#N`, or
+  `pr:https://HOST/OWNER/REPO/pull/N` follows a GitHub pull request. It is off
+  until you opt in; see below.
+
+### Pull request owners
+
+The `pr` owner is off by default. Turn it on per machine with `"pr_owner": true`
+in the user config, or with `DIBS_PR_OWNER=1`. `DIBS_PR_OWNER` overrides the
+config either way, so `DIBS_PR_OWNER=0` turns a config opt-in off. Project files
+cannot enable it. While it is off, `--owner pr:...` fails with code 2, and an
+already recorded `pr` lease reads as unknown, so only expiry reclaims it.
+
+Dibs reads the pull request with one `gh api` GET per owner check, using your
+existing `gh` authentication for that host. It never writes to GitHub and never
+passes or logs a token. Each check has a 10-second timeout and no retries. A
+sweep, list, or extend costs about one API call per `pr` lease on this machine.
+GitHub Enterprise hosts work through `gh api --hostname`.
+
+- Open, including draft, means alive. Closed or merged means dead.
+- Any API error, timeout, rate limit, authentication failure, missing `gh`,
+  malformed response, or 404 means unknown. GitHub hides private resources you
+  cannot read behind a 404, so a 404 is not proof that the PR is gone.
+- `create` requires an open PR and pins the host, the PR's `node_id`, and its
+  base repository's `node_id`. A later response with a different identity, such
+  as a new PR at the same path, means unknown. A renamed or transferred
+  repository keeps working because GitHub redirects the old path.
+
+TTL and sweep stay the backstop. Expiry still reclaims an open PR's lease, so
+extend it on the usual cadence. Dibs sees only the state at each check. It
+misses a close and reopen between two checks, and reopening a PR does not bring
+back a lease that sweep already reclaimed.
+
+```sh
+export DIBS_PR_OWNER=1
+dibs create --adapter compose --file compose.yaml \
+  --owner pr:https://github.com/OWNER/REPO/pull/123 --ttl 8h
+dibs sweep --confirm   # after the PR closes or merges
+```
 
 Touch a heartbeat file at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. A lease is reclaimable when its owner is
@@ -445,7 +483,8 @@ everything after a job's required `--` belongs to the child.
 `create --adapter none` records a metadata-only lease. It does not manage or
 delete an external resource. Labels are repeatable `--label key=value` metadata.
 `list --owner KIND:ID` filters by canonical owner identity, resolving relative
-heartbeat paths and numeric PID spellings without checking owner liveness.
+heartbeat paths, numeric PID spellings, and PR selector forms (lowercased
+`HOST/OWNER/REPO#N`) without checking owner liveness.
 
 ### AXI exit codes
 
@@ -642,6 +681,12 @@ isolated keys and a strict private known-hosts file. They cover quoting, binary
 output, remote budget and owner room, child exit codes including 255, deadline
 124, wait 75, session disconnect cleanup, remote listing and sweep, version
 refusal, atomic upgrades, and transport failure 76.
+
+`just pr-owner-integration` drives the opt-in `pr` owner against the real,
+read-only GitHub API with stable public pull requests: open and draft PRs stay
+alive, closed and merged PRs are dead and swept, and a mismatched identity is
+unknown and kept. It needs `gh` with authentication or `GH_TOKEN`, and fails
+rather than skips without them.
 
 CI runs race-enabled tests and builds on GitHub-hosted `ubuntu-24.04` and
 `macos-15`. Linux also runs formatting, vet, dependency integrity, vulnerability

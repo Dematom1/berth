@@ -52,8 +52,12 @@ func (r Registry) Bind(ctx context.Context, value string, stale time.Duration, n
 		return Reference{}, errors.New("--owner must be pid:<pid>, session:<holder-pid>, or heartbeat:<file>")
 	}
 	d, ok := r.Lookup(kind)
+	if !ok && kind == "pr" {
+		return Reference{}, errors.New("the pr owner is off; " + prOptIn)
+	}
 	if !ok {
-		return Reference{}, fmt.Errorf("unknown owner kind %q; use pid, session, or heartbeat", kind)
+		names := r.Names()
+		return Reference{}, fmt.Errorf("unknown owner kind %q; use %s, or %s", kind, strings.Join(names[:len(names)-1], ", "), names[len(names)-1])
 	}
 	return d.Bind(ctx, value, stale, now)
 }
@@ -100,6 +104,10 @@ func CanonicalSelector(value string) string {
 		case "heartbeat":
 			if path, err := filepath.Abs(id); err == nil {
 				return kind + ":" + path
+			}
+		case "pr":
+			if p, err := parsePR(id); err == nil {
+				return kind + ":" + p.id()
 			}
 		}
 	}

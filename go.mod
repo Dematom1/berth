@@ -1,6 +1,6 @@
 module github.com/Dematom1/dibs
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/pelletier/go-toml/v2 v2.2.4

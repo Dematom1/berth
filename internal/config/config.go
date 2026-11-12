@@ -33,6 +33,7 @@ type Config struct {
 	RoomMemory string            `json:"room_memory"`
 	Classes    map[string]Class  `json:"classes"`
 	Machines   map[string]Target `json:"machines"`
+	PROwner    bool              `json:"pr_owner"`
 }
 
 func hostMemory() (int64, error) {
@@ -98,28 +99,8 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c := defaultJobConfig(runtime.NumCPU(), memory)
-	path := compat.Env("CONFIG")
-	explicit := path != ""
-	if !explicit {
-		// Use XDG on both macOS and Linux for a consistent CLI config location.
-		base := os.Getenv("XDG_CONFIG_HOME")
-		if base == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return c, err
-			}
-			base = filepath.Join(home, ".config")
-		}
-		path = filepath.Join(base, "dibs", "config.json")
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			path = filepath.Join(base, "berth", "config.json")
-		}
-	}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) && !explicit {
-		return c, nil
-	}
-	if err != nil {
+	data, found, err := read()
+	if err != nil || !found {
 		return c, err
 	}
 	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
@@ -151,6 +132,41 @@ func Load() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// read returns the user config file; a missing file at the default path is not an error.
+func read() ([]byte, bool, error) {
+	path := compat.Env("CONFIG")
+	explicit := path != ""
+	if !explicit {
+		// Use XDG on both macOS and Linux for a consistent CLI config location.
+		base := os.Getenv("XDG_CONFIG_HOME")
+		if base == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, false, err
+			}
+			base = filepath.Join(home, ".config")
+		}
+		path = filepath.Join(base, "dibs", "config.json")
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			path = filepath.Join(base, "berth", "config.json")
+		}
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) && !explicit {
+		return nil, false, nil
+	}
+	return data, err == nil, err
+}
+
+// PROwner reports the pr_owner opt-in without probing host memory; a missing or unreadable config leaves it off.
+func PROwner() bool {
+	data, found, err := read()
+	var c struct {
+		PROwner bool `json:"pr_owner"`
+	}
+	return err == nil && found && json.Unmarshal(data, &c) == nil && c.PROwner
 }
 
 // SSH config aliases may supply proxying, keys, and host-key policy. Dibs never

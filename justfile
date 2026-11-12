@@ -59,6 +59,9 @@ integration:
 ssh-integration:
     go test -race -tags sshintegration -count=1 -v -run '^TestSSHIntegration$' -timeout 5m ./...
 
+pr-owner-integration:
+    go test -race -tags printegration -count=1 -v -run '^TestPROwnerIntegration$' -timeout 5m ./internal/cli/
+
 release-check:
     goreleaser check
 
