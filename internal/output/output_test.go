@@ -53,6 +53,21 @@ func TestLeaseOutputSnapshots(t *testing.T) {
 		}
 	}
 }
+func TestProtectedLeaseListSnapshot(t *testing.T) {
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	plain := leasepkg.Lease{ID: strings.Repeat("a", 32), Machine: "lab", Owner: ownerpkg.Reference{Kind: "pid", ID: "123"}, Created: now, Expires: now.Add(time.Hour), TTL: time.Hour, ResourceRef: adapterpkg.ResourceRef{Adapter: "none"}}
+	protected := plain
+	protected.ID = strings.Repeat("b", 32)
+	protected.ProtectLiveOwner = true
+	value := map[string]any{"count": 2, "leases": []map[string]any{
+		LeaseView(plain, ownerpkg.Alive, now, ""),
+		LeaseView(protected, ownerpkg.Alive, now, ""),
+	}}
+	var out bytes.Buffer
+	Emit(&out, AXI, value)
+	snapshot(t, "protected-list-axi", out.String())
+}
+
 func TestAXIPresentationDoesNotMutate(t *testing.T) {
 	longText := strings.Repeat("界", 501)
 	// Presentation must not mutate the canonical view, including labels.

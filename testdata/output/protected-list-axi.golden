@@ -1,0 +1,5 @@
+help[1]: Run dibs --axi ps --full for all 2 matching leases and complete records
+leases[2]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,protect_live_owner,resource,resources}:
+  0,"2026-11-09T13:00:00Z",aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,"",alive,lab,0,"pid:123",false,"none:",""
+  0,"2026-11-09T13:00:00Z",bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,"","alive, protected",lab,0,"pid:123",true,"none:",""
+total: 2

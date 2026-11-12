@@ -17,9 +17,12 @@ Child exit 255 is preserved and is not confused with SSH failure.`
 
 const contractCodes = `Contract 1 (reconcile, reclaim, explain, extend, release, and --pending/--key):
 exit 0 success with status; 1 operation failed, records retained; 2 usage;
-3 refused, nothing changed, with a stable reason. Protected renewals use exit 3
-for owner/resource refusals; other extend refusals retain exit 1. Output carries
-contract: 1. See docs/consumer-contract.md.`
+3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
+not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
+resource_absent, resource_unknown, ambiguous, owner_alive, owner_unknown,
+expired, owner_dead, job_deadline. Extend success is renewed or reattached.
+Exit 1 is only for operation failures. Output carries contract: 1.
+See docs/consumer-contract.md.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
@@ -128,12 +131,13 @@ Examples:
   dibs ps
   dibs who --owner pid:1234 --json`,
 	"extend": `dibs extend <id> --ttl D [--axi | --json]
-Set expiry to now + D (positive Go duration). Only a live owner on this machine
-can renew. An unprotected expired lease cannot be renewed (reason: expired); a
---protect-live-owner lease reattaches after expiry only when its pinned resource
-is present (status: reattached). Refusal reasons: not_found, wrong_machine,
-expired, owner_dead, owner_unknown, resource_absent, resource_unknown,
-job_deadline. Refusals exit 3; operation failures exit 1.
+Set expiry to now + D (positive Go duration). An unprotected lease renews only
+while unexpired with a live owner on this machine; otherwise it refuses with
+exit 3 and reason expired, owner_dead, owner_unknown, wrong_machine, job_deadline,
+or not_found. A --protect-live-owner lease with a live owner reattaches after
+expiry when its pinned resource is present (status: reattached); otherwise it
+refuses with resource_absent or resource_unknown. All refusals exit 3; operation
+failures exit 1.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json`,
@@ -147,7 +151,8 @@ Examples:
   dibs release <id> --confirm`,
 	"sweep": `dibs sweep [--confirm] [--machine NAME] [--json]
 Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
-are retained unless expired. Foreign-machine leases are always retained, even
+are retained unless expired. --protect-live-owner leases are reclaimed only on
+proven owner death. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
 Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
