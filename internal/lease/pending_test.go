@@ -182,6 +182,37 @@ func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	}
 }
 
+func TestSameEngineUsesResolvedEndpoints(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "")
+	ctx := context.Background()
+	resolve := func(_ context.Context, _ []string, tool string, args ...string) ([]byte, error) {
+		if tool != "docker" || len(args) < 4 || args[0] != "context" || args[1] != "inspect" {
+			return nil, errors.New("unexpected Docker context request")
+		}
+		switch args[len(args)-1] {
+		case "blue":
+			return []byte("unix:///blue.sock"), nil
+		case "red":
+			return []byte("unix:///red.sock"), nil
+		default:
+			return nil, errors.New("context unavailable")
+		}
+	}
+	if same, err := sameEngine(ctx,
+		adapterpkg.ResourceRef{Context: "default", DockerHost: "unix:///blue.sock"},
+		adapterpkg.ResourceRef{Context: "default", DockerHost: "unix:///red.sock"}, resolve); err != nil || same {
+		t.Fatalf("same context name hid different endpoints: %v %v", same, err)
+	}
+	if same, err := sameEngine(ctx,
+		adapterpkg.ResourceRef{Context: "blue"}, adapterpkg.ResourceRef{Context: "red"}, resolve); err != nil || same {
+		t.Fatalf("endpoint-less contexts were treated as the same engine: %v %v", same, err)
+	}
+	if same, err := sameEngine(ctx,
+		adapterpkg.ResourceRef{Context: "missing"}, adapterpkg.ResourceRef{Context: "red"}, resolve); err == nil || same || !strings.Contains(err.Error(), "cannot rule out") {
+		t.Fatalf("unresolvable context was treated as unleased: %v %v", same, err)
+	}
+}
+
 func TestPendingWrongMachine(t *testing.T) {
 	ctx := context.Background()
 	m, _, _ := pendingManager(t)

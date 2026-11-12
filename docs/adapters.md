@@ -109,7 +109,7 @@ The `process` adapter backs job reservations. It is not in the registry. `proces
 
 1. The owner must be alive, and the TTL must be positive.
 2. The adapter must support discovery, the name must be valid, and `--file` must be present exactly when the adapter requires it (Compose).
-3. No existing lease may already own the resource. `claimant` compares adapter and name, and resolves other Docker contexts to rule out a shared endpoint. A pending lease also claims its pinned handle.
+3. No existing lease may already own the resource. `claimant` compares adapter and name, then compares Docker endpoints: recorded endpoints when both exist, otherwise resolved context endpoints. Context names alone count only when both refs lack endpoints and name the same context. If an endpoint cannot be resolved, adoption fails closed. A pending lease also claims its pinned handle.
 4. The resource must exist. Discovery finds it by its project or cluster label. A resource labeled `io.dibs.lease=<id>` for a pending lease belongs to that lease and is refused.
 5. The adapter's `Prepare` captures its cleanup scope with `Adopted` set. kind and k3d write their kubeconfig from `kind get kubeconfig` or `k3d kubeconfig get`. Compose verifies adoption.
 6. The lease gets `io.dibs.*` labels, and the state is saved at version 2.

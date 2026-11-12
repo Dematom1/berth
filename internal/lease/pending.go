@@ -76,14 +76,31 @@ func rowLabels(row map[string]any) map[string]string {
 }
 
 func sameEngine(ctx context.Context, a, b adapterpkg.ResourceRef, run adapterpkg.CommandRunner) (bool, error) {
-	if a.Context == b.Context || a.DockerHost == b.DockerHost {
+	if a.DockerHost != "" && b.DockerHost != "" {
+		return a.DockerHost == b.DockerHost, nil
+	}
+	if a.DockerHost == "" && b.DockerHost == "" && a.Context == b.Context {
 		return true, nil
 	}
-	other, err := adapterpkg.ResolveDockerContext(ctx, a.Context, run)
-	if err != nil {
-		return false, errors.New("cannot rule out an existing lease in another Docker context")
+	resolve := func(ref adapterpkg.ResourceRef) (string, error) {
+		if ref.DockerHost != "" {
+			return ref.DockerHost, nil
+		}
+		resolved, err := adapterpkg.ResolveDockerContext(ctx, ref.Context, run)
+		if err != nil {
+			return "", errors.New("cannot rule out an existing lease in another Docker context")
+		}
+		return resolved.DockerHost, nil
 	}
-	return other.DockerHost == b.DockerHost, nil
+	aHost, err := resolve(a)
+	if err != nil {
+		return false, err
+	}
+	bHost, err := resolve(b)
+	if err != nil {
+		return false, err
+	}
+	return aHost == bHost, nil
 }
 
 // claimant names the lease, other than except, that owns or awaits this resource.
