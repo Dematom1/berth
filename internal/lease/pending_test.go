@@ -35,6 +35,8 @@ func (e *fakeEngine) run(_ context.Context, _ []string, tool string, args ...str
 	}
 	sort.Strings(names)
 	switch {
+	case joined == "context show":
+		return []byte("test-context"), nil
 	case strings.Contains(joined, "context inspect"):
 		return []byte("unix:///test.sock"), nil
 	case strings.Contains(joined, "container ls"):
@@ -49,6 +51,10 @@ func (e *fakeEngine) run(_ context.Context, _ []string, tool string, args ...str
 			objects = append(objects, map[string]any{"Name": name + "-control-plane", "Created": "2026-01-01T00:00:00Z", "Config": map[string]any{"Labels": labels}})
 		}
 		return json.Marshal(objects)
+	case tool == "kind" && strings.HasPrefix(joined, "create cluster"):
+		engineName := args[len(args)-1]
+		e.clusters[engineName] = nil
+		return nil, nil
 	case tool == "kind" && strings.HasPrefix(joined, "get kubeconfig"):
 		if _, ok := e.clusters[args[len(args)-1]]; !ok {
 			return nil, errors.New("no cluster")
@@ -327,12 +333,26 @@ func TestIdempotencyKeys(t *testing.T) {
 	if _, _, err := m.Create(ctx, CreateRequest{Owner: fakeRef, TTL: time.Hour, Adapter: "kind", Pending: true, Scope: testScope, Key: "task-7:meta"}); reason(err) != "key_conflict" {
 		t.Fatalf("key reused for another request: %v", err)
 	}
+	_, _, err = m.Create(ctx, CreateRequest{Owner: fakeRef, TTL: time.Hour, Adapter: "kind", Key: "mode-normal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.Create(ctx, pendingRequest("lab", "mode-normal")); reason(err) != "key_conflict" {
+		t.Fatalf("normal key reused for pending create: %v", err)
+	}
 	pending, _, err := m.Create(ctx, pendingRequest("lab", "task-7:lab"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := m.Create(ctx, CreateRequest{Owner: fakeRef, TTL: time.Hour, Adapter: "kind", Key: "task-7:lab"}); reason(err) != "key_conflict" {
+		t.Fatalf("pending key reused for normal create: %v", err)
+	}
+	engine.clusters["lab"] = nil
+	if _, done, err := m.Adopt(ctx, AdoptRequest{Pending: pending.ID, Resource: adapterpkg.ResourceRef{Name: "lab"}}); err != nil || done {
+		t.Fatalf("bind pending create: %v %v", done, err)
+	}
 	if retry, done, err := m.Create(ctx, pendingRequest("lab", "task-7:lab")); err != nil || !done || retry.ID != pending.ID {
-		t.Fatalf("retried pending create: %v %v", done, err)
+		t.Fatalf("pending retry after binding: %v %v", done, err)
 	}
 	if _, _, err := m.Create(ctx, pendingRequest("other", "task-7:lab")); reason(err) != "key_conflict" {
 		t.Fatalf("key reused for another handle: %v", err)
@@ -345,6 +365,11 @@ func TestIdempotencyKeys(t *testing.T) {
 	}
 	if retry, done, err := m.Adopt(ctx, adopt); err != nil || !done || retry.ID != adopted.ID {
 		t.Fatalf("retried adopt: %v %v", done, err)
+	}
+	otherScope := adopt
+	otherScope.Resource.Context, otherScope.Resource.DockerHost = "other-context", "unix:///other.sock"
+	if _, _, err := m.Adopt(ctx, otherScope); reason(err) != "key_conflict" {
+		t.Fatalf("adopt key reused across Docker scopes: %v", err)
 	}
 	if _, err := m.Release(ctx, ReleaseRequest{ID: first.ID, Confirm: true}); err != nil {
 		t.Fatal(err)

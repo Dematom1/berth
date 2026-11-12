@@ -21,6 +21,7 @@ type Lease struct {
 	Description string                 `json:"resources"`
 	Labels      map[string]string      `json:"labels"`
 	Key         string                 `json:"key,omitempty"`
+	PendingFile string                 `json:"pending_file,omitempty"`
 	ResourceRef adapterpkg.ResourceRef `json:"resource"`
 	Reservation *ReservationView       `json:"job,omitempty"`
 	// Opt-in: only proven owner death reclaims; expiry alone never does.

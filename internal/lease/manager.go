@@ -108,7 +108,14 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 	}
 	defer s.Close()
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
-		return l.Owner.String() == r.Owner.String() && l.ResourceRef.Adapter == r.Adapter && (r.Name == "" || l.ResourceRef.Name == r.Name)
+		ref := l.ResourceRef
+		if l.Owner.String() != r.Owner.String() || ref.Adapter != r.Adapter || (ref.Pending || ref.Adopted) != r.Pending || (r.Name != "" && ref.Name != r.Name) {
+			return false
+		}
+		if !r.Pending {
+			return true
+		}
+		return ref.Context == r.Scope.Context && ref.DockerHost == r.Scope.DockerHost && l.PendingFile == r.File
 	}); done || err != nil {
 		return l, done, err
 	}
@@ -146,6 +153,7 @@ func (m *Manager) recordPending(ctx context.Context, s *store, l Lease, d adapte
 	if d.Discover == nil || (r.Name != "" && !adapterpkg.ValidResourceName(r.Name)) {
 		return Lease{}, false, errors.New("unsupported pending resource adapter or handle")
 	}
+	l.PendingFile = r.File
 	l.ResourceRef = r.Scope
 	l.ResourceRef.Adapter, l.ResourceRef.Name, l.ResourceRef.File, l.ResourceRef.Pending, l.ResourceRef.Adopted = r.Adapter, r.Name, r.File, true, false
 	if r.Name != "" {

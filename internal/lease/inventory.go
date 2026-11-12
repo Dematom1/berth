@@ -51,7 +51,8 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 		return m.bindPending(ctx, s, host, PendingRequest{ID: r.Pending, Handle: r.Resource.Name, File: r.File})
 	}
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
-		return l.Owner.String() == r.Owner.String() && l.ResourceRef.Adapter == r.Resource.Adapter && l.ResourceRef.Name == r.Resource.Name
+		ref := l.ResourceRef
+		return l.Owner.String() == r.Owner.String() && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && (ref.Context == r.Resource.Context || ref.DockerHost == r.Resource.DockerHost)
 	}); done || err != nil {
 		return l, done, err
 	}

@@ -235,10 +235,11 @@ single unclaimed match. Release and sweep of a pending lease bind its match and
 destroy it, or forget the lease when nothing was built; an ambiguous match or
 failed discovery keeps the lease.
 
-`--key K` on `create` and `adopt` makes a retry return the existing lease with
-`status: already_done`; the same key for a different request is refused. A key
-is free again after release. `reclaim` refuses a live owner even after expiry,
-and an unknown one; expiry-driven cleanup stays with `sweep`.
+`--key K` on `create` and `adopt` makes a matching retry return the existing
+lease with `status: already_done`; the same key for a different request is
+refused. A key is free again after release. `reclaim` is the only command that
+requires proven owner death; `sweep --confirm` and job admission still reclaim
+expired leases even when the owner is alive or unknown, so renew before expiry.
 
 These new commands, and any invocation with `--pending` or `--key`, follow
 version 1 of the consumer contract: `contract: 1`, a `status` on success, and

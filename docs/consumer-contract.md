@@ -107,7 +107,7 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 
 ## Idempotency
 
-Pass `--key K` to `create` or `adopt` when a retry must not act twice. A key names one live lease on this machine. A retry with the same key, owner, adapter, and handle returns that lease with `status: already_done`. The same key with a different request is refused with `key_conflict`. A key becomes free again when its lease is released.
+Pass `--key K` to `create` or `adopt` when a retry must not act twice. A key names one live lease on this machine. A retry returns `already_done` only when owner, adapter, request mode, and any pinned handle match. Pending creates also require the same Docker context, Docker host, and Compose file, including after the pending lease is bound. An `adopt` retry also requires the same resource name and Docker context or Docker host. The same key with a different request is refused with `key_conflict`. A key becomes free again when its lease is released.
 
 Use a key that names the work and the role of the resource, such as `<task>:<attempt>:<role>`. Do not use a random value: after a crash, the restarted caller must be able to compute the same key again.
 
@@ -153,7 +153,7 @@ Renew at the latest when one third of the TTL remains. For a `heartbeat:<file>` 
 
 `dibs reclaim ID` previews, and `--confirm` acts only when the owner check returns `dead` on this machine. An alive owner is refused with `owner_alive` even after the lease has expired, and unknown liveness is refused with `owner_unknown`. Reclaim destroys the resource, verifies it is gone, and then forgets the lease. A cleanup failure retains the lease and exits 1.
 
-Expiry-driven reclaim stays with `dibs sweep --confirm`, which a host timer should run. `dibs explain ID` reports both decisions without acting: `sweep_would_reclaim`, `reclaim_would_reclaim`, `liveness`, `expired`, `this_machine`, and a readable `why`.
+`reclaim` is the only command that requires proven owner death. `sweep --confirm` and job admission still reclaim expired leases even when the owner is alive or unknown, so consumers must renew before expiry. `dibs explain ID` reports both decisions without acting: `sweep_would_reclaim`, `reclaim_would_reclaim`, `liveness`, `expired`, `this_machine`, and a readable `why`.
 
 ## Map your lifecycle onto the verbs
 
@@ -239,6 +239,6 @@ New owner kinds come through `owner.Definition{Name, Bind, Check}` registered in
 
 ## Planned
 
-- Live-owner protection: an opt-in per-lease flag under which only proven owner death reclaims the lease, and `extend` returns `status: renewed` or `reattached`, or exit 3 with `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`.
+- Live-owner protection: an opt-in per-lease flag under which only proven owner death reclaims the lease through sweep and job admission, and `extend` returns `status: renewed` or `reattached`, or exit 3 with `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`.
 - Terminal and pooled-worktree adapters, which plug into the adoption seam above.
 - Contract surfaces for `--machine`. The new commands run on the local machine only.
