@@ -36,6 +36,8 @@ type Config struct {
 	PROwner    bool              `json:"pr_owner"`
 	// LiveOwnerProtection allows create and adopt to accept --protect-live-owner.
 	LiveOwnerProtection bool `json:"live_owner_protection"`
+	// ConsumerContract turns on the versioned consumer contract (docs/consumer-contract.md).
+	ConsumerContract bool `json:"consumer_contract"`
 }
 
 func hostMemory() (int64, error) {
@@ -165,6 +167,7 @@ func read() ([]byte, bool, error) {
 type optIns struct {
 	PROwner             bool `json:"pr_owner"`
 	LiveOwnerProtection bool `json:"live_owner_protection"`
+	ConsumerContract    bool `json:"consumer_contract"`
 }
 
 // readOptIns reads opt-ins without probing host memory; a missing or unreadable config leaves them off.
@@ -182,6 +185,9 @@ func PROwner() bool { return readOptIns().PROwner }
 
 // LiveOwnerProtection reports the live_owner_protection opt-in.
 func LiveOwnerProtection() bool { return readOptIns().LiveOwnerProtection }
+
+// ConsumerContract reports the consumer_contract opt-in.
+func ConsumerContract() bool { return readOptIns().ConsumerContract }
 
 // SSH config aliases may supply proxying, keys, and host-key policy. Dibs never
 // disables host-key checking or falls back to interactive authentication.

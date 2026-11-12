@@ -24,11 +24,7 @@ func LeaseRecord(l leasepkg.Lease, kubeconfig string) map[string]any {
 }
 
 func LeaseView(l leasepkg.Lease, live ownerpkg.Liveness, now time.Time, kubeconfig string) map[string]any {
-	liveness := string(live)
-	if l.ProtectLiveOwner && live == ownerpkg.Alive {
-		liveness += ", protected"
-	}
-	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": liveness, "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Description, "resource": l.ResourceRef.Adapter + ":" + l.ResourceRef.Name, "resource_adapter": l.ResourceRef.Adapter, "resource_name": l.ResourceRef.Name, "labels": l.Labels, "kubeconfig": kubeconfig}
+	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Description, "resource": l.ResourceRef.Adapter + ":" + l.ResourceRef.Name, "resource_adapter": l.ResourceRef.Adapter, "resource_name": l.ResourceRef.Name, "labels": l.Labels, "kubeconfig": kubeconfig}
 	if l.ResourceRef.Pending {
 		view["pending"] = true
 	}

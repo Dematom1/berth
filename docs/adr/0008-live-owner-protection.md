@@ -12,7 +12,7 @@ A caller may therefore pass `--protect-live-owner` on `create` or `adopt`, once 
 
 - `reclaimable` requires proven owner death. Expiry alone never reclaims, and unknown liveness never reclaims, expired or not. Sweep and job admission share this rule.
 - `extend` on a live owner succeeds before expiry as before. After expiry it reattaches the same lease to the same resource when the adapter's `Exists` proves the pinned resource present. A late renew never creates a lease.
-- Every renewal refusal exits 3 with a stable reason and leaves the record unchanged. Protected leases use `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`; unprotected expired leases use `owner_dead`, `owner_unknown`, or `expired`. Machine and job refusals use `wrong_machine` and `job_deadline`. TTL validation remains a usage error.
+- A renew refused for owner death, unknown owner, or resource presence exits 3 with a stable reason (`owner_dead`, `owner_unknown`, `resource_absent`, `resource_unknown`) and leaves the record unchanged. The TTL, machine, and job checks keep exit 1, and unprotected leases keep exit 1 and their message.
 - Explicit `release --confirm` is unchanged. The usual caller is the live owner releasing its own resource, so requiring death would forbid self-release. Dibs authenticates no caller, so an owner-match check would add ceremony without a boundary. Protection guards automatic reclaim by guess, and explicit release is not a guess.
 - A ledger that holds a protected lease is saved as format 3. Older binaries reject format 3 instead of silently ignoring the field and reclaiming at expiry. The ledger returns to format 2 once no protected lease remains.
 

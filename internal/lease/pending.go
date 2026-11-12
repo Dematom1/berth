@@ -20,6 +20,8 @@ const LeaseLabel = "io.dibs.lease"
 type Refusal struct {
 	Reason, Message string
 	Cause           error
+	// Legacy marks a refusal that callers without the consumer contract see as an ordinary exit 1 failure.
+	Legacy bool
 }
 
 func (r *Refusal) Error() string {
@@ -48,16 +50,27 @@ var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+=-]{0,199}$`)
 
 func ValidKey(key string) bool { return keyPattern.MatchString(key) }
 
-// Version 3 marks records older binaries must not misread; it lasts only while one exists.
+// sameOwner includes the pinned identity, so a reused PID never inherits a keyed lease.
+func sameOwner(a, b ownerpkg.Reference) bool {
+	return a.String() == b.String() && a.Identity == b.Identity
+}
+
+// settleVersion writes the lowest version that holds every record, so an older
+// binary refuses state it would misread: 3 for live-owner protection, 4 for keys
+// and pending leases, which a version 3 reader would silently drop on save.
 func (s *store) settleVersion() {
+	version := 2
 	for _, l := range s.Leases {
-		if l.ProtectLiveOwner || l.Key != "" || l.ResourceRef.Pending {
-			s.Version = 3
-			return
+		if l.Key != "" || l.ResourceRef.Pending {
+			version = 4
+			break
+		}
+		if l.ProtectLiveOwner {
+			version = 3
 		}
 	}
-	if s.Version == 3 {
-		s.Version = 2
+	if version > 2 || s.Version > 2 {
+		s.Version = version
 	}
 }
 
@@ -223,11 +236,12 @@ func settlePending(ctx context.Context, s *store, l *Lease) (absent bool, err er
 	if err != nil {
 		return false, err
 	}
+	// Any match under another lease is doubt: keep the pending lease rather than bind or forget.
+	if len(conflicts) != 0 {
+		return false, refuse("already_leased", "pending resource is already under another lease; inspect dibs ps")
+	}
 	switch len(free) {
 	case 0:
-		if len(conflicts) != 0 {
-			return false, refuse("already_leased", "pending resource is already under another lease; inspect dibs ps")
-		}
 		return true, nil
 	case 1:
 		return false, bind(ctx, s, l, free[0], l.ResourceRef.File)
@@ -360,6 +374,8 @@ func (m *Manager) Reconcile(ctx context.Context, id string, confirm bool) ([]Rec
 		switch {
 		case err != nil:
 			row.Status, row.Error = "unknown", err.Error()
+		case len(conflicts) > 0:
+			row.Status = "conflict"
 		case len(free) > 1:
 			row.Status = "ambiguous"
 		case len(free) == 1 && !confirm:
@@ -370,8 +386,6 @@ func (m *Manager) Reconcile(ctx context.Context, id string, confirm bool) ([]Rec
 			} else {
 				row.Status, row.Name = "bound", free[0]
 			}
-		case len(conflicts) > 0:
-			row.Status = "conflict"
 		default:
 			row.Status = "absent"
 		}

@@ -25,6 +25,13 @@ func liveOwnerProtectionEnabled() bool {
 	return optedIn("DIBS_LIVE_OWNER_PROTECTION", configpkg.LiveOwnerProtection)
 }
 
+// consumerContractOff names the settings that turn on the versioned consumer contract.
+const consumerContractOff = `the consumer contract is off; set DIBS_CONSUMER_CONTRACT=1 or "consumer_contract": true in the user config`
+
+func consumerContractEnabled() bool {
+	return optedIn("DIBS_CONSUMER_CONTRACT", configpkg.ConsumerContract)
+}
+
 // optedIn lets the DIBS_* variable override the user config either way; it has no BERTH_* alias.
 func optedIn(env string, config func() bool) bool {
 	if value, ok := os.LookupEnv(env); ok {

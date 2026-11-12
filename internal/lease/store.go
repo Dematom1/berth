@@ -20,8 +20,9 @@ import (
 
 var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
-// stateVersion is the newest state schema this binary reads and writes.
-const stateVersion = 3
+// stateVersion is the newest state schema this binary reads and writes:
+// 3 adds live-owner protection, 4 adds idempotency keys and pending leases.
+const stateVersion = 4
 
 type store struct {
 	Version int `json:"version"`
@@ -159,23 +160,31 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 
 // decode refuses a newer schema before reading fields whose meaning it may change.
 func (s *store) decode(data []byte) error {
-	var header struct {
-		Version int             `json:"version"`
-		Writer  json.RawMessage `json:"writer_version"`
-	}
-	if json.Unmarshal(data, &header) == nil && header.Version > stateVersion {
-		// writer_version is optional diagnostics; a malformed one must not mask the refusal.
-		var recorded string
-		writer := ""
-		if json.Unmarshal(header.Writer, &recorded) == nil && recorded != "" {
-			writer = " written by dibs " + recorded
-		}
-		return fmt.Errorf("state version %d%s is newer than this binary supports (state version %d, dibs %s); upgrade dibs, and run `which -a dibs berth` to find a stale binary earlier on PATH", header.Version, writer, stateVersion, s.binary)
+	if err := refuseNewer(data, stateVersion, s.binary); err != nil {
+		return err
 	}
 	if err := json.Unmarshal(data, s); err != nil {
 		return err
 	}
 	return s.validate()
+}
+
+// refuseNewer is the check every reader since writer_version applies with its own newest version.
+func refuseNewer(data []byte, newest int, binary string) error {
+	var header struct {
+		Version int             `json:"version"`
+		Writer  json.RawMessage `json:"writer_version"`
+	}
+	if json.Unmarshal(data, &header) != nil || header.Version <= newest {
+		return nil
+	}
+	// writer_version is optional diagnostics; a malformed one must not mask the refusal.
+	var recorded string
+	writer := ""
+	if json.Unmarshal(header.Writer, &recorded) == nil && recorded != "" {
+		writer = " written by dibs " + recorded
+	}
+	return fmt.Errorf("state version %d%s is newer than this binary supports (state version %d, dibs %s); upgrade dibs, and run `which -a dibs berth` to find a stale binary earlier on PATH", header.Version, writer, newest, binary)
 }
 
 func (s *store) validate() error {
@@ -196,14 +205,14 @@ func (s *store) validate() error {
 			return errors.New("invalid live-owner protection")
 		}
 		if l.Key != "" {
-			if s.Version < 3 || !ValidKey(l.Key) || keys[l.Machine+"\x00"+l.Key] {
+			if s.Version < 4 || !ValidKey(l.Key) || keys[l.Machine+"\x00"+l.Key] {
 				return errors.New("invalid lease key")
 			}
 			keys[l.Machine+"\x00"+l.Key] = true
 		}
 		if l.ResourceRef.Pending {
 			d, ok := s.resources.Lookup(l.ResourceRef.Adapter)
-			if s.Version < 3 || l.ResourceRef.Adopted || l.Reservation != nil || !ok || d.Discover == nil || (l.ResourceRef.Name != "" && !adapterpkg.ValidResourceName(l.ResourceRef.Name)) {
+			if s.Version < 4 || l.ResourceRef.Adopted || l.Reservation != nil || !ok || d.Discover == nil || (l.ResourceRef.Name != "" && !adapterpkg.ValidResourceName(l.ResourceRef.Name)) {
 				return errors.New("invalid pending resource")
 			}
 			continue

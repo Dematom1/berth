@@ -53,7 +53,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 	}
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		return l.Owner.String() == r.Owner.String() && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost
+		return sameOwner(l.Owner, r.Owner) && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost
 	}); done || err != nil {
 		return l, done, err
 	}

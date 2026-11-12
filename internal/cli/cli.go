@@ -49,6 +49,17 @@ func (app application) leaseError(out io.Writer, mode outputpkg.Mode, command st
 	}
 	return outputpkg.Error(out, mode, 1, err.Error(), hint)
 }
+func renewRefused(out io.Writer, mode outputpkg.Mode, id string, refusal *leasepkg.RenewRefusal) int {
+	hint := map[string]string{
+		leasepkg.OwnerDead:       "Run dibs release " + id + " --confirm or dibs sweep --confirm to reclaim it",
+		leasepkg.OwnerUnknown:    "Retry dibs extend " + id + " later; the lease is retained and not reclaimable",
+		leasepkg.ResourceAbsent:  "Run dibs release " + id + " --confirm, then lease a new resource",
+		leasepkg.ResourceUnknown: "Retry dibs extend " + id + " once the resource tool is reachable; the lease is retained",
+	}[refusal.Reason]
+	outputpkg.Emit(out, mode, map[string]any{"code": "COMMAND_FAILED", "exit_code": 3, "error": refusal.Error(), "reason": refusal.Reason, "id": id, "help": []string{hint}})
+	return 3
+}
+
 func (app application) runJob(ctx context.Context, args []string, out io.Writer, mode outputpkg.Mode, input io.Reader, ownerKind string) int {
 	return jobpkg.Run(ctx, args, input, out, mode, jobpkg.Options{Leases: app.leases, Owners: app.owners, Version: app.version, Usage: help("job"), OwnerKind: ownerKind})
 }
@@ -191,6 +202,9 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 				explicitOutputMode = true
 			}
 		})
+		if (pending || key != "" || name != "") && !consumerContractEnabled() {
+			return outputpkg.Error(out, jsonOutput, 2, consumerContractOff, help(command))
+		}
 		if quiet && (pending || key != "") && explicitOutputMode {
 			return outputpkg.Error(out, jsonOutput, 2, "--quiet cannot be combined with --axi or --json for contract creates", help(command))
 		}
@@ -340,19 +354,42 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		return 0
 	case "extend":
 		id := fs.Arg(0)
+		contract := consumerContractEnabled()
 		l, status, extendErr := app.leases.Extend(ctx, id, ttl)
-		if extendErr != nil {
+		if extendErr != nil && contract {
 			return app.contractOperationError(out, jsonOutput, command, id, extendErr)
 		}
+		// Without the contract, only a protected lease's refusal exits 3, exactly as before.
+		var refusal *leasepkg.RenewRefusal
+		if errors.As(extendErr, &refusal) && !refusal.Legacy {
+			return renewRefused(out, jsonOutput, id, refusal)
+		}
+		err = extendErr
+		if err != nil {
+			break
+		}
 		now = l.Expires.Add(-ttl)
-		result = contractResult(status, map[string]any{
-			"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l)),
-			"id":    id,
-			"help":  []string{"Run dibs extend " + id + " --ttl " + ttl.String() + " to renew again"},
-		})
+		result = map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l)), "status": status, "help": []string{"Run dibs extend " + id + " --ttl " + ttl.String() + " to renew again"}}
+		if contract {
+			result["id"] = id
+			result = contractResult(status, result)
+		}
 	case "release":
 		id := fs.Arg(0)
-		released, releaseErr := app.leases.Release(ctx, leasepkg.ReleaseRequest{ID: id, Confirm: confirm})
+		contract := consumerContractEnabled()
+		released, releaseErr := app.leases.Release(ctx, leasepkg.ReleaseRequest{ID: id, Confirm: confirm, Contract: contract})
+		if !contract {
+			err = releaseErr
+			status := "already absent (no-op)"
+			if released.Exists {
+				status = "preview; rerun with --confirm to reclaim"
+			}
+			if released.Released {
+				status = "released"
+			}
+			result = map[string]any{"id": id, "status": status}
+			break
+		}
 		if releaseErr != nil {
 			return app.contractOperationError(out, jsonOutput, command, id, releaseErr)
 		}

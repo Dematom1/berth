@@ -45,18 +45,22 @@ Release does not delete `resources/<lease-id>/`. The README says these snapshots
 
 `validate` rejects the whole file when any of these is true:
 
-- `version` is below `1`, or `leases` is missing.
+- `version` is below `1` or above `4`, or `leases` is missing.
 - A waiter has a malformed ID, an empty machine, a zero `expires`, an owner kind other than `pid` or `session`, or an empty owner identity.
 - A lease map key does not match the lease's own `id`, or the ID is not 32 lowercase hex characters.
 - A lease has an empty `machine`, a zero `created` or `expires`, or a non-positive `ttl`.
 - A `process` lease has no `job`, a non-positive budget, or an empty class. Its leader, when set, must be a `pid` owner with a PID above 1 and a recorded identity.
 - A non-`process` lease has a `job`.
 - A lease marked adopted appears in a version 1 file. Adopted identities need version 2.
+- A lease with `protect_live_owner` appears in a file below version 3, or on a `process` lease.
+- A lease with a `key` or a pending `resource` appears in a file below version 4, two leases on one machine share a key, or a pending record names an unknown adapter, an adapter without discovery, an invalid handle, or is also adopted.
 - The adapter's `Validate` rejects the managed resource. Each built-in checks its name pattern (`dibs-`, or the legacy `berth-` name for existing leases), its Docker context, and that its private file sits inside `<dir>/resources/<id>/`. See [Adapters](adapters.md#built-in-adapters).
 
 ## Writing
 
-`Save` encodes the store with two-space indentation and a trailing newline, then calls `atomicfile.Write`:
+`Save` first sets the format version (`store.settleVersion`). A store with any keyed or pending lease is saved as version 4. Otherwise a store with any protected lease is saved as version 3, and a store with neither goes back to version 2, so older binaries can read it again. Tests: `TestProtectedStateFormat`, `TestProtectedOnlyLedgerStaysVersionThree`.
+
+`Save` then encodes the store with two-space indentation and a trailing newline, then calls `atomicfile.Write`:
 
 1. Read the previous file content, if any.
 2. Write the new content to a temporary file `.dibs-*` in the same directory.
@@ -92,9 +96,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 
 ## Format version 2
 
-`state.json` is one JSON object. Durations are Go `time.Duration` values, which JSON encodes as integer nanoseconds. Times are RFC 3339 with nanoseconds. New state is written as version 2. Version 1 files still read, and migrate to version 2 on open as described above.
-
-Version 3 adds pending leases, idempotency keys, and live-owner protection. `store.settleVersion` runs on every `Save`: it writes version 3 while any lease has `protect_live_owner`, a `key`, or a pending `resource`, and writes version 2 again once none does. Older binaries reject version 3 rather than ignore a safety field. Test: `TestVersionThreeValidation`, `TestProtectedLeaseSavesAsVersionThree`, `TestPendingCleanupAfterCrash`.
+`state.json` is one JSON object. Durations are Go `time.Duration` values, which JSON encodes as integer nanoseconds. Times are RFC 3339 with nanoseconds. New state is written as version 2. Version 1 files still read, and migrate to version 2 on open as described above. Version 3 is version 2 plus at least one lease with `protect_live_owner: true`. It exists so that an older binary rejects the ledger instead of ignoring protection and reclaiming the lease at expiry. Version 4 adds the consumer contract's `key` and pending `resource` fields. A binary that reads up to version 3 would drop them on save, which would turn a pending lease into an ordinary one and let a later keyed request create a second lease, so it refuses version 4 instead. Test: `TestVersionThreeReaderRefusesKeysAndPending`.
 
 ```json
 {
@@ -121,8 +123,8 @@ Version 3 adds pending leases, idempotency keys, and live-owner protection. `sto
 
 | Field | Go field and type | Notes |
 | --- | --- | --- |
-| `version` | `store.Version`, int | `2` for new state, `3` while a version 3 field exists. `1`, `2`, and `3` are accepted. |
-| `writer_version` | `store.Writer`, string | Version of the dibs binary that last saved the file. Additive within each state version. Omitted when empty. Test: `TestStateWithWriterVersionLoadsAndRecordsWriter`. |
+| `version` | `store.Version`, int | `2` for new state, `3` while any lease is protected, `4` while any lease is keyed or pending. `1` to `4` are accepted. |
+| `writer_version` | `store.Writer`, string | Version of the dibs binary that last saved the file. Additive; it does not change the schema version. Omitted when empty. Test: `TestStateWithWriterVersionLoadsAndRecordsWriter`. |
 | `leases` | `map[string]Lease` | Keyed by lease ID |
 | `waiters` | `[]waiter` | FIFO job admission queue. Omitted when empty. |
 | `owner.kind`, `owner.id` | `owner.Reference` | See [Leases](leases.md#owner-kinds) |
@@ -130,16 +132,16 @@ Version 3 adds pending leases, idempotency keys, and live-owner protection. `sto
 | `owner.stale` | `Reference.Stale` | `heartbeat` only, in nanoseconds. Omitted when zero. |
 | `resource.adapter` | `ResourceRef.Adapter` | `none`, `kind`, `k3d`, `compose`, or `process` |
 | `resource.name` | `ResourceRef.Name` | Managed resource name. Omitted for `none` and `process`. |
-| `key` | `Lease.Key` | Idempotency key from `--key`. At most one lease per machine has a given key. Version 3 only. Omitted when empty. |
-| `protect_live_owner` | `Lease.ProtectLiveOwner` | `true` when expiry alone must not reclaim the lease. Version 3 only. Omitted when false. |
 | `resource.adopted` | `ResourceRef.Adopted` | `true` for a resource taken over by `dibs adopt`. Version 2 only. |
-| `resource.pending` | `ResourceRef.Pending` | `true` while a pending lease waits for its resource. `name` is then the pinned handle or empty, and `file` is the caller's absolute Compose file. Version 3 only. |
 | `resource.docker_context` | `ResourceRef.Context` | Docker context captured at create |
 | `resource.docker_host` | `ResourceRef.DockerHost` | k3d and adopted resources: the endpoint of that context |
 | `resource.file` | `ResourceRef.File` | Private adapter file under `resources/<id>/` |
 | `job.budget.cores`, `job.budget.memory_bytes` | `budget.Amount` | Reserved cores and bytes |
 | `job.class` | `ReservationView.Class` | Class name used for the request |
 | `job.leader` | `ReservationView.Leader` | `pid` owner of the process group leader. Empty until the child starts. |
+| `protect_live_owner` | `Lease.ProtectLiveOwner` | `true` for live-owner protection. Version 3 or later. Omitted when false. |
+| `key` | `Lease.Key` | Idempotency key from `--key`. At most one lease per machine has a given key. Version 4 only. Omitted when empty. |
+| `resource.pending` | `ResourceRef.Pending` | `true` while a pending lease waits for its resource. `name` is then the pinned handle or empty, and `file` is the caller's absolute Compose file. Version 4 only. |
 
 ## Invariants
 
@@ -149,9 +151,9 @@ Version 3 adds pending leases, idempotency keys, and live-owner protection. `sto
 4. **Every mutation happens under the lock.** Load, change, and `Save` happen between `openStore` and `Close` in one process.
 5. **State stays private.** The directory is `0700`, and files are `0600`. Test: `TestOpenStoreRestrictsExistingDirectory`.
 6. **State is local to one host and one Unix user.** Leases carry a stable `machine`, and other hosts never act on them. Do not share the directory over a network filesystem.
-7. **Format changes are contract changes.** `validate` accepts only versions 1, 2, and 3. A new field, a renamed field, a new adapter name, or a new version changes what older binaries accept. Older binaries reject version 2, so a version 2 file needs a compatible binary for every invocation, as the README states. Binaries that record `writer_version` refuse any newer version with an upgrade hint instead of a bare format error.
+7. **Format changes are contract changes.** `validate` accepts versions 1 to 4, with version 3 used only while a protected lease exists and version 4 only while a keyed or pending lease exists. A new field, a renamed field, a new adapter name, or a new version changes what older binaries accept. Older binaries reject version 2, so a version 2 file needs a compatible binary for every invocation, as the README states. Binaries that record `writer_version` refuse any newer version with an upgrade hint instead of a bare format error.
 8. **Resource files stay inside their state directory.** Each adapter's `Validate` checks its file with `SnapshotMatches` (`internal/adapter/snapshot.go`), which accepts the legacy `berth` root only when it resolves to the same ledger.
 
 ## Planned
 
-The approved direction in [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md) includes a state schema with migrations and a stable CLI contract. Only the version 1 to version 2 migration and the version 3 fields above exist. A general migration framework is not built, and each future format change needs its own migration and version bump. Accounting and an audit trail are in scope for dibs but not built. No accounting record exists in the store.
+The approved direction in [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md) includes a state schema with migrations and a stable CLI contract. Only the version 1 to version 2 steps above, the protection-driven version 3, and the consumer-contract version 4 exist. A general migration framework is not built, and each future format change needs its own migration and version bump. Accounting and an audit trail are in scope for dibs but not built. No accounting record exists in the store.

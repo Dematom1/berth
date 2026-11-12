@@ -1,3 +1,3 @@
 exit: 0
 stdout:
-{"contract":1,"help":["Nothing to release; acquire a lease when the work needs the resource"],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"already_done"}
+{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"already absent (no-op)"}

@@ -15,7 +15,10 @@ failures after start use 125/126 and diagnostics on stderr.
 76 is SSH transport/protocol failure with unknown remote result (stderr).
 Child exit 255 is preserved and is not confused with SSH failure.`
 
-const contractCodes = `Contract 1 (reconcile, reclaim, explain, extend, release, and --pending/--key):
+const contractCodes = `Consumer contract 1 is off until DIBS_CONSUMER_CONTRACT=1 or "consumer_contract":
+true in the user config. While off, reconcile, reclaim, explain, --pending and
+--key exit 2 naming the setting, and extend and release behave as described above.
+While on, these commands and extend and release follow contract 1:
 exit 0 success with status; 1 operation failed, records retained; 2 usage;
 3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
 not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
@@ -25,19 +28,22 @@ Exit 1 is only for operation failures. Output carries contract: 1.
 See docs/consumer-contract.md.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
-when one third of its TTL remains. Owner death OR expiry makes a lease
-reclaimable: a live owner missing either cadence loses its resources.`
+when one third of its TTL remains. Owner death OR expiry makes an unprotected
+lease reclaimable, so its live owner can lose its resources by missing either
+cadence. With --protect-live-owner, only proven owner death reclaims; a late
+extend with a live owner reattaches when the resource is still present.`
 
 var commandHelp = map[string]string{
-	"adopt": `dibs adopt <kind|k3d|compose> <name> --owner KIND:ID --ttl D [--key K]
-  [--context NAME] [--file PATH (required for compose)] [--stale 15m] [--protect-live-owner] [--full] [--axi | --json]
+	"adopt": `dibs adopt <kind|k3d|compose> <name> --owner KIND:ID --ttl D
+  [--context NAME] [--file PATH (required for compose)] [--stale 15m]
+  [--protect-live-owner] [--key K] [--full] [--axi | --json]
 dibs adopt <kind|k3d|compose> <handle> --pending ID [--file PATH] [--axi | --json]
 Explicitly lease an existing resource. Existence must be verified and no lease
 may already own it. Captures cleanup configuration; does not recreate resources.
 Owner and positive TTL are required. Release/sweep keep their preview defaults.
 --key K: a retry with the same key and request returns status already_done.
---protect-live-owner: sweep reclaims only on proven owner death; requires the
-DIBS_LIVE_OWNER_PROTECTION=1 environment variable or user config opt-in.
+--protect-live-owner: only proven owner death reclaims; expiry alone never does.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 --pending ID registers a resource the caller created for a pending lease (see
 dibs create --pending); owner, TTL and context come from that lease. A retry
 returns status already_done. Statuses: adopted, bound, already_done.
@@ -60,8 +66,10 @@ Examples:
 	"reclaim": `dibs reclaim <id> [--confirm] [--axi | --json]
 Reclaim one lease only when its owner is proven dead on this machine. Preview by
 default. --confirm destroys the resource, verifies it is gone, then forgets the
-lease. An alive owner is refused (owner_alive) even after expiry; unknown
-liveness is refused (owner_unknown). Expiry-driven reclaim stays with sweep.
+lease. A job lease whose process-group leader is already gone is released
+without signaling, so its descendants are not verified gone. An alive owner
+is refused (owner_alive) even after expiry; unknown liveness is refused
+(owner_unknown). Expiry-driven reclaim stays with sweep.
 A lease already gone is status already_done. Statuses: preview, reclaimed,
 already_done.
 Examples:
@@ -103,9 +111,10 @@ kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
---protect-live-owner: sweep and job admission reclaim only on proven owner death;
-expiry alone and unknown liveness never reclaim. Requires opt-in via
-DIBS_LIVE_OWNER_PROTECTION=1 or user config live_owner_protection=true.
+--protect-live-owner: sweep never reclaims while the owner is alive or unknown,
+even after expiry; only proven owner death reclaims. Use the worker's own owner.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
+--key K and --pending need the consumer contract (DIBS_CONSUMER_CONTRACT=1).
 --key K: a retry with the same key and request returns status already_done.
 With --pending or --key, --quiet prints only the lease ID (including on retry);
 exit codes distinguish success from failure. --quiet cannot combine with --axi
@@ -130,22 +139,25 @@ Aliases: ls, ps, who. No arguments shows the live home view.
 Examples:
   dibs ps
   dibs who --owner pid:1234 --json`,
-	"extend": `dibs extend <id> --ttl D [--axi | --json]
-Set expiry to now + D (positive Go duration). An unprotected lease renews only
-while unexpired with a live owner on this machine; otherwise it refuses with
-exit 3 and reason expired, owner_dead, owner_unknown, wrong_machine, job_deadline,
-or not_found. A --protect-live-owner lease with a live owner reattaches after
-expiry when its pinned resource is present (status: reattached); otherwise it
-refuses with resource_absent or resource_unknown. All refusals exit 3; operation
-failures exit 1.
+	"extend": `dibs extend <id> --ttl D [--json]
+Set expiry to now + D (positive Go duration). Only an unexpired lease with a
+verified live owner on this machine can be extended. It cannot be resurrected.
+A --protect-live-owner lease with a live owner also renews after expiry when its
+resource is still present (status reattached). A protected lease refused for
+reason owner_dead, owner_unknown, resource_absent or resource_unknown exits 3;
+every other refusal exits 1. A refusal leaves the lease unchanged.
+With the consumer contract on, every refusal exits 3 with a reason: also
+expired, wrong_machine, job_deadline and not_found; exit 1 is then only for
+operation failures, and success carries contract: 1 and status renewed.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json`,
-	"release": `dibs release <id> [--confirm] [--axi | --json]
+	"release": `dibs release <id> [--confirm] [--json]
 Preview by default. --confirm destroys managed resources (including Compose
-volumes) and removes the lease only on success. A failed cleanup retains the
-lease for retry. Statuses: preview, released, already_done. Refusal reasons:
-wrong_machine, ambiguous. Refusals exit 3; cleanup failures exit 1. down is an alias.
+volumes) and removes the lease only on success. Already absent is success.
+A failed cleanup retains the lease for retry. down is an alias.
+With the consumer contract on, status is preview, released or already_done,
+and wrong_machine or an ambiguous pending lease refuses with exit 3.
 Examples:
   dibs release <id>
   dibs release <id> --confirm`,

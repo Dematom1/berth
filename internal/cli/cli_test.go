@@ -49,36 +49,25 @@ func TestCLILeaseLifecycle(t *testing.T) {
 			t.Fatalf("missing durable lease identity: %+v", l)
 		}
 	}
-	renewed := invoke(t, 0, "extend", id, "--ttl", "2h")
-	if renewed["contract"] != float64(1) || renewed["status"] != "renewed" || len(renewed["help"].([]any)) == 0 {
-		t.Fatalf("renew contract: %+v", renewed)
-	}
+	invoke(t, 0, "extend", id, "--ttl", "2h")
 	list := invoke(t, 0, "ps")
 	l := list["leases"].([]any)[0].(map[string]any)
 	after, _ := time.Parse(time.RFC3339Nano, l["expires"].(string))
 	if !after.After(before.Add(59 * time.Minute)) {
 		t.Fatalf("extend failed to move expiry: %s", l["expires"])
 	}
-	preview := invoke(t, 0, "release", id)
-	if preview["contract"] != float64(1) || preview["status"] != "preview" {
-		t.Fatalf("release preview contract: %+v", preview)
-	}
+	invoke(t, 0, "release", id)
 	if invoke(t, 0, "ps")["count"] != float64(1) {
 		t.Fatal("release preview deleted lease")
 	}
-	released := invoke(t, 0, "down", id, "--confirm")
-	if released["status"] != "released" || released["contract"] != float64(1) {
-		t.Fatalf("release contract: %+v", released)
-	}
-	if done := invoke(t, 0, "release", id, "--confirm"); done["status"] != "already_done" {
-		t.Fatalf("release retry: %+v", done)
-	}
+	invoke(t, 0, "down", id, "--confirm")
+	invoke(t, 0, "release", id, "--confirm")
 	if invoke(t, 0, "ps")["count"] != float64(0) {
 		t.Fatal("release did not remove lease")
 	}
 }
 
-func TestCLIReleaseWrongMachineRefused(t *testing.T) {
+func TestCLIReleaseFailureDoesNotReportReleased(t *testing.T) {
 	t.Setenv("DIBS_STATE", t.TempDir())
 	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	created := invoke(t, 0, "create", "--ttl", "1h")
@@ -94,8 +83,8 @@ func TestCLIReleaseWrongMachineRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Close()
-	result := invoke(t, 3, "release", id, "--confirm")
-	if result["reason"] != "wrong_machine" || result["contract"] != float64(1) {
+	result := invoke(t, 1, "release", id, "--confirm")
+	if result["status"] == "released" || result["error"] == nil {
 		t.Fatalf("failed release reported success: %+v", result)
 	}
 	if invoke(t, 0, "ps")["count"] != float64(1) {
@@ -109,10 +98,7 @@ func TestCLIExpiredLiveOwnerAndFailure(t *testing.T) {
 	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	created := invoke(t, 0, "create", "--ttl", "1ns")
 	id := created["record"].(map[string]any)["id"].(string)
-	expired := invoke(t, 3, "extend", id, "--ttl", "1h")
-	if expired["reason"] != "expired" || expired["contract"] != float64(1) {
-		t.Fatalf("expired renewal: %+v", expired)
-	}
+	invoke(t, 1, "extend", id, "--ttl", "1h")
 	r := invoke(t, 0, "sweep")
 	if len(r["eligible"].([]any)) != 1 || len(r["reclaimed"].([]any)) != 0 {
 		t.Fatalf("incorrect preview: %+v", r)

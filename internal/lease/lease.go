@@ -70,10 +70,10 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 		return "", errors.New("--ttl must be positive")
 	}
 	if l.Machine != host {
-		return "", &RenewRefusal{Reason: "wrong_machine"}
+		return "", &RenewRefusal{Reason: "wrong_machine", Message: "run dibs extend on the lease's machine", Legacy: true}
 	}
 	if l.Reservation != nil {
-		return "", &RenewRefusal{Reason: "job_deadline"}
+		return "", &RenewRefusal{Reason: "job_deadline", Message: "job deadlines cannot be extended; start a new dibs job with --timeout", Legacy: true}
 	}
 	status := Renewed
 	if !l.ProtectLiveOwner {
@@ -84,7 +84,7 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 			} else if live == ownerpkg.Unknown {
 				reason = OwnerUnknown
 			}
-			return "", &RenewRefusal{Reason: reason}
+			return "", &RenewRefusal{Reason: reason, Message: "lease is expired, dead, or its owner cannot be verified; create a new lease", Legacy: true}
 		}
 	} else {
 		switch check(l.Owner, now) {

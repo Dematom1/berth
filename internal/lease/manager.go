@@ -110,7 +110,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 	defer s.Close()
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		if l.Owner.String() != r.Owner.String() || l.ProtectLiveOwner != r.ProtectLiveOwner || ref.Adapter != r.Adapter || (ref.Pending || ref.Adopted) != r.Pending || (r.Name != "" && ref.Name != r.Name) {
+		if !sameOwner(l.Owner, r.Owner) || l.ProtectLiveOwner != r.ProtectLiveOwner || ref.Adapter != r.Adapter || (ref.Pending || ref.Adopted) != r.Pending || (r.Name != "" && ref.Name != r.Name) {
 			return false
 		}
 		if !r.Pending {
@@ -231,7 +231,7 @@ func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lea
 	defer s.Close()
 	l, ok := s.Leases[id]
 	if !ok {
-		return Lease{}, "", refuse("not_found", "lease does not exist; acquire a new lease")
+		return Lease{}, "", &Refusal{Reason: "not_found", Message: "lease does not exist; use dibs create for a new lease", Legacy: true}
 	}
 	present := func(l Lease) (bool, error) {
 		d, ok := m.options.Adapters.Lookup(l.ResourceRef.Adapter)
@@ -252,6 +252,8 @@ func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lea
 type ReleaseRequest struct {
 	ID      string
 	Confirm bool
+	// Contract refuses a foreign lease before preview, as consumer contract 1 requires.
+	Contract bool
 }
 type ReleaseResult struct {
 	ID       string
@@ -267,7 +269,8 @@ func (m *Manager) Release(ctx context.Context, r ReleaseRequest) (ReleaseResult,
 	defer s.Close()
 	l, exists := s.Leases[r.ID]
 	result := ReleaseResult{ID: r.ID, Exists: exists}
-	if exists && l.Machine != host {
+	// Without the contract a foreign preview still succeeds and --confirm fails in releaseLease, as before.
+	if r.Contract && exists && l.Machine != host {
 		return ReleaseResult{}, refuse("wrong_machine", "run dibs release on the lease's machine")
 	}
 	if exists && r.Confirm {

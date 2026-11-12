@@ -12,6 +12,10 @@ import (
 	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
+// Captured from flat main at 56bf0b3 before the move, then recaptured from
+// the flat CI-hardening parent 11e1da4 on rebase (only job help changed).
+// UPDATE_GOLDEN does not regenerate these accepted command bytes.
+
 func TestBaselineCommands(t *testing.T) {
 	t.Setenv("DIBS_STATE", t.TempDir())
 	fixedBudget(t)

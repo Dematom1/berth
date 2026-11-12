@@ -19,6 +19,7 @@ import (
 )
 
 func TestContractUsageBeforeSideEffects(t *testing.T) {
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 	id := strings.Repeat("a", 32)
 	for _, args := range [][]string{
 		{"create", "--key", "-bad"},
@@ -56,6 +57,7 @@ func TestContractUsageBeforeSideEffects(t *testing.T) {
 }
 
 func TestContractKeysReclaimExplain(t *testing.T) {
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 	t.Setenv("DIBS_STATE", t.TempDir())
 	self := "pid:" + strconv.Itoa(os.Getpid())
 	created := invoke(t, 0, "create", "--owner", self, "--key", "job-1:meta")
@@ -123,6 +125,7 @@ func TestContractKeysReclaimExplain(t *testing.T) {
 }
 
 func TestQuietContractCreate(t *testing.T) {
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 	dir := t.TempDir()
 	t.Setenv("DIBS_STATE", dir)
 	self := "pid:" + strconv.Itoa(os.Getpid())
@@ -162,6 +165,7 @@ func TestQuietContractCreate(t *testing.T) {
 }
 
 func TestRenewReleaseContractModes(t *testing.T) {
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 	for _, mode := range []outputpkg.Mode{outputpkg.AXI, outputpkg.JSON} {
 		t.Run(string(mode), func(t *testing.T) {
 			t.Setenv("DIBS_STATE", t.TempDir())
@@ -265,6 +269,7 @@ func TestRenewReleaseContractModes(t *testing.T) {
 }
 
 func TestContractOutputModes(t *testing.T) {
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 	t.Setenv("DIBS_STATE", t.TempDir())
 	missing := strings.Repeat("a", 32)
 	for _, tc := range []struct {
@@ -292,5 +297,50 @@ func TestContractOutputModes(t *testing.T) {
 			}
 			snapshot(t, tc.name, out.String())
 		})
+	}
+}
+
+func TestConsumerContractIsOptIn(t *testing.T) {
+	id := strings.Repeat("a", 32)
+	for _, setting := range []struct{ env, config string }{{"0", ""}, {"", `{"consumer_contract": false}`}, {"0", `{"consumer_contract": true}`}} {
+		if setting.env == "" {
+			t.Setenv("DIBS_CONSUMER_CONTRACT", "")
+			os.Unsetenv("DIBS_CONSUMER_CONTRACT")
+		} else {
+			t.Setenv("DIBS_CONSUMER_CONTRACT", setting.env)
+		}
+		config := filepath.Join(t.TempDir(), "config.json")
+		if setting.config != "" {
+			if err := os.WriteFile(config, []byte(setting.config), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("DIBS_CONFIG", config)
+		for _, args := range [][]string{
+			{"create", "--key", "k"}, {"create", "--pending", "--adapter", "kind"}, {"create", "--name", "lab"},
+			{"adopt", "kind", "lab", "--pending", id}, {"adopt", "kind", "lab", "--owner", "pid:1", "--ttl", "1h", "--key", "k"},
+			{"reconcile"}, {"reclaim", id}, {"explain", id},
+		} {
+			dir := filepath.Join(t.TempDir(), "untouched")
+			t.Setenv("DIBS_STATE", dir)
+			var out bytes.Buffer
+			if code := run(context.Background(), append([]string{"--json"}, args...), &out); code != 2 || !strings.Contains(out.String(), "DIBS_CONSUMER_CONTRACT") {
+				t.Fatalf("%v with %+v: code %d: %s", args, setting, code, out.String())
+			}
+			if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%v touched state while the contract is off", args)
+			}
+		}
+	}
+	config := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(config, []byte(`{"consumer_contract": true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DIBS_CONFIG", config)
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "")
+	os.Unsetenv("DIBS_CONSUMER_CONTRACT")
+	t.Setenv("DIBS_STATE", t.TempDir())
+	if r := invoke(t, 0, "reconcile"); r["contract"] != float64(1) {
+		t.Fatalf("config opt-in ignored: %v", r)
 	}
 }

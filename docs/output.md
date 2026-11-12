@@ -42,25 +42,25 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 | `dibs` (home view, no arguments) | Everything from `list`, plus `bin` and `description` |
 | `list` | `budget`, `count`, `help`, `leases`, `records` |
 | `create` | `help`, `lease`, `record` |
-| `extend` | `contract`, `help`, `id`, `lease`, `status` (`renewed` or `reattached`) |
-| `release` | `contract`, `help`, `id`, `status` |
-| `sweep` | `confirmed`, `eligible`, `reclaimed`, `unknown`. Adds `help` when not confirmed. Adds `code`, `error`, `exit_code`, and `failures` on failure. |
-| `adopt` | `help`, `lease`, `record` |
+| `extend` | `help`, `lease`, `status` (`renewed` or `reattached`). A protected lease's refusal adds `id` and `reason` to the error keys and exits 3. |
+| `release` | `id`, `status` |
+| `extend` or `release` with the consumer contract on | The keys above, plus `contract` and `id`; `release` adds `help`, and its `status` is `preview`, `released`, or `already_done` |
 | `create` or `adopt` with `--key` or `--pending` | The keys above, plus `contract` and `status` |
-| `extend` or `release` refusal | `code`, `contract`, `error`, `exit_code`, `help`, `reason` |
 | `reconcile` | `contract`, `count`, `help`, `results`, `status`. Each result has `id`, `status`, `resource_adapter`, `resource_name`, `matches`, and `conflicts`. |
 | `reclaim` | `contract`, `help`, `id`, `status`. Adds `liveness` unless the lease was already gone. |
 | `explain` | `contract`, `expired`, `help`, `lease`, `liveness`, `reclaim_would_reclaim`, `record`, `status`, `sweep_would_reclaim`, `this_machine`, `why` |
-| A contract refusal | `code`, `contract`, `error`, `exit_code` (3), `help`, `reason` |
+| A consumer contract refusal | `code`, `contract`, `error`, `exit_code` (3), `help`, `id`, `reason` |
+| `sweep` | `confirmed`, `eligible`, `reclaimed`, `unknown`. Adds `help` when not confirmed. Adds `code`, `error`, `exit_code`, and `failures` on failure. |
+| `adopt` | `help`, `lease`, `record` |
 | `orphans` | `count`, `help`, `orphans`. Each row has `type`, `name`, `docker_context`, `created`, `labels`, `working_dir`, `working_dir_status`, `config_files`, `evidence`, and `adopt` (the command template). |
 | `machine install` | `help`, `machine`, `status`, `version` |
 | `setup hooks` | `changed`, `help`, `status` |
-| Any error | `code`, `error`, `exit_code`, `help`; contract operation failures also carry `contract` |
+| Any error | `code`, `error`, `exit_code`, `help` |
 
 Parts of the map:
 
-- `LeaseView` in `internal/output/view.go` builds every lease row with one fixed key set: `id`, `owner`, `liveness`, `machine`, `age`, `expires`, `resources`, `resource`, `resource_adapter`, `resource_name`, `labels`, `kubeconfig`, `cores`, `memory`, `memory_bytes`, and `class`. `memory` is a string with a `B` suffix. Rows for non-job leases report zeros and an empty class. It adds `pending: true` for a pending lease, `key` for a keyed lease, and `protect_live_owner: true` for a protected lease; absent fields stay omitted otherwise. AXI list rows include a `protect_live_owner` column when any displayed lease is protected.
-- `LeaseRecord` in `internal/output/view.go` is the stored lease encoded to JSON and decoded back with `UseNumber`, plus `kubeconfig`. See [State](state.md#format-version-2).
+- `LeaseView` in `internal/output/view.go` builds every lease row with one fixed key set: `id`, `owner`, `liveness`, `machine`, `age`, `expires`, `resources`, `resource`, `resource_adapter`, `resource_name`, `labels`, `kubeconfig`, `cores`, `memory`, `memory_bytes`, and `class`, plus `protect_live_owner: true` only for a protected lease, `pending: true` only for a pending lease, and `key` only for a keyed lease, so other output keeps its shape. `liveness` is always `alive`, `dead`, or `unknown`; protection is shown by `protect_live_owner`, never inside `liveness`. `memory` is a string with a `B` suffix. Rows for non-job leases report zeros and an empty class.
+- `LeaseRecord` in `internal/output/view.go` is the stored lease encoded to JSON and decoded back with `UseNumber`, plus `kubeconfig`. `protect_live_owner` appears only when true. See [State](state.md#format-version-2).
 - `BudgetView` reports `used_cores`, `used_memory_bytes`, `usable_cores`, `usable_memory_bytes`, `room_cores`, `room_memory_bytes`, and a one-line `summary`. If the config fails to load, `list` still succeeds, and `budget` holds only the summary `jobs: budget unavailable (check DIBS_CONFIG)`. Test: `TestBudgetSummary`, `TestBrokenBudgetStillLists`.
 
 `Error` in `internal/output/output.go` sets `code` from the exit code:
@@ -82,7 +82,7 @@ When a hint has more than one line, as full help text does, `Error` replaces it 
 AXI is TOON. Unless `--full` is set, `axiView` in `internal/output/axi.go` first makes a bounded copy of the map:
 
 - It drops `record` and `records`, and renames `count` to `total`.
-- It keeps at most 100 rows of `leases` (`axiListLimit`), each reduced to `id`, `owner`, `liveness`, `expires`, `machine`, `resource`, `resources`, `cores`, `memory_bytes`, and `kubeconfig`. When any shown row has `pending` or `key`, every shown row gets that column, with `false` or `""` as its empty value, so the table stays uniform. When rows are cut, it adds `shown` and `total`.
+- It keeps at most 100 rows of `leases` (`axiListLimit`), each reduced to `id`, `owner`, `liveness`, `expires`, `machine`, `resource`, `resources`, `cores`, `memory_bytes`, and `kubeconfig`. A `protect_live_owner`, `pending`, or `key` column is added only when a shown lease carries it, with `false` or `""` on the other rows, so lists without those leases keep their shape. When rows are cut, it adds `shown` and `total`.
 - It cuts `resources`, and label values in a single `lease`, to 500 characters (`axiTextLimit`). It appends `… (truncated, N chars total)`.
 - When it shows any lease, it adds a hint that names the command that prints everything. The default is `dibs --axi ps --full`. `list` builds the hint from `--machine` and `--owner`, so the hint can be run as written.
 - It never changes the original map.
@@ -96,7 +96,7 @@ Test: `TestAXIBoundedListsAndFull`.
 - Keys appear in sorted order at every level.
 - A nested `map[string]any` or `map[string]string` prints `key:` and then its fields indented by two spaces. A nil `map[string]string` prints `key: null`.
 - A `[]map[string]any` with only scalar cells prints a table header `key[N]{f1,f2,...}:` and one indented, comma-separated row per item. The columns are the sorted keys of the first row.
-- A `[]map[string]any` with any nested map or `[]string` cell prints `key[N]:` and then each item as a `- ` list entry. Test: `TestPendingAndReconcileSnapshots`.
+- A `[]map[string]any` with any nested map or `[]string` cell prints `key[N]:` and then each item as a `- ` list entry.
 - A `[]string` prints `key[N]: a,b,c`.
 - An empty list prints `key: []`.
 - Scalars:

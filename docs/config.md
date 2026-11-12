@@ -13,7 +13,7 @@ Source: `internal/config/config.go` (`Load`, `Available`, `Class`, `defaultJobCo
 - `dibs list --machine` and `dibs sweep --machine`, to find the machine.
 - A local `dibs list`, for its `budget` summary. A config error does not fail the listing. The summary then reads `jobs: budget unavailable (check DIBS_CONFIG)`.
 
-Every command also reads the opt-in keys `pr_owner` and `live_owner_protection` leniently: a missing, unreadable, or malformed file leaves them off, and `DIBS_PR_OWNER` or `DIBS_LIVE_OWNER_PROTECTION` overrides each one. Otherwise `create`, `extend`, `release`, `sweep`, `env`, `adopt`, and `orphans` on this machine never read the config.
+Every command also reads the opt-in keys `pr_owner`, `live_owner_protection`, and `consumer_contract` leniently: a missing, unreadable, or malformed file leaves them off, and `DIBS_PR_OWNER`, `DIBS_LIVE_OWNER_PROTECTION`, or `DIBS_CONSUMER_CONTRACT` overrides each one. Otherwise `create`, `extend`, `release`, `sweep`, `env`, `adopt`, `orphans`, `reconcile`, `reclaim`, and `explain` on this machine never read the config.
 
 On an SSH machine, the remote dibs reads its own config. The client's budget and classes never cross the wire. See [Remote jobs over SSH](remote.md).
 
@@ -61,6 +61,7 @@ dibs uses the XDG path on macOS too. The legacy fallback never moves or rewrites
 | `machines.<name>` | object | See [Machines](#machines) |
 | `pr_owner` | boolean | Registers the `pr` owner kind. See the README |
 | `live_owner_protection` | boolean | Allows `--protect-live-owner` on `create` and `adopt`. See [Live-owner protection](leases.md#live-owner-protection) |
+| `consumer_contract` | boolean | Turns on consumer contract 1: `--pending` and `--key`, `reconcile`, `reclaim`, `explain`, and the contract output and exit codes of `extend` and `release`. See [Consumer contract](consumer-contract.md) |
 
 `Config.Available` returns the usable budget: `cores - room_cores` cores and `memory - room_memory` bytes. It refuses a budget with non-positive totals, or owner room that is not below the totals.
 

@@ -56,6 +56,9 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	var parsedOwner ownerpkg.Reference
 	if command == "adopt" {
 		d, known := app.resources.Lookup(fs.Arg(0))
+		if (pending != "" || key != "") && !consumerContractEnabled() {
+			return outputpkg.Error(out, mode, 2, consumerContractOff, help(command))
+		}
 		if pending != "" {
 			if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || !leasepkg.ValidID(pending) || owner != "" || ttl != 0 || key != "" || protect || *contextName != "" || (!d.RequiresFile && file != "") {
 				return outputpkg.Error(out, mode, 2, "--pending takes type, handle and a lease id; the pending lease already fixes owner, TTL, key and context", help(command))

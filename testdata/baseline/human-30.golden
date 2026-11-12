@@ -11,9 +11,10 @@ kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
---protect-live-owner: sweep and job admission reclaim only on proven owner death;
-expiry alone and unknown liveness never reclaim. Requires opt-in via
-DIBS_LIVE_OWNER_PROTECTION=1 or user config live_owner_protection=true.
+--protect-live-owner: sweep never reclaims while the owner is alive or unknown,
+even after expiry; only proven owner death reclaims. Use the worker's own owner.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
+--key K and --pending need the consumer contract (DIBS_CONSUMER_CONTRACT=1).
 --key K: a retry with the same key and request returns status already_done.
 With --pending or --key, --quiet prints only the lease ID (including on retry);
 exit codes distinguish success from failure. --quiet cannot combine with --axi
@@ -31,13 +32,18 @@ Examples:
   dibs create --adapter kind --pending --name lab-7 --key task-7:lab --quiet
 
 Touch heartbeat files at most every staleness/3. Extend a lease at the latest
-when one third of its TTL remains. Owner death OR expiry makes a lease
-reclaimable: a live owner missing either cadence loses its resources.
+when one third of its TTL remains. Owner death OR expiry makes an unprotected
+lease reclaimable, so its live owner can lose its resources by missing either
+cadence. With --protect-live-owner, only proven owner death reclaims; a late
+extend with a live owner reattaches when the resource is still present.
 Output: --axi for agents, --json for scripts (mutually exclusive).
 Default: human on terminals; AXI for pipes or DIBS_AXI=1.
 Lease commands: --full restores complete AXI records/text; JSON is always complete.
 
-Contract 1 (reconcile, reclaim, explain, extend, release, and --pending/--key):
+Consumer contract 1 is off until DIBS_CONSUMER_CONTRACT=1 or "consumer_contract":
+true in the user config. While off, reconcile, reclaim, explain, --pending and
+--key exit 2 naming the setting, and extend and release behave as described above.
+While on, these commands and extend and release follow contract 1:
 exit 0 success with status; 1 operation failed, records retained; 2 usage;
 3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
 not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,

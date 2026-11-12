@@ -126,10 +126,10 @@ leases without a kubeconfig. `dibs env <id>` always prints a shell-safe
 missing lease or a lease without a kubeconfig. It does not read the kubeconfig
 or change your shell itself.
 
-A plain `create --quiet` or `create -q` prints only the new lease ID and a
-newline on success, regardless of output mode. For contract creates using
-`--pending` or `--key`, see the quiet-output rules below. Failures retain the
-usual error format and exit code. Without quiet mode, create shows the lease details.
+`create --quiet` or `create -q` prints only the new lease ID and a newline on
+success, regardless of output mode. Failures retain the usual error format and
+exit code. Without quiet mode, create shows the lease details. For `--pending`
+and `--key` creates, see the quiet rules in the next section but one.
 
 The resources description is metadata, not a CPU or memory limit.
 Create new labs through dibs to record cleanup intent before creation. For
@@ -214,11 +214,18 @@ same evidence and command. Unknown flags fail with code 2 before any operations.
 
 When your own tool builds the resource, record the lease first. A crash between
 building the resource and registering it then leaves a lease that dibs can
-finish, instead of an unleased resource.
+finish, instead of an unleased resource. This is part of the consumer contract,
+which is off by default. Turn it on per machine with `"consumer_contract": true`
+in the user config, or with `DIBS_CONSUMER_CONTRACT=1`; the variable overrides
+the config either way, and `0` turns a config opt-in off. Project files cannot
+enable it. While it is off, `--pending`, `--key`, `reconcile`, `reclaim`, and
+`explain` fail with code 2 and name the setting, and every other command keeps
+its exit codes and output exactly.
 
 ```sh
+ export DIBS_CONSUMER_CONTRACT=1
  id=$(dibs create --adapter kind --pending --name lab-7 --owner "pid:$$" \
-   --ttl 2h --key task-7:lab --quiet)
+   --ttl 2h --key task-7:lab --quiet) || exit 1   # never build without a lease
  kind create cluster --name lab-7
  dibs adopt kind lab-7 --pending "$id"      # register; a retry reports already_done
  dibs reconcile "$id" --confirm             # after a crash: bind it if it was built
@@ -226,8 +233,10 @@ finish, instead of an unleased resource.
  dibs explain "$id"                         # what sweep or reclaim would do, and why
 ```
 
-Here `--quiet` emits only the ID; the exit code reports success or refusal. Do not
-combine it with explicit `--axi` or `--json` on contract creates.
+With `--pending` or `--key`, `--quiet` prints exactly the lease ID and a newline
+on success, including the same ID on an idempotent retry, and nothing on
+failure; the exit code carries the outcome. It cannot be combined with an
+explicit `--axi` or `--json` on those creates.
 
 `--pending` works with kind, k3d, and Compose (which also needs `--file`). It
 records the selected Docker context and, with `--name`, the handle, which must
@@ -236,28 +245,25 @@ not exist yet. When your tool picks the handle, label the resource
 pending lease; age and names never do. A matching resource is not an orphan,
 and plain `adopt` refuses it. `reconcile` previews by default and binds only a
 single unclaimed match. Release and sweep of a pending lease bind its match and
-destroy it, or forget the lease when nothing was built; an ambiguous match or
-failed discovery keeps the lease.
+destroy it, or forget the lease when nothing was built; an ambiguous match, a
+match under another lease, or failed discovery keeps the lease. Keep a pending
+Compose lease's file readable until the lease is bound: binding resolves it,
+and release keeps the lease if it cannot.
 
 `--key K` on `create` and `adopt` makes a matching retry return the existing
-lease with `status: already_done`; the same key for a different request is
-refused. A key is free again after release. `reclaim` is the only command that always
-requires proven owner death. By default, `sweep --confirm` and job admission still
-reclaim expired leases even when the owner is alive or unknown. Create or adopt
-with `--protect-live-owner` to opt that lease into death-only reclamation; it
-requires `DIBS_LIVE_OWNER_PROTECTION=1` or user config
-`live_owner_protection: true`. Protected leases remain while liveness is alive or
-unknown, and a late renewal reattaches only if the same resource still exists.
+lease with `status: already_done`; the same key for a different request,
+including a reused PID with a different start time, is refused. A key is free
+again after release. `reclaim` is the only command that always requires proven
+owner death; `sweep` and job admission spare a live owner only for a lease
+created with `--protect-live-owner` (see below).
 
-These new commands, and any invocation with `--pending` or `--key`, follow
-version 1 of the consumer contract: `contract: 1`, a `status` on success, and
-exit 3 with a stable `reason` when dibs refuses for safety and changes nothing.
-Every other invocation keeps its existing output and exit codes. The
-[consumer contract](docs/consumer-contract.md) lists every status and reason,
-and maps the lifecycle of a supervisor, an agent session, a CI job, or a script
-onto these commands. This contract change moves every `extend` refusal from exit
-1 to exit 3, and replaces `release`'s previous free-form statuses with
-`preview`, `released`, and `already_done`.
+With the contract on, these commands, `extend`, and `release` follow version 1
+of the [consumer contract](docs/consumer-contract.md): `contract: 1`, a
+`status` on success, and exit 3 with a stable `reason` when dibs refuses. Every
+`extend` refusal then exits 3, and `release` reports `preview`, `released`, or
+`already_done`. The contract page lists every status and reason, and maps the
+lifecycle of a supervisor, an agent session, a CI job, or a script onto these
+commands.
 
 ## Run a local job
 
@@ -474,8 +480,9 @@ Touch a heartbeat file at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. A lease is reclaimable when its owner is
 dead **or** when it has expired. A live owner that misses either cadence loses
 its resources. Unknown liveness alone never permits reclaim, but expiry still
-does. `extend` refuses expired leases and owners that are dead or unknown with
-exit 3 and a stable `reason`.
+does. `extend` refuses expired leases and owners that are dead or unknown,
+except that a protected lease with a live owner reattaches after expiry while
+its resource is present (see below).
 
 ```sh
  touch /tmp/my-lab-heartbeat
@@ -483,6 +490,53 @@ exit 3 and a stable `reason`.
  # The owner touches the file at least every 5m, and extends before 20m remain.
  dibs extend <id> --ttl 1h
 ```
+
+### Protect a live owner's lease
+
+A supervisor that renews leases for long-lived workers can opt a lease out of
+the expiry backstop. Protection is off by default. Turn it on per machine with
+`"live_owner_protection": true` in the user config, or with
+`DIBS_LIVE_OWNER_PROTECTION=1`; the variable overrides the config either way.
+Project files cannot enable it. While it is off, `--protect-live-owner` fails
+with code 2. Turning it off later does not unprotect leases already recorded
+with it.
+
+Pass `--protect-live-owner` to `create` or `adopt`. Then sweep reclaims the lease only when its owner is proven dead. An owner that is
+alive or unknown keeps the lease, even after expiry, so a supervisor outage
+never costs a running worker its resources. Leases without the flag behave
+exactly as above.
+
+```sh
+ export DIBS_LIVE_OWNER_PROTECTION=1
+ id=$(dibs create --adapter kind --owner "pid:$worker_pid" --ttl 30m \
+   --protect-live-owner --quiet)
+ dibs extend "$id" --ttl 30m       # status: renewed, or reattached after expiry
+ dibs release "$id" --confirm      # explicit release needs nothing extra
+```
+
+Use the worker's own process, session, or heartbeat as the owner. If the
+supervisor's PID is the owner, or the supervisor touches the heartbeat, its
+outage reads as owner death.
+
+`extend` on a protected lease with a live owner succeeds before expiry
+(`status: renewed`). After expiry it reattaches the same lease (`status:
+reattached`) only when the adapter proves the pinned resource is still present.
+For kind, k3d, and Compose, the cluster or project must still be visible in the
+pinned Docker context, at the pinned endpoint for adopted resources. A renew
+never creates a lease. A refusal for one of these reasons exits 3, leaves the
+lease unchanged, and names the `reason` in AXI and JSON output; any other
+refusal, such as a lease on another machine, exits 1 as for any lease:
+
+| `reason` | Meaning | Next step |
+| --- | --- | --- |
+| `owner_dead` | The owner is proven dead | `dibs release <id> --confirm` or `dibs sweep --confirm` |
+| `owner_unknown` | The owner cannot be verified | Retry later; the lease is kept and not reclaimable |
+| `resource_absent` | The expired lease's resource is gone | `dibs release <id> --confirm`, then lease a new resource |
+| `resource_unknown` | The resource could not be checked | Retry once the resource tool is reachable |
+
+A protected lease whose owner stays unknown is never reclaimed automatically.
+It stays in `dibs ps` until someone releases it. Job reservations cannot be
+protected.
 
 Durations use Go syntax such as `30m`, `2h`, or `1h30m`. Every lease has a positive
 TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
@@ -493,17 +547,17 @@ TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
 | Command | Behavior |
 | --- | --- |
 | `dibs` | Live home view with executable path, description, lease count, and hints |
-| `dibs create` or `dibs up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose`; `--pending` records it before you build the resource; `--key` makes retries idempotent |
+| `dibs create` or `dibs up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose`; with the consumer contract, `--pending` records it before you build the resource and `--key` makes retries idempotent |
 | `dibs adopt <type> <name> --owner KIND:ID --ttl D` | Lease an existing kind, k3d, or Compose resource after verifying existence |
-| `dibs adopt <type> <handle> --pending ID` | Register the resource you built for a pending lease |
-| `dibs reconcile [ID] [--confirm]` | Find and bind resources built for pending leases after a crash |
-| `dibs reclaim ID [--confirm]` | Reclaim one lease only when its owner is proven dead |
-| `dibs explain ID` | Read-only: owner liveness, expiry, and whether sweep or reclaim would act, and why |
+| `dibs adopt <type> <handle> --pending ID` | Consumer contract: register the resource you built for a pending lease |
+| `dibs reconcile [ID] [--confirm]` | Consumer contract: find and bind resources built for pending leases after a crash |
+| `dibs reclaim ID [--confirm]` | Consumer contract: reclaim one lease only when its owner is proven dead |
+| `dibs explain ID` | Consumer contract: owner liveness, expiry, and whether sweep or reclaim would act, and why |
 | `dibs orphans [--context NAME]` | Read-only unleased-resource evidence and adoption command templates |
 | `dibs list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
 | `dibs env <id>` | Print a shell-safe kubeconfig export for a kind or k3d lease |
 | `dibs setup hooks [--remove]` | Install or remove managed agent integrations |
-| `dibs extend <id> --ttl D` | Renew an unexpired lease with a live owner |
+| `dibs extend <id> --ttl D` | Renew an unexpired lease with a live owner; a protected lease may also reattach after expiry |
 | `dibs release <id>` or `down` | Preview cleanup; `--confirm` performs it |
 | `dibs sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
 | `dibs job [--machine NAME] [flags] -- <cmd...>` | FIFO machine-budget admission, deadline, and child exit-code passthrough |
@@ -517,7 +571,8 @@ protocol. Human output is the terminal default. AXI and JSON have explicit empty
 states and structured errors on stdout with short help pointers. Structured errors
 include a symbolic `code` and the numeric `exit_code`. Codes are
 `VALIDATION_ERROR`, `COMMAND_FAILED`, and `NO_CAPACITY`; actual exit codes do not
-change. Contract refusals (exit 3) also include `contract` and `reason`. Explicit help requests also use structured output in these modes.
+change. Refusals that exit 3 also include `reason`, and consumer contract output
+includes `contract`. Explicit help requests also use structured output in these modes.
 
 AXI's compact list includes lease identity, owner/liveness, machine/expiry,
 resource description, exact job cores/memory bytes, and the kubeconfig path.
@@ -551,7 +606,7 @@ heartbeat paths, numeric PID spellings, and PR selector forms (lowercased
 | `0` | Success, including already absent releases and empty sweeps |
 | `1` | Dibs operation failed; cleanup records are retained on resource failure |
 | `2` | Invalid command, argument, or flag; no child was started |
-| `3` | Refused for safety, nothing changed; read `reason` (including `extend`, `release`, contract commands, and `--pending`/`--key`) |
+| `3` | `dibs extend` refused a protected lease; with the consumer contract on, any refusal by a contract command, `extend`, or `release`. Nothing changed; see `reason` |
 | Child's code | `dibs job` when its child runs to completion |
 | `124` | `dibs job` deadline killed the child (coreutils `timeout` convention) |
 | `75` | `dibs job`: no slot frees within `--wait`, `EX_TEMPFAIL` |
@@ -628,10 +683,16 @@ version, and the newest version it supports. Upgrade dibs, and run
 before `writer_version` existed report `unsupported or incomplete state format`
 for the same state and do not name the versions.
 
-State schema version 3 adds pending leases and idempotency keys. Dibs writes
-version 3 while any lease has a key or is pending, and version 2 again once
-none does. Older binaries reject version 3 rather than ignore a pending lease
-and lose track of a resource you built.
+State schema version 3 is version 2 plus at least one lease with live-owner
+protection. Older binaries reject it rather than ignoring the protection and
+reclaiming the lease at expiry. The state returns to version 2 once no
+protected lease remains.
+
+State schema version 4 adds the consumer contract's idempotency keys and pending
+leases. Dibs writes version 4 while any lease has a key or is pending, version 3
+while only protected leases remain, and version 2 otherwise. A binary that reads
+up to version 3 would drop keys and pending records when it saved, so it
+refuses version 4 instead.
 
 A stable `lock` file serializes ordinary readers and writers through kernel `flock`.
 `orphans` reads an atomic state snapshot without locks or writes. Its answer is
@@ -743,9 +804,9 @@ Real adapter tests are isolated behind the `integration` build tag and run with
 `just integration`. They create unique kind, k3d, and Compose resources, then
 verify cleanup. They also discover unleased fixtures, adopt them, verify sweep
 preview leaves them intact, and reclaim them on expiry through confirmed sweep.
-They also record pending leases, build each resource out of band as a crashed
-caller would, then reconcile or register it, check that `reclaim` refuses the
-live owner, and reclaim it after the owner dies.
+With the consumer contract on, they also record pending leases, build each
+resource out of band as a crashed caller would, then reconcile or register it,
+check that `reclaim` refuses the live owner, and reclaim it after the owner dies.
 Missing adapter tools, Docker, or Compose fail the command rather
 than skip; failed cleanup retains the state directory and reports its path.
 

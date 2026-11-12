@@ -125,7 +125,7 @@ func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	if err != nil || done || !l.ResourceRef.Pending || l.ResourceRef.Name != "lab-7" || l.ResourceRef.Context != "test-context" {
 		t.Fatalf("pending not recorded: %+v %v %v", l, done, err)
 	}
-	if v := diskVersion(t, m); v != 3 {
+	if v := diskVersion(t, m); v != 4 {
 		t.Fatalf("pending lease saved as version %d", v)
 	}
 	if _, _, err := m.Create(ctx, pendingRequest("lab-7", "")); reason(err) != "already_leased" {
@@ -530,16 +530,18 @@ func TestExplainUnexpired(t *testing.T) {
 	}
 }
 
-func TestVersionThreeValidation(t *testing.T) {
+func TestVersionFourValidation(t *testing.T) {
 	s := testStore(t)
 	l := testLease(t)
 	l.Key = "k"
 	s.Leases[l.ID] = l
-	s.Version = 2
-	if err := s.validate(); err == nil {
-		t.Fatal("version 2 accepted a key")
+	for _, version := range []int{2, 3} {
+		s.Version = version
+		if err := s.validate(); err == nil {
+			t.Fatalf("version %d accepted a key", version)
+		}
 	}
-	s.Version = 3
+	s.Version = 4
 	if err := s.validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -570,12 +572,59 @@ func TestVersionThreeValidation(t *testing.T) {
 	if err := s.validate(); err != nil {
 		t.Fatal(err)
 	}
-	s.Version = 2
+	s.Version = 3
 	if err := s.validate(); err == nil {
-		t.Fatal("version 2 accepted a pending record")
+		t.Fatal("version 3 accepted a pending record")
 	}
-	s.Version = 4
+	s.Version = 5
 	if err := s.validate(); err == nil {
-		t.Fatal("version 4 accepted")
+		t.Fatal("version 5 accepted")
+	}
+}
+
+// A binary that reads up to version 3 (live-owner protection only) would drop
+// keys and pending records on save, so it must refuse the file instead.
+func TestVersionThreeReaderRefusesKeysAndPending(t *testing.T) {
+	ctx := context.Background()
+	for name, request := range map[string]CreateRequest{
+		"key":     {Owner: fakeRef, TTL: time.Hour, Adapter: "none", Key: "task-7:meta"},
+		"pending": pendingRequest("lab", ""),
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, _, _ := pendingManager(t)
+			if _, _, err := m.Create(ctx, request); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(m.options.Directory, "state.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := refuseNewer(data, 3, "0.2.3"); err == nil || !strings.Contains(err.Error(), "state version 4") {
+				t.Fatalf("a version 3 reader would accept: %v", err)
+			}
+			if err := refuseNewer(data, stateVersion, "test"); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestProtectedOnlyLedgerStaysVersionThree(t *testing.T) {
+	s := testStore(t)
+	l := testLease(t)
+	l.ProtectLiveOwner = true
+	s.Leases[l.ID] = l
+	if err := s.Save(); err != nil || s.Version != 3 {
+		t.Fatalf("protected-only ledger saved as version %d: %v", s.Version, err)
+	}
+	keyed := testLease(t)
+	keyed.Key = "k"
+	s.Leases[keyed.ID] = keyed
+	if err := s.Save(); err != nil || s.Version != 4 {
+		t.Fatalf("keyed ledger saved as version %d: %v", s.Version, err)
+	}
+	delete(s.Leases, keyed.ID)
+	if err := s.Save(); err != nil || s.Version != 3 {
+		t.Fatalf("ledger did not return to version 3: %d %v", s.Version, err)
 	}
 }

@@ -60,6 +60,10 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 		switch key {
 		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code", "contract":
 			continue
+		case "protect_live_owner":
+			if value[key] == true {
+				fmt.Fprintln(w, "protected: only proven owner death reclaims this lease")
+			}
 		case "budget":
 			fmt.Fprintln(w, value[key].(map[string]any)["summary"])
 		case "evidence":
@@ -94,6 +98,9 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 				cells := make([]string, len(fields))
 				for i, field := range fields {
 					cells[i] = humanValue(field, row[field], now)
+					if field == "liveness" && row["protect_live_owner"] == true {
+						cells[i] += ", protected"
+					}
 				}
 				if row["pending"] == true {
 					cells[6] += " (pending)"

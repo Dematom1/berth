@@ -36,6 +36,7 @@ func TestIntegrationPendingCrashRecovery(t *testing.T) {
 	for _, tc := range []struct{ driver, match string }{{"kind", "name"}, {"k3d", "name"}, {"compose", "label"}} {
 		t.Run(tc.driver+"-by-"+tc.match, func(t *testing.T) {
 			integrationReady(t, tc.driver)
+			t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 			t.Setenv("DOCKER_HOST", "")
 			ctx := context.Background()
 			owner := exec.Command("sleep", "600")
@@ -137,6 +138,7 @@ func TestIntegrationPendingCrashRecovery(t *testing.T) {
 	}
 	t.Run("never-created", func(t *testing.T) {
 		integrationReady(t, "kind")
+		t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
 		t.Setenv("DOCKER_HOST", "")
 		id := invoke(t, 0, "create", "--adapter", "kind", "--pending", "--name", "dibs-it-never-built", "--ttl", "1h")["lease"].(map[string]any)["id"].(string)
 		if r := invoke(t, 0, "reconcile", id)["results"].([]any)[0].(map[string]any); r["status"] != "absent" {

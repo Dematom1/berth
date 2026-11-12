@@ -6,6 +6,12 @@ Agents read AXI: TOON on stdout, selected by `--axi`, `DIBS_AXI=1`, or a stdout 
 
 Source: `internal/cli/contract.go` (versioned results and refusals), `internal/cli/cli.go` (`extend`, `release`, `--key`, `--pending`), `internal/cli/inventory.go` (`adopt`), `internal/lease/manager.go` and `internal/lease/lease.go` (renew and release), and `internal/lease/pending.go` (reconcile, reclaim, explain, and idempotency). Tests: `internal/lease/pending_test.go`, `internal/lease/lease_test.go`, `internal/cli/contract_test.go`, and `TestIntegrationPendingCrashRecovery` in `internal/cli/pending_integration_test.go` (build tag `integration`, run with `just integration`).
 
+## Turn it on
+
+The contract is off by default. Turn it on per machine with `"consumer_contract": true` in the user config, or with `DIBS_CONSUMER_CONTRACT=1` in the caller's environment; the variable overrides the config either way, and `DIBS_CONSUMER_CONTRACT=0` turns a config opt-in off. A project file cannot turn it on.
+
+While it is off, `create --pending`, `--name`, `--key`, `adopt --pending`, `adopt --key`, `reconcile`, `reclaim`, and `explain` fail with exit 2 before any state access, and the error names the setting. `extend` and `release` keep their original output and exit codes, so every existing caller sees exactly what it saw before. Turning the setting off later does not remove keys or pending leases already recorded; `release` and `sweep` still finish them.
+
 ## Verbs
 
 | Verb | Command | Use it when |
@@ -28,7 +34,7 @@ Source: `internal/cli/contract.go` (versioned results and refusals), `internal/c
 
 Every success and refusal from a contract surface carries `contract: 1`. A success carries `status`. A refusal carries `reason`. Responses that return a lease carry it under `lease`; release identifies its lease with `id`. Every response carries `help[]` with the next command to run.
 
-A contract surface is `reconcile`, `reclaim`, `explain`, `extend`, and `release`, or an invocation that uses `--pending` or `--key`. This versions the existing `extend` refusals (now exit 3) and `release` status values (now `preview`, `released`, `already_done`); these are intentional contract changes. Other invocations keep their original output and exit codes.
+With the contract on, a contract surface is `reconcile`, `reclaim`, `explain`, `extend`, and `release`, or an invocation that uses `--pending` or `--key`. On these, every `extend` refusal exits 3 with a reason, and `release` reports `preview`, `released`, or `already_done`. Other invocations keep their original output and exit codes, with or without the contract.
 
 AXI, for a retried register step:
 
@@ -77,7 +83,7 @@ For `create --quiet` with `--pending` or `--key`, stdout contains only the lease
 | `2` | Usage error; nothing changed | Fix the command |
 | `3` | Refused; nothing changed | Act on `reason` |
 
-Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but should not retry a 3 without changing something first.
+Exit 3 means that dibs changed no lease and touched no resource. Opening the ledger can still migrate its format, as every command does (see [State](state.md)). A consumer can retry a 1, but should not retry a 3 without changing something first.
 
 ## Statuses
 
@@ -117,7 +123,7 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 
 ## Idempotency
 
-Pass `--key K` to `create` or `adopt` when a retry must not act twice. A key names one live lease on this machine. A retry returns `already_done` only when owner, adapter, request mode, and any pinned handle match. Pending creates also require the same Docker context, Docker host, and Compose file, including after the pending lease is bound. An `adopt` retry also requires the same resource name and Docker context or Docker host. The same key with a different request is refused with `key_conflict`. A key becomes free again when its lease is released.
+Pass `--key K` to `create` or `adopt` when a retry must not act twice. A key names one live lease on this machine. A retry returns `already_done` only when owner (including a PID owner's recorded start time), live-owner protection, adapter, request mode, and any pinned handle match. Pending creates also require the same Docker context, Docker host, and Compose file, including after the pending lease is bound. An `adopt` retry also requires the same resource name and Docker context or Docker host. The same key with a different request is refused with `key_conflict`. A key becomes free again when its lease is released.
 
 Use a key that names the work and the role of the resource, such as `<task>:<attempt>:<role>`. Do not use a random value: after a crash, the restarted caller must be able to compute the same key again.
 
@@ -136,6 +142,8 @@ When you build the resource yourself, record the lease first. Then a crash at an
 1. Run `dibs create --adapter T --pending --owner O --ttl D --key K`. dibs records the lease, the scope where the resource will live (the selected Docker context and its endpoint, and the Compose file for `compose`), and the handle if you pass `--name`. With `--name`, dibs refuses with `handle_exists` when that handle is already in use.
 2. Build the resource. Either give it the handle you pinned with `--name`, or, when your tool picks the handle, stamp it with the label `io.dibs.lease=<lease id>`.
 3. Run `dibs adopt T HANDLE --pending ID`. dibs checks that the resource exists and that no other lease owns it, then captures its cleanup configuration under the same lease ID.
+
+For `compose`, dibs records the path of your Compose file at step 1 and resolves it only when it binds the resource, at step 3, `reconcile --confirm`, or cleanup. Keep that file readable until the lease is bound. If it is gone at cleanup, binding fails, dibs keeps the lease and exits 1, and nothing is destroyed; restore the file, or register the project yourself with `dibs adopt compose HANDLE --pending ID --file <resolved file>`.
 
 A resource matches a pending lease only by evidence recorded before it existed: the pinned handle or the `io.dibs.lease` label. Age, idleness, and name patterns never match. A resource that matches a pending lease is not an orphan, and plain `adopt` refuses it with `already_leased`.
 
@@ -190,9 +198,10 @@ Record the lease ID next to your own record of the work. Store the key you used,
 ### A supervisor that starts workers
 
 ```sh
+export DIBS_CONSUMER_CONTRACT=1
 key="$task:$attempt:lab"
 id=$(dibs create --adapter kind --pending --name "lab-$task" \
-  --owner "heartbeat:$state/$task.beat" --ttl 4h --key "$key" --quiet)
+  --owner "heartbeat:$state/$task.beat" --ttl 4h --key "$key" --quiet) || exit 1
 kind create cluster --name "lab-$task"
 dibs adopt kind "lab-$task" --pending "$id"
 # On each observation of the worker:
@@ -200,9 +209,9 @@ dibs extend "$id" --ttl 4h
 # When the worker finishes:
 dibs release "$id" --confirm
 # After a supervisor restart, before building anything again:
-dibs create --adapter kind --pending --name "lab-$task" \
-  --owner "heartbeat:$state/$task.beat" --ttl 4h --key "$key" --quiet
-dibs reconcile "$id" --confirm
+id=$(dibs create --adapter kind --pending --name "lab-$task" \
+  --owner "heartbeat:$state/$task.beat" --ttl 4h --key "$key" --quiet) || exit 1
+dibs reconcile "$id" --confirm   # bound: do not build again; absent: build, then adopt --pending
 ```
 
 ### An agent session
@@ -210,9 +219,9 @@ dibs reconcile "$id" --confirm
 The session's own shell owns the lease, so the lease becomes reclaimable when the session ends.
 
 ```sh
-export DIBS_AXI=1
+export DIBS_AXI=1 DIBS_CONSUMER_CONTRACT=1
 id=$(dibs create --adapter compose --file compose.yaml --owner "pid:$$" --ttl 2h \
-  --key "session-$SESSION_ID:db" --quiet)
+  --key "session-$SESSION_ID:db" --quiet) || exit 1
 dibs explain "$id"
 ```
 
@@ -221,8 +230,9 @@ dibs explain "$id"
 The job's runner process owns the lease, so a cancelled job leaves a lease that `reclaim` or `sweep` can finish.
 
 ```sh
+export DIBS_CONSUMER_CONTRACT=1
 id=$(dibs create --adapter k3d --owner "pid:$RUNNER_PID" --ttl 1h \
-  --key "ci-$RUN_ID-$JOB:cluster" --quiet)
+  --key "ci-$RUN_ID-$JOB:cluster" --quiet) || exit 1
 trap 'dibs release "$id" --confirm' EXIT
 ```
 
@@ -230,7 +240,8 @@ trap 'dibs release "$id" --confirm' EXIT
 
 ```sh
 # stack.yaml labels each service with io.dibs.lease=${DIBS_PENDING}
-id=$(dibs create --adapter compose --pending --file stack.yaml --owner "pid:$$" --ttl 1h --quiet)
+export DIBS_CONSUMER_CONTRACT=1
+id=$(dibs create --adapter compose --pending --file stack.yaml --owner "pid:$$" --ttl 1h --quiet) || exit 1
 DIBS_PENDING="$id" docker compose -p "stack-$$" -f stack.yaml up -d
 dibs reconcile "$id" --confirm
 ```
@@ -243,13 +254,13 @@ New owner kinds come through `owner.Definition{Name, Bind, Check}` registered in
 
 ## Invariants
 
-- Exit 3 changes nothing. Every refusal returns before a state write or a resource call that acts. (`Refusal` in `internal/lease/pending.go`)
+- Exit 3 changes no lease and no resource. Every refusal returns before a lease write or a resource call that acts; only the format migration that opening the ledger performs for every command may run first. (`Refusal` in `internal/lease/pending.go`)
 - A resource is never under two leases, and a pending lease is never bound twice. Binding runs under the state lock after the same ownership check that `adopt` runs. (`claimant`, `bindPending`; `TestPendingPinnedHandleLifecycle`)
 - A pending lease matches only by its pinned handle or its `io.dibs.lease` label. (`matches`; `TestReconcileByLabel`)
-- An ambiguous match or failed discovery never binds and never forgets. (`settlePending`; `TestReconcileAmbiguousConflictUnknown`)
+- An ambiguous match, a match under another lease, or failed discovery never binds and never forgets. (`settlePending`; `TestReconcileAmbiguousConflictUnknown`, `TestPendingCleanupRetainsConflictingResource`)
 - `reclaim` destroys only on proven owner death on this machine. (`Reclaim`; `TestReclaimRequiresProvenDeath`)
 - A key names at most one live lease per machine. (`keyed`, `store.validate`; `TestIdempotencyKeys`)
-- Invocations without a contract surface keep their exact output and exit codes. (`TestBaselineCommands`)
+- With the contract off, every existing invocation keeps its exact output and exit codes, and every new surface exits 2. (`TestBaselineCommands`, `TestConsumerContractIsOptIn`)
 
 ## Planned
 

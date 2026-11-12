@@ -27,7 +27,7 @@ var reasonHints = map[string]string{
 	"resource_absent":  "Create the resource first, then retry",
 	"ambiguous":        "Resolve the ambiguous resource matches, then retry this command",
 	"owner_alive":      "Wait for the owner to end, or have its owner run dibs release <id> --confirm",
-	"owner_unknown":    "Retry later; the lease is kept until owner liveness is known",
+	"owner_unknown":    "Retry later; unknown liveness never permits reclaim, but an expired unprotected lease can still be swept, so inspect it with dibs explain <id>",
 	"expired":          "Release the lease and acquire again; do not create a second lease for a resource still covered",
 	"owner_dead":       "Run dibs reclaim <id> --confirm or dibs sweep --confirm",
 	"resource_unknown": "Retry dibs extend <id> when the resource tool is reachable; the lease is retained",
@@ -119,6 +119,9 @@ func (app application) runContract(ctx context.Context, command string, args []s
 	if *wantHelp {
 		emitHelp(out, mode, command)
 		return 0
+	}
+	if !consumerContractEnabled() {
+		return outputpkg.Error(out, mode, 2, consumerContractOff, help(command))
 	}
 	maxArgs, minArgs := 1, 1
 	if command == "reconcile" {

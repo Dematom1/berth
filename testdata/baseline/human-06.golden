@@ -1,5 +1,4 @@
 exit: 0
 stdout:
 id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-status: already_done
-Nothing to release; acquire a lease when the work needs the resource
+status: already absent (no-op)
