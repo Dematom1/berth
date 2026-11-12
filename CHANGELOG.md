@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3](https://github.com/Dematom1/dibs/compare/v0.2.2...v0.2.3) (2026-11-12)
+
+
+### Features
+
+* **owner:** add opt-in GitHub pull request owner ([#37](https://github.com/Dematom1/dibs/issues/37)) ([03ecc92](https://github.com/Dematom1/dibs/commit/03ecc92cba1478388b6b77ee3802cbfe9864340b))
+
+
+### Bug Fixes
+
+* **lease:** preserve berth compatibility and guard newer state ([#40](https://github.com/Dematom1/dibs/issues/40)) ([7da7c66](https://github.com/Dematom1/dibs/commit/7da7c66ec99bbefbb152f2c25e8b9ce204e19799))
+
 ## [0.2.2](https://github.com/Dematom1/berth/compare/v0.2.1...v0.2.2) (2026-11-11)
 
 
