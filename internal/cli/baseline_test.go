@@ -12,8 +12,6 @@ import (
 	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
-// Captured from flat main at 56bf0b3 before the move, then recaptured from
-// the flat CI-hardening parent 11e1da4 on rebase (only job help changed).
 // UPDATE_GOLDEN does not regenerate these accepted command bytes.
 
 func TestBaselineCommands(t *testing.T) {
@@ -49,6 +47,12 @@ func TestBaselineCommands(t *testing.T) {
 				}
 				got := fmt.Sprintf("exit: %d\nstdout:\n%s", code, out.String())
 				path := filepath.Join("..", "..", "testdata", "baseline", fmt.Sprintf("%s-%02d.golden", mode, i))
+				if os.Getenv("UPDATE_GOLDEN") == "1" {
+					if err := os.WriteFile(path, []byte(got), 0600); err != nil {
+						t.Fatal(err)
+					}
+					return
+				}
 				want, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
