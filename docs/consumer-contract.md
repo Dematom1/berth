@@ -64,11 +64,15 @@ JSON has the same keys. The full lease record is under `record`, which AXI shows
 
 Lease views add `pending: true` while a pending lease waits for its resource, and `key` when the lease has an idempotency key. Both fields are absent otherwise.
 
+### Quiet output
+
+For `create --quiet` with `--pending` or `--key`, stdout contains only the lease ID and a newline on success, including an `already_done` retry. Exit codes carry the result; failures and refusals print no raw lease ID and retain their usual error output. Explicit `--axi` or `--json` cannot be combined with quiet contract creates; the command exits 2 before reading or writing state. Environment-selected AXI and pipe detection do not conflict. Plain `create --quiet` without `--pending` or `--key` keeps its existing behavior.
+
 ## Exit codes
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
-| `0` | Success; read `status` | Continue |
+| `0` | Success; read `status` (quiet contract creates print only the lease ID) | Continue |
 | `1` | dibs or a resource tool failed; records are retained | Retry later; read `error` |
 | `2` | Usage error; nothing changed | Fix the command |
 | `3` | Refused; nothing changed | Act on `reason` |

@@ -195,9 +195,11 @@ func settlePending(ctx context.Context, s *store, l *Lease) (absent bool, err er
 }
 
 type PendingRequest struct {
-	ID     string
-	Handle string
-	File   string
+	ID      string
+	Adapter string
+	Handle  string
+	File    string
+	Scope   adapterpkg.ResourceRef
 }
 
 func (m *Manager) bindPending(ctx context.Context, s *store, host string, r PendingRequest) (Lease, bool, error) {
@@ -209,10 +211,13 @@ func (m *Manager) bindPending(ctx context.Context, s *store, host string, r Pend
 		return Lease{}, false, refuse("wrong_machine", "run dibs adopt on the lease's machine")
 	}
 	if !l.ResourceRef.Pending {
-		if l.ResourceRef.Name == r.Handle {
+		if l.ResourceRef.Adapter == r.Adapter && l.ResourceRef.Name == r.Handle && (r.Scope.DockerHost == "" || l.ResourceRef.DockerHost == r.Scope.DockerHost) {
 			return detached(l), true, nil
 		}
 		return Lease{}, false, refuse("not_pending", "lease "+r.ID+" already covers "+l.ResourceRef.Adapter+":"+l.ResourceRef.Name)
+	}
+	if l.ResourceRef.Adapter != r.Adapter || (r.Scope.DockerHost != "" && l.ResourceRef.DockerHost != r.Scope.DockerHost) {
+		return Lease{}, false, refuse("not_pending", "pending lease "+r.ID+" does not match the requested resource scope")
 	}
 	if l.ResourceRef.Name != "" && l.ResourceRef.Name != r.Handle {
 		return Lease{}, false, refuse("handle_mismatch", "pending lease "+r.ID+" was recorded for "+l.ResourceRef.Name)

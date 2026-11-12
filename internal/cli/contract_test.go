@@ -118,6 +118,45 @@ func TestContractKeysReclaimExplain(t *testing.T) {
 	}
 }
 
+func TestQuietContractCreate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DIBS_STATE", dir)
+	self := "pid:" + strconv.Itoa(os.Getpid())
+	var out bytes.Buffer
+	args := []string{"create", "--owner", self, "--key", "quiet:contract", "--quiet"}
+	if code := run(context.Background(), args, &out); code != 0 {
+		t.Fatalf("created: %d %q", code, out.String())
+	}
+	id := strings.TrimSpace(out.String())
+	if id == "" || out.String() != id+"\n" {
+		t.Fatalf("create output %q", out.String())
+	}
+	out.Reset()
+	if code := run(context.Background(), args, &out); code != 0 || out.String() != id+"\n" {
+		t.Fatalf("already_done: %d %q", code, out.String())
+	}
+	out.Reset()
+	conflictArgs := []string{"create", "--owner", "pid:" + strconv.Itoa(os.Getppid()), "--key", "quiet:contract", "--quiet"}
+	if code := run(context.Background(), conflictArgs, &out); code != 3 || out.String() == id+"\n" {
+		t.Fatalf("refusal: %d %q", code, out.String())
+	}
+
+	for _, args := range [][]string{
+		{"--axi", "create", "--adapter", "kind", "--pending", "--key", "quiet:axi", "--owner", self, "--quiet"},
+		{"create", "--adapter", "kind", "--pending", "--key", "quiet:json", "--owner", self, "--quiet", "--json"},
+	} {
+		state := filepath.Join(t.TempDir(), "untouched")
+		t.Setenv("DIBS_STATE", state)
+		out.Reset()
+		if code := run(context.Background(), args, &out); code != 2 {
+			t.Fatalf("explicit mode accepted: %d %q", code, out.String())
+		}
+		if _, err := os.Stat(state); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("usage error touched state: %v", err)
+		}
+	}
+}
+
 func TestContractOutputModes(t *testing.T) {
 	t.Setenv("DIBS_STATE", t.TempDir())
 	missing := strings.Repeat("a", 32)

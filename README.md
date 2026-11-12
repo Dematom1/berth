@@ -126,9 +126,10 @@ leases without a kubeconfig. `dibs env <id>` always prints a shell-safe
 missing lease or a lease without a kubeconfig. It does not read the kubeconfig
 or change your shell itself.
 
-`create --quiet` or `create -q` prints only the new lease ID and a newline on
-success, regardless of output mode. Failures retain the usual error format and
-exit code. Without quiet mode, create shows the lease details.
+A plain `create --quiet` or `create -q` prints only the new lease ID and a
+newline on success, regardless of output mode. For contract creates using
+`--pending` or `--key`, see the quiet-output rules below. Failures retain the
+usual error format and exit code. Without quiet mode, create shows the lease details.
 
 The resources description is metadata, not a CPU or memory limit.
 Create new labs through dibs to record cleanup intent before creation. For
@@ -224,6 +225,9 @@ finish, instead of an unleased resource.
  dibs reclaim "$id" --confirm               # only when the owner is proven dead
  dibs explain "$id"                         # what sweep or reclaim would do, and why
 ```
+
+Here `--quiet` emits only the ID; the exit code reports success or refusal. Do not
+combine it with explicit `--axi` or `--json` on contract creates.
 
 `--pending` works with kind, k3d, and Compose (which also needs `--file`). It
 records the selected Docker context and, with `--name`, the handle, which must

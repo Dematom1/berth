@@ -99,6 +99,9 @@ compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
 --key K: a retry with the same key and request returns status already_done.
+With --pending or --key, --quiet prints only the lease ID (including on retry);
+exit codes distinguish success from failure. --quiet cannot combine with --axi
+or --json for those contract creates. Without these flags it keeps its usual behavior.
 --pending records the lease before the caller creates a kind, k3d or Compose
 resource in the selected Docker context; the caller then stamps the label
 io.dibs.lease=<id> or uses the handle pinned with --name (which must not exist

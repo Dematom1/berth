@@ -62,6 +62,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	topHelp := len(args) == 1 && args[0] == "--help"
 	// Global output flags may also precede the command.
 	jsonOutput := outputpkg.Auto
+	explicitOutputMode := false
 	for len(args) > 0 {
 		name, value, hasValue := strings.Cut(args[0], "=")
 		if name != "--json" && name != "--axi" {
@@ -73,6 +74,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		if err := outputpkg.SetFlag(&jsonOutput, outputpkg.Mode(strings.TrimPrefix(name, "--")), value); err != nil {
 			return outputpkg.Error(out, jsonOutput, 2, err.Error(), "Choose --axi for agents or --json for scripts")
 		}
+		explicitOutputMode = true
 		args = args[1:]
 		home = len(args) == 0
 	}
@@ -183,6 +185,14 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		return outputpkg.Error(out, jsonOutput, 2, "--ttl must be positive", help(command))
 	}
 	if command == "create" {
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "axi" || f.Name == "json" {
+				explicitOutputMode = true
+			}
+		})
+		if quiet && (pending || key != "") && explicitOutputMode {
+			return outputpkg.Error(out, jsonOutput, 2, "--quiet cannot be combined with --axi or --json for contract creates", help(command))
+		}
 		if err := app.checkCreate(driver, file, key, name, pending); err != nil {
 			return outputpkg.Error(out, jsonOutput, 2, err.Error(), help(command))
 		}

@@ -164,6 +164,16 @@ func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	if _, _, err := m.Adopt(ctx, wrong); reason(err) != "not_pending" {
 		t.Fatalf("bound lease rebound: %v", err)
 	}
+	wrongAdapter := bindReq
+	wrongAdapter.Resource.Adapter = "compose"
+	if _, _, err := m.Adopt(ctx, wrongAdapter); reason(err) != "not_pending" {
+		t.Fatalf("bound lease accepted another adapter: %v", err)
+	}
+	wrongScope := bindReq
+	wrongScope.Resource.DockerHost = "unix:///other.sock"
+	if _, _, err := m.Adopt(ctx, wrongScope); reason(err) != "not_pending" {
+		t.Fatalf("bound lease accepted another Docker endpoint: %v", err)
+	}
 	if v := diskVersion(t, m); v != 2 {
 		t.Fatalf("version 3 kept without version-3 records: %d", v)
 	}
@@ -348,7 +358,7 @@ func TestIdempotencyKeys(t *testing.T) {
 		t.Fatalf("pending key reused for normal create: %v", err)
 	}
 	engine.clusters["lab"] = nil
-	if _, done, err := m.Adopt(ctx, AdoptRequest{Pending: pending.ID, Resource: adapterpkg.ResourceRef{Name: "lab"}}); err != nil || done {
+	if _, done, err := m.Adopt(ctx, AdoptRequest{Pending: pending.ID, Resource: adapterpkg.ResourceRef{Adapter: "kind", Name: "lab"}}); err != nil || done {
 		t.Fatalf("bind pending create: %v %v", done, err)
 	}
 	if retry, done, err := m.Create(ctx, pendingRequest("lab", "task-7:lab")); err != nil || !done || retry.ID != pending.ID {
@@ -367,9 +377,14 @@ func TestIdempotencyKeys(t *testing.T) {
 		t.Fatalf("retried adopt: %v %v", done, err)
 	}
 	otherScope := adopt
-	otherScope.Resource.Context, otherScope.Resource.DockerHost = "other-context", "unix:///other.sock"
+	otherScope.Resource.DockerHost = "unix:///other.sock"
 	if _, _, err := m.Adopt(ctx, otherScope); reason(err) != "key_conflict" {
-		t.Fatalf("adopt key reused across Docker scopes: %v", err)
+		t.Fatalf("adopt key reused across Docker endpoints: %v", err)
+	}
+	aliasScope := adopt
+	aliasScope.Resource.Context = "endpoint-alias"
+	if retry, done, err := m.Adopt(ctx, aliasScope); err != nil || !done || retry.ID != adopted.ID {
+		t.Fatalf("Docker context alias did not match endpoint: %v %v", done, err)
 	}
 	if _, err := m.Release(ctx, ReleaseRequest{ID: first.ID, Confirm: true}); err != nil {
 		t.Fatal(err)
