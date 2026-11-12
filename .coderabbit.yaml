@@ -28,5 +28,125 @@ reviews:
       enabled: false
     resolve_merge_conflict:
       enabled: false
+  path_instructions:
+    - path: "internal/lease/{lease,manager}.go"
+      instructions: |
+        Review against docs/leases.md and ADRs 0001-0003 in docs/adr/. Expiry wins over a live owner by policy (ADR 0001). Flag any change that:
+        - reclaims a lease whose owner is alive and unexpired; automatic reclaim must go through reclaimable(), which requires a dead owner or now >= Expires;
+        - treats unknown liveness as dead, or maps an error that does not prove absence to Dead;
+        - acts on a lease whose Machine differs from this host (reclaim, extend, or release);
+        - deletes a lease record before the adapter's Destroy returned nil (verify-gone), or drops a record whose adapter is unknown;
+        - lets extend revive an expired, dead, or unknown-owner lease, or extend a job lease;
+        - weakens the stable machine identity or the PID start-identity pinning, so a reused PID could read as the original owner;
+        - mutates state in release or sweep without --confirm.
+    - path: "internal/owner/*.go"
+      instructions: |
+        Review against docs/leases.md and ADR 0003 in docs/adr/. Flag any change that:
+        - returns Alive for an unknown, unreadable, or unverifiable owner;
+        - lets a PID owner match without its recorded start identity;
+        - changes heartbeat staleness so a future-dated or non-regular file reads as alive or dead.
+    - path: "internal/lease/store.go"
+      instructions: |
+        Review against docs/state.md and docs/adr/0005-adapter-and-owner-extension-contracts.md. Flag any change that:
+        - writes state.json without atomicfile.Write (temp file, fsync, rename, directory fsync, rollback on sync failure);
+        - treats unreadable or invalid state as an empty store, or rewrites it;
+        - replaces or deletes the lock file, or mutates state outside openStore/Close;
+        - loosens the 0700 directory or 0600 file modes;
+        - changes the accepted versions or validate() rules without a version bump and a migration, since older binaries reject unknown shapes;
+        - lets a resource file point outside <state>/resources/<id>/.
+    - path: "internal/lease/machine.go"
+      instructions: |
+        Review against docs/state.md#machine-identity. Flag any change that:
+        - falls back to a hostname when the OS identity is missing or invalid;
+        - rebinds an existing stable identity, or lets DIBS_LEGACY_MACHINE (or BERTH_LEGACY_MACHINE) authorize anything beyond exact legacy hostname records.
+    - path: "internal/adapter/**/*.go"
+      instructions: |
+        Review against docs/adapters.md, docs/adr/0002-reclaim-with-proof.md, and docs/adr/0005-adapter-and-owner-extension-contracts.md. Flag any change where:
+        - Destroy returns nil without listing remaining resources and finding none (verify-gone);
+        - Destroy fails on an already-absent or partially created resource (it must tolerate absence);
+        - Create can run before the lease is saved;
+        - cleanup reads the caller's DOCKER_HOST, DOCKER_CONTEXT, KUBECONFIG, or original Compose file instead of the pinned values in the lease;
+        - dibs could touch a resource it did not name from the lease ID or an explicit adopt, or Compose fixed names are no longer rejected;
+        - an external command runs without the RunCommand timeout, or secrets move into argv or logs.
+    - path: "internal/lease/job_*.go"
+      instructions: |
+        Review against docs/jobs.md and docs/adr/0004-fifo-admission-and-owner-room.md. Flag any change that:
+        - lets user code run before the group leader identity is saved (the fd 3 start gate);
+        - signals a process group without matching the leader's recorded start identity, or signals after the leader was reaped;
+        - deletes a job lease before ps shows no live group members, or widens the reaped-leader exception recorded in docs/adr/0002-reclaim-with-proof.md (known limitations F2 and F3 are in verification/findings.md; changing them is a behavior change);
+        - breaks FIFO with no backfill, or holds the state lock while waiting or while the child runs;
+        - lets a job deadline move after admission;
+        - changes the exit-code contract: the child's code passes through after start; dibs's 1 and 2 only before start; 75 when no slot frees within --wait; 124 when the deadline fires before the child is confirmed exited, including when completion cannot be verified at the deadline even though the child already exited; cleanup errors go to stderr and never replace the child's code;
+        - reaps the child before group cleanup (waitChildExit must not reap).
+    - path: "internal/remote/ssh.go"
+      instructions: |
+        Review against docs/remote.md and docs/adr/0006-ssh-session-as-liveness.md. Flag any change that:
+        - returns anything but 76 for a transport or protocol failure after SSH started, or returns dibs's own 1 or 2 once a child may have run;
+        - lets an SSH exit status overwrite a received result frame (child exit 255 must pass through);
+        - feeds SSH stdin to the remote child, or stops treating stdin EOF as owner death;
+        - relaxes the exact version match on either side of the handshake;
+        - weakens host-key checking or BatchMode, or interpolates a value into a remote shell script without ShellQuote;
+        - accepts unknown frame fields, trailing data, or unframed output on the protocol stream;
+        - forwards local budget, classes, or state to the remote, or allows nested --machine;
+        - renders remote output in a mode detected on the agent's pipe instead of the requested output mode.
+    - path: "internal/remote/{agent,protocol,install}.go"
+      instructions: |
+        Review against docs/remote.md. Frames are private to the SSH pipe: any change to frame fields, the 1 MiB line limit, or the 32 KiB output split changes the handshake contract and needs a version bump and a test update.
+    - path: "internal/output/**/*.go"
+      instructions: |
+        Review against docs/output.md and docs/adr/0007-output-modes-and-job-results.md. AXI output is byte-stable: the same values must render the same bytes.
+        Flag any change to key order, quoting or escaping rules, table layout, the compact AXI field list, the 100-row or 500-character limits, or the key set of a view, and require the PR to call it out as a contract change.
+        Flag any change that truncates or drops fields from JSON (JSON is always complete), lets axiView mutate the canonical map, or changes mode selection (explicit --axi or --json, then the carried SSH mode, then DIBS_AXI=1, then TTY detection).
+        Flag view values of types toonScalar does not render (they print null), table rows built with differing key sets, and errors without code and exit_code.
+        Results and structured errors go to stdout in every mode; diagnostics go to stderr; the mode never changes child output or exit codes.
+    - path: "testdata/output/**"
+      instructions: |
+        These goldens pin the human, AXI, and JSON output contracts (docs/output.md). Any diff here is a visible output-contract change: require the PR description to name it and confirm it is intended.
+    - path: "testdata/baseline/**"
+      instructions: |
+        These are accepted command bytes captured before the restructure. UPDATE_GOLDEN does not regenerate them. Any diff here is a contract change: require the PR description to name it and confirm it is intended.
+    - path: "internal/cli/hooks.go"
+      instructions: |
+        Review against docs/hooks.md. Flag any change that:
+        - writes any agent config before every target edit has been computed and validated;
+        - replaces a malformed config or an unmanaged plugin file, or removes hook entries without the # dibs-axi marker (legacy # berth-axi entries may be removed only as part of the migration);
+        - lets the Codex config.toml edit change anything other than features.hooks, or drops its was-false restore marker;
+        - writes without atomicfile.Write, or makes a repeated setup run report a change;
+        - makes a hook do more than set DIBS_AXI=1 (for example, run dibs or embed an executable path).
+    - path: "internal/config/config.go"
+      instructions: |
+        Review against docs/config.md. Flag any change that:
+        - accepts unknown fields or trailing data in the config;
+        - falls back to defaults when an explicit DIBS_CONFIG file is missing;
+        - allows owner room equal to or above the totals;
+        - changes host-derived defaults without updating docs/config.md and the README.
+    - path: "{main.go,internal/cli/cli.go,internal/cli/help.go}"
+      instructions: |
+        Review against docs/cli.md and docs/output.md. Flag any change that:
+        - adds behavior that is not opt-in behind a named user config setting or DIBS_* variable (AGENTS.md);
+        - changes the meaning of exit codes 0, 1, 2, 75, 76, 124, 125, 126, or 128 + signal;
+        - reads or writes state, edits agent config, or runs a resource tool, before usage validation finishes (including the --axi/--json conflict);
+        - evaluates expiry with a clock read taken before openStore acquired the lock;
+        - adds a prompt, or makes release or sweep act without --confirm;
+        - changes flags, defaults, or exit codes without updating commandHelp or exitCodes, the README, and the matching doc in docs/;
+        - removes or changes a legacy BERTH_* alias, config fallback, or state directory alias before its alias window in docs/releases/rename-to-dibs.md has ended.
+    - path: "**/*_test.go"
+      instructions: |
+        Tests named in docs/*.md enforce documented invariants. Flag removal or weakening of those assertions unless the PR also changes the documented invariant.
+        Integration tests (integration and sshintegration build tags) must fail, not skip, when a prerequisite is missing, and must use disposable resources and isolated state.
+    - path: "docs/**/*.md"
+      instructions: |
+        Docs describe what the code does now and use the terms in GLOSSARY.md. Check that every stated invariant cites a function or test that exists and still enforces it.
+        Behavior that is not built must sit under a Planned heading.
+        Flag a behavior change in the same PR that leaves its doc stale.
 chat:
   auto_reply: false
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    # Component docs state each invariant and the code or test that enforces it.
+    filePatterns:
+      - "docs/*.md"
+      - "docs/adr/*.md"
+      - "GLOSSARY.md"
