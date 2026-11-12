@@ -76,7 +76,7 @@ reviews:
         - deletes a job lease before ps shows no live group members, or widens the reaped-leader exception recorded in docs/adr/0002-reclaim-with-proof.md (known limitations F2 and F3 are in verification/findings.md; changing them is a behavior change);
         - breaks FIFO with no backfill, or holds the state lock while waiting or while the child runs;
         - lets a job deadline move after admission;
-        - changes the exit-code contract: the child's code passes through after start; dibs's 1 and 2 only before start; 75 when no slot frees within --wait; 124 only when the deadline killed a running child; cleanup errors go to stderr and never replace the child's code;
+        - changes the exit-code contract: the child's code passes through after start; dibs's 1 and 2 only before start; 75 when no slot frees within --wait; 124 when the deadline fires before the child is confirmed exited, including when completion cannot be verified at the deadline even though the child already exited; cleanup errors go to stderr and never replace the child's code;
         - reaps the child before group cleanup (waitChildExit must not reap).
     - path: "internal/remote/ssh.go"
       instructions: |
