@@ -255,9 +255,9 @@ exit 3 with a stable `reason` when dibs refuses for safety and changes nothing.
 Every other invocation keeps its existing output and exit codes. The
 [consumer contract](docs/consumer-contract.md) lists every status and reason,
 and maps the lifecycle of a supervisor, an agent session, a CI job, or a script
-onto these commands. This contract change moves `extend` refusal exit codes from
-1 to 3 and replaces `release`'s previous free-form statuses with `preview`,
-`released`, and `already_done`.
+onto these commands. This contract change moves every `extend` refusal from exit
+1 to exit 3, and replaces `release`'s previous free-form statuses with
+`preview`, `released`, and `already_done`.
 
 ## Run a local job
 

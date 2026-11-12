@@ -128,10 +128,12 @@ Examples:
   dibs ps
   dibs who --owner pid:1234 --json`,
 	"extend": `dibs extend <id> --ttl D [--axi | --json]
-Set expiry to now + D (positive Go duration). Only an unexpired lease with a
-verified live owner on this machine can be extended. It cannot be resurrected.
-Status: renewed. Refusal reasons: not_found, wrong_machine, expired, owner_dead,
-owner_unknown, job_deadline. Refusals exit 3; operation failures exit 1.
+Set expiry to now + D (positive Go duration). Only a live owner on this machine
+can renew. An unprotected expired lease cannot be renewed (reason: expired); a
+--protect-live-owner lease reattaches after expiry only when its pinned resource
+is present (status: reattached). Refusal reasons: not_found, wrong_machine,
+expired, owner_dead, owner_unknown, resource_absent, resource_unknown,
+job_deadline. Refusals exit 3; operation failures exit 1.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json`,

@@ -111,7 +111,7 @@ With `--key`, `keyed` runs first, right after the lock: a lease on this machine 
 - The lease is a job reservation (`Reservation != nil`). Job deadlines never move.
 - The lease is reclaimable, or its owner is not `alive`.
 
-An unprotected expired lease cannot come back. A protected lease can reattach after expiry only when its owner is alive and its pinned resource still exists; the result is `status: reattached`. Protected renewal refusals for owner or resource state use contract 1 and exit 3 with stable reasons; other extend refusals keep exit 1. When owner state is dead or unknown, that reason takes precedence over expiry. Renewal may be repeated on the same lease. Test: `TestExtendRefusalReasons`, `TestProtectedReclaimAndRenew`.
+An unprotected expired lease cannot come back. A protected lease can reattach after expiry only when its owner is alive and its pinned resource still exists; the result is `status: reattached`. Every renewal refusal uses contract 1 and exit 3 with a stable reason; exit 1 is reserved for operation failures. Protected late renewals distinguish `resource_absent` and `resource_unknown`. When owner state is dead or unknown, that reason takes precedence over expiry. Renewal may be repeated on the same lease. Test: `TestExtendRefusalReasons`, `TestProtectedReclaimAndRenew`.
 
 ### Release
 

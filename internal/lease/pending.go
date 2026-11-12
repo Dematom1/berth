@@ -17,11 +17,32 @@ import (
 const LeaseLabel = "io.dibs.lease"
 
 // Refusal is a safety refusal that changed nothing. Reason is a stable contract value.
-type Refusal struct{ Reason, Message string }
+type Refusal struct {
+	Reason, Message string
+	Cause           error
+}
 
-func (r *Refusal) Error() string { return r.Message }
+func (r *Refusal) Error() string {
+	message := r.Message
+	if message == "" {
+		message = map[string]string{
+			OwnerDead:       "renew refused: the lease owner is dead; the lease is retained for reclaim",
+			OwnerUnknown:    "renew refused: the lease owner cannot be verified; the lease is retained and not reclaimable",
+			ResourceAbsent:  "renew refused: the expired lease's resource is gone; the lease is retained",
+			ResourceUnknown: "renew refused: the expired lease's resource cannot be verified; the lease is retained",
+			"wrong_machine": "run dibs extend on the lease's machine",
+			"job_deadline":  "job deadlines cannot be extended; start a new dibs job with --timeout",
+			"expired":       "lease is expired; release it and acquire again",
+		}[r.Reason]
+	}
+	if r.Cause != nil {
+		message += ": " + r.Cause.Error()
+	}
+	return message
+}
+func (r *Refusal) Unwrap() error { return r.Cause }
 
-func refuse(reason, message string) error { return &Refusal{reason, message} }
+func refuse(reason, message string) error { return &Refusal{Reason: reason, Message: message} }
 
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+=-]{0,199}$`)
 

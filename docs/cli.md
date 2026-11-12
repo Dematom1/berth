@@ -124,7 +124,7 @@ Rules that the code enforces:
 - `dibs sweep --confirm` exits 1 when any eligible lease failed cleanup, and still prints the full result.
 - The output mode never changes the exit code.
 
-The versioned consumer contract returns exit 3 for safety refusals, with a stable `reason` field. `extend` and `release` join `reconcile`, `reclaim`, and `explain`, as do invocations using `--pending` or `--key`. Release status strings changed to stable enum values. Protected-renewal owner/resource refusals use exit 3; unprotected renewal refusals and other protected-renewal failures retain exit 1. `contractCodes` in `internal/cli/help.go` states the contract in command help, and [Consumer contract](consumer-contract.md#exit-codes) lists the reasons. Test: `TestRenewReleaseContractModes`.
+The versioned consumer contract returns exit 3 for safety refusals, with a stable `reason` field. `extend` and `release` join `reconcile`, `reclaim`, and `explain`, as do invocations using `--pending` or `--key`. Every extend refusal now uses exit 3 with a stable reason; exit 1 is reserved for operation failures. Protected late renewals retain the specific `resource_absent` and `resource_unknown` reasons. Release status strings changed to stable enum values. `contractCodes` in `internal/cli/help.go` states the contract in command help, and [Consumer contract](consumer-contract.md#exit-codes) lists the reasons. Test: `TestRenewReleaseContractModes`.
 
 Tests: `TestJobsRealProcesses` subtests "exit codes and transparent argv", "wait exhaustion does not start child", and "deadline flag class and grandchildren", `TestOutputProcessesAndTTY`, and the `TestSSHIntegration` subtests for 255, 75, and 76.
 

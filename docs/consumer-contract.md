@@ -87,7 +87,7 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 | `create --key` | `created`, `already_done` |
 | `adopt --key` | `adopted`, `already_done` |
 | `adopt --pending` | `bound`, `already_done` |
-| `extend` | `renewed` |
+| `extend` | `renewed`, `reattached` |
 | `release` | `preview`, `released`, `already_done` |
 | `reconcile` | top level `preview` or `reconciled`; per lease in `results[]`: `bindable`, `bound`, `absent`, `ambiguous`, `conflict`, `unknown`, `already_done` |
 | `reclaim` | `preview`, `reclaimed`, `already_done` |
@@ -106,7 +106,8 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 | `key_conflict` | The key names a lease for a different request | Repeat the original request, or use a new key |
 | `handle_exists` | `create --pending --name` named a resource that already exists | Use `dibs adopt` for an existing resource |
 | `handle_mismatch` | The handle differs from the one the pending lease recorded | Pass the recorded handle; `dibs explain ID` shows it |
-| `resource_absent` | The resource to register or adopt does not exist | Create it, then retry |
+| `resource_absent` | The resource to register or adopt does not exist, including a protected lease whose resource disappeared before late renewal | Create it, then retry after resolving the old lease |
+| `resource_unknown` | A protected lease's resource presence could not be verified during late renewal | Retry when the resource tool is reachable; the lease is retained |
 | `ambiguous` | More than one resource matches a pending lease | Register the right one with `dibs adopt T HANDLE --pending ID` |
 | `owner_alive` | `reclaim` found the owner alive, even if the lease expired | Leave it, or release it as its owner |
 | `owner_unknown` | `reclaim` could not verify the owner, or `extend` could not verify a live owner | Retry later; the lease is kept |
@@ -154,7 +155,7 @@ If sweep forgets a pending lease while its caller is still building the resource
 
 ## Renew and heartbeat
 
-`dibs extend ID --ttl D` renews an unexpired lease whose owner is alive. For a lease created with `--protect-live-owner`, a late renewal reattaches only when its owner is alive and the pinned resource still exists; it reports `status: reattached`. Otherwise success reports `status: renewed`. Both succeed with exit 0 and may be repeated. Contract refusals use exit 3. Protected renewals also use exit 3 with `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`; other protected renewal failures and unprotected renew refusals retain their existing exit 1 behavior. When both expiry and owner status would refuse renewal, dead or unknown owner takes precedence. Exit 1 means the operation itself failed. Never answer a refused renewal by creating a second lease for a resource that the first lease still covers.
+`dibs extend ID --ttl D` renews an unexpired lease whose owner is alive. For a lease created with `--protect-live-owner`, a late renewal reattaches only when its owner is alive and the pinned resource still exists; it reports `status: reattached`. Otherwise success reports `status: renewed`. Both succeed with exit 0 and may be repeated. Every extend refusal uses exit 3 and a stable reason: `not_found`, `wrong_machine`, `expired`, `owner_dead`, `owner_unknown`, or `job_deadline` for ordinary renewals, and `resource_absent` or `resource_unknown` for protected late renewals. When both expiry and owner status would refuse renewal, dead or unknown owner takes precedence. Exit 1 means the operation itself failed. Never answer a refused renewal by creating a second lease for a resource that the first lease still covers.
 
 Protection is enabled per lease with `--protect-live-owner`, gated by `DIBS_LIVE_OWNER_PROTECTION=1` or user config `live_owner_protection: true`. Sweep and job admission spare alive and unknown owners only for protected leases; unprotected leases retain expiry-based reclamation. `reclaim` always requires proven owner death.
 
@@ -252,6 +253,5 @@ New owner kinds come through `owner.Definition{Name, Bind, Check}` registered in
 
 ## Planned
 
-- Live-owner protection: an opt-in per-lease flag under which only proven owner death reclaims the lease through sweep and job admission, and `extend` returns `status: renewed` or `reattached`, or exit 3 with `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`.
 - Terminal and pooled-worktree adapters, which plug into the adoption seam above.
 - Contract surfaces for `--machine`. The new commands run on the local machine only.

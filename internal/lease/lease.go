@@ -54,10 +54,7 @@ func reclaimable(l Lease, host string, now time.Time, check func(ownerpkg.Refere
 	return live == ownerpkg.Dead || !now.Before(l.Expires), live
 }
 
-type RenewRefusal struct {
-	Reason string
-	Cause  error
-}
+type RenewRefusal = Refusal
 
 const (
 	OwnerDead       = "owner_dead"
@@ -68,29 +65,26 @@ const (
 	Reattached      = "reattached"
 )
 
-func (r *RenewRefusal) Error() string {
-	message := map[string]string{OwnerDead: "renew refused: the lease owner is dead; the lease is retained for reclaim", OwnerUnknown: "renew refused: the lease owner cannot be verified; the lease is retained and not reclaimable", ResourceAbsent: "renew refused: the expired lease's resource is gone; the lease is retained", ResourceUnknown: "renew refused: the expired lease's resource cannot be verified; the lease is retained"}[r.Reason]
-	if r.Cause != nil {
-		message += ": " + r.Cause.Error()
-	}
-	return message
-}
-func (r *RenewRefusal) Unwrap() error { return r.Cause }
-
 func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check func(ownerpkg.Reference, time.Time) ownerpkg.Liveness, present func(Lease) (bool, error)) (string, error) {
 	if ttl <= 0 {
 		return "", errors.New("--ttl must be positive")
 	}
 	if l.Machine != host {
-		return "", errors.New("run dibs extend on the lease's machine")
+		return "", &RenewRefusal{Reason: "wrong_machine"}
 	}
 	if l.Reservation != nil {
-		return "", errors.New("job deadlines cannot be extended; start a new dibs job with --timeout")
+		return "", &RenewRefusal{Reason: "job_deadline"}
 	}
 	status := Renewed
 	if !l.ProtectLiveOwner {
 		if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != ownerpkg.Alive {
-			return "", errors.New("lease is expired, dead, or its owner cannot be verified; create a new lease")
+			reason := "expired"
+			if live == ownerpkg.Dead {
+				reason = OwnerDead
+			} else if live == ownerpkg.Unknown {
+				reason = OwnerUnknown
+			}
+			return "", &RenewRefusal{Reason: reason}
 		}
 	} else {
 		switch check(l.Owner, now) {

@@ -50,15 +50,59 @@ func TestNewerStateRefusedWithUpgradeHint(t *testing.T) {
 }
 
 func TestProtectedLeaseSavesAsVersionThree(t *testing.T) {
-	s := testStore(t)
+	m := testManager()
+	m.options.Directory = t.TempDir()
+	s, err := m.openStore(context.Background(), m.options.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	l := testLease(t)
 	l.ProtectLiveOwner = true
 	s.Leases[l.ID] = l
 	if err := s.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if s.Version != 3 {
-		t.Fatalf("protected-only ledger saved as version %d", s.Version)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	readState := func() struct {
+		Version int              `json:"version"`
+		Leases  map[string]Lease `json:"leases"`
+	} {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(m.options.Directory, "state.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct {
+			Version int              `json:"version"`
+			Leases  map[string]Lease `json:"leases"`
+		}
+		if err := json.Unmarshal(data, &state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	if state := readState(); state.Version != 3 || !state.Leases[l.ID].ProtectLiveOwner {
+		t.Fatalf("persisted protected state = %+v", state)
+	}
+	reopened, err := m.openStore(context.Background(), m.options.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Version != 3 || !reopened.Leases[l.ID].ProtectLiveOwner {
+		reopened.Close()
+		t.Fatalf("protected state did not reload: %+v", reopened.Leases)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := m.Release(context.Background(), ReleaseRequest{ID: l.ID, Confirm: true}); err != nil || !result.Released {
+		t.Fatalf("release protected lease: %+v %v", result, err)
+	}
+	if state := readState(); state.Version != 2 || len(state.Leases) != 0 {
+		t.Fatalf("state after final protected release = %+v", state)
 	}
 }
 

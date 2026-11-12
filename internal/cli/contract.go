@@ -72,7 +72,10 @@ func refusalFields(value map[string]any, r *leasepkg.Refusal, id string) map[str
 	if id != "" {
 		hint = strings.ReplaceAll(hint, "<id>", id)
 	}
-	value["contract"], value["error"], value["reason"] = contractVersion, r.Message, r.Reason
+	value["contract"], value["error"], value["reason"] = contractVersion, r.Error(), r.Reason
+	if id != "" {
+		value["id"] = id
+	}
 	value["code"], value["exit_code"], value["help"] = "COMMAND_FAILED", 3, []string{hint}
 	return value
 }
@@ -89,13 +92,6 @@ func (app application) contractError(out io.Writer, mode outputpkg.Mode, command
 }
 
 func (app application) contractOperationError(out io.Writer, mode outputpkg.Mode, command, id string, err error) int {
-	var renewal *leasepkg.RenewRefusal
-	if errors.As(err, &renewal) {
-		hint := reasonHints[renewal.Reason]
-		value := map[string]any{"contract": contractVersion, "code": "COMMAND_FAILED", "exit_code": 3, "error": renewal.Error(), "reason": renewal.Reason, "id": id, "help": []string{hint}}
-		outputpkg.Emit(out, mode, value)
-		return 3
-	}
 	var refusal *leasepkg.Refusal
 	if errors.As(err, &refusal) {
 		return app.contractError(out, mode, command, id, err)
