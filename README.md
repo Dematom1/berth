@@ -559,14 +559,18 @@ the invoking user. State contains resolved Compose values, which may include
 secrets. Keep this directory on a local filesystem, not a network share.
 
 State schema version 2 adds explicitly adopted resource identities and stable
-machine identities. Any command that opens version 1 state migrates it to
-version 2, preserving existing lease records (see below). Older binaries reject
-version 2 rather than interpreting adopted names as generated ones. Keep a
-compatible binary while leases remain. State records the version of the dibs
-binary that last saved it. A binary that finds a state version newer than it
-supports exits 1, keeps the state unchanged, and names the version found, the
-recorded writer version, and the newest version it supports. Upgrade dibs, and
-run `which -a dibs berth` to find a stale binary earlier on `PATH`.
+machine identities. Any command that opens version 1 state under the state lock
+migrates it to version 2, preserving existing lease records (see below).
+Read-only `orphans` inventory reads a snapshot without migrating it. Older
+binaries reject version 2 rather than interpreting adopted names as generated
+ones. Keep a compatible binary while leases remain. State records the version
+of the dibs binary that last saved it as `writer_version`. A binary that
+records `writer_version` and finds a state version newer than it supports exits
+1, keeps the state unchanged, and names the version found, the recorded writer
+version, and the newest version it supports. Upgrade dibs, and run
+`which -a dibs berth` to find a stale binary earlier on `PATH`. Binaries built
+before `writer_version` existed report `unsupported or incomplete state format`
+for the same state and do not name the versions.
 
 A stable `lock` file serializes ordinary readers and writers through kernel `flock`.
 `orphans` reads an atomic state snapshot without locks or writes. Its answer is

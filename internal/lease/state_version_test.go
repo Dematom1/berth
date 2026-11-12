@@ -39,11 +39,13 @@ func TestNewerStateRefusedWithUpgradeHint(t *testing.T) {
 	if got, err := os.ReadFile(path); err != nil || string(got) != string(data) {
 		t.Fatalf("newer state changed: %s %v", got, err)
 	}
-	if err := os.WriteFile(path, []byte(`{"version":3,"leases":{}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.openStore(context.Background(), dir); err == nil || strings.Contains(err.Error(), "written by") || !strings.Contains(err.Error(), "state version 3 is newer") {
-		t.Fatalf("refusal without recorded writer: %v", err)
+	for _, state := range []string{`{"version":3,"leases":{}}`, `{"version":3,"writer_version":{},"leases":[]}`} {
+		if err := os.WriteFile(path, []byte(state), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := m.openStore(context.Background(), dir); err == nil || strings.Contains(err.Error(), "written by") || !strings.Contains(err.Error(), "state version 3 is newer") || !strings.Contains(err.Error(), "`which -a dibs berth`") {
+			t.Fatalf("refusal without usable writer %s: %v", state, err)
+		}
 	}
 }
 

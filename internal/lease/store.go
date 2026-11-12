@@ -160,13 +160,15 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 // decode refuses a newer schema before reading fields whose meaning it may change.
 func (s *store) decode(data []byte) error {
 	var header struct {
-		Version int    `json:"version"`
-		Writer  string `json:"writer_version"`
+		Version int             `json:"version"`
+		Writer  json.RawMessage `json:"writer_version"`
 	}
 	if json.Unmarshal(data, &header) == nil && header.Version > stateVersion {
+		// writer_version is optional diagnostics; a malformed one must not mask the refusal.
+		var recorded string
 		writer := ""
-		if header.Writer != "" {
-			writer = " written by dibs " + header.Writer
+		if json.Unmarshal(header.Writer, &recorded) == nil && recorded != "" {
+			writer = " written by dibs " + recorded
 		}
 		return fmt.Errorf("state version %d%s is newer than this binary supports (state version %d, dibs %s); upgrade dibs, and run `which -a dibs berth` to find a stale binary earlier on PATH", header.Version, writer, stateVersion, s.binary)
 	}

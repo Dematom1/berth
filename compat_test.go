@@ -95,7 +95,7 @@ func TestBerthCommandMatchesDibs(t *testing.T) {
 		if gotOut != wantOut || gotCode != wantCode {
 			t.Fatalf("%v: berth stdout/exit %q/%d, dibs %q/%d", args, gotOut, gotCode, wantOut, wantCode)
 		}
-		if strings.Contains(wantErr, "deprecated") || strings.TrimPrefix(gotErr, "warning: berth command deprecated after berth renamed to dibs; run dibs (berth retained for one minor release)\n") != wantErr {
+		if strings.Contains(wantErr, "deprecated") || gotErr != "warning: berth command deprecated after berth renamed to dibs; run dibs (berth retained for one minor release)\n"+wantErr {
 			t.Fatalf("%v: berth stderr %q, dibs stderr %q", args, gotErr, wantErr)
 		}
 	}
