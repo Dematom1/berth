@@ -42,6 +42,30 @@ func ResolveDockerContext(ctx context.Context, name string, run CommandRunner) (
 	return ResourceRef{Context: name, DockerHost: endpoint}, nil
 }
 
+// DockerExists reports whether a pinned kind, k3d, or Compose resource is present.
+// An adopted resource also requires its context to still resolve to the pinned endpoint.
+func DockerExists(ctx context.Context, r ResourceRef, adapter string, run CommandRunner) (bool, error) {
+	if r.DockerHost != "" {
+		current, err := ResolveDockerContext(ctx, r.Context, run)
+		if err != nil {
+			return false, err
+		}
+		if current.DockerHost != r.DockerHost {
+			return false, errors.New("docker context no longer points at the resource's pinned endpoint")
+		}
+	}
+	rows, err := DiscoverDocker(ctx, r, adapter, run)
+	if err != nil {
+		return false, err
+	}
+	for _, row := range rows {
+		if row["name"] == r.Name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func DiscoverDocker(ctx context.Context, r ResourceRef, adapter string, run CommandRunner) ([]map[string]any, error) {
 	label := map[string]string{"kind": "io.x-k8s.kind.cluster", "k3d": "k3d.cluster", "compose": "com.docker.compose.project"}[adapter]
 	groups := map[string]map[string]any{}

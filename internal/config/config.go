@@ -34,6 +34,8 @@ type Config struct {
 	Classes    map[string]Class  `json:"classes"`
 	Machines   map[string]Target `json:"machines"`
 	PROwner    bool              `json:"pr_owner"`
+	// LiveOwnerProtection allows create and adopt to accept --protect-live-owner.
+	LiveOwnerProtection bool `json:"live_owner_protection"`
 }
 
 func hostMemory() (int64, error) {
@@ -160,14 +162,26 @@ func read() ([]byte, bool, error) {
 	return data, err == nil, err
 }
 
-// PROwner reports the pr_owner opt-in without probing host memory; a missing or unreadable config leaves it off.
-func PROwner() bool {
-	data, found, err := read()
-	var c struct {
-		PROwner bool `json:"pr_owner"`
-	}
-	return err == nil && found && json.Unmarshal(data, &c) == nil && c.PROwner
+type optIns struct {
+	PROwner             bool `json:"pr_owner"`
+	LiveOwnerProtection bool `json:"live_owner_protection"`
 }
+
+// readOptIns reads opt-ins without probing host memory; a missing or unreadable config leaves them off.
+func readOptIns() optIns {
+	data, found, err := read()
+	var c optIns
+	if err != nil || !found || json.Unmarshal(data, &c) != nil {
+		return optIns{}
+	}
+	return c
+}
+
+// PROwner reports the pr_owner opt-in.
+func PROwner() bool { return readOptIns().PROwner }
+
+// LiveOwnerProtection reports the live_owner_protection opt-in.
+func LiveOwnerProtection() bool { return readOptIns().LiveOwnerProtection }
 
 // SSH config aliases may supply proxying, keys, and host-key policy. Dibs never
 // disables host-key checking or falls back to interactive authentication.

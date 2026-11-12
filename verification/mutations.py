@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MUTATIONS = [
     ("unknown", "internal/lease/lease.go", "live == ownerpkg.Dead || !now.Before(l.Expires)",
      "live == ownerpkg.Dead || live == ownerpkg.Unknown || !now.Before(l.Expires)", "^TestFormalLeaseDomain$"),
+    ("protected", "internal/lease/lease.go", "return live == ownerpkg.Dead, live",
+     "return live == ownerpkg.Dead || !now.Before(l.Expires), live", "^TestFormalLeaseDomain$"),
     ("lock", "internal/lease/store.go", "err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)",
      "err = nil", "^TestStoreDurabilityLockAndCorruption$"),
     ("budget", "internal/lease/job_admission.go", "return request.Cores <= capacity.Cores && request.Memory <= capacity.Memory",

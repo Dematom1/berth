@@ -4,6 +4,8 @@ status: accepted
 
 # Lease lifecycle and TTL-wins
 
+[ADR 0008](0008-live-owner-protection.md) amends this decision for leases that opt into live-owner protection.
+
 A lease is durable cleanup intent, saved before managed resource creation so interrupted or failed creation remains reclaimable. On the lease's machine, owner death **or** expiry permits reclaim: expiry wins even when the owner is alive or unknown, while unknown liveness alone does not permit reclaim. This hard backstop prevents a stale ownership signal from keeping resources indefinitely, without treating a failed owner check as proof of death.
 
 R-B3 requires touching a heartbeat file at most every staleness/3 and extending a lease at the latest when one third of its TTL remains. Heartbeat refresh does not extend expiry. `extend --ttl D` sets expiry to now plus D only for an unexpired lease with a verified live owner on its own machine. It cannot resurrect an expired lease or extend a job deadline.

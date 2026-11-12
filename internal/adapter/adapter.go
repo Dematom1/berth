@@ -55,6 +55,9 @@ type Definition struct {
 	Prepare       func(context.Context, PrepareRequest) (ResourceRef, error)
 	Validate      func(string, Metadata, ResourceRef) error
 	Env           func(ResourceRef) Environment
+	// Exists reports whether the pinned resource is present; an error means unknown.
+	// Optional: without it a protected lease cannot reattach after expiry.
+	Exists func(context.Context, Target) (bool, error)
 }
 
 type Registry struct{ definitions []Definition }

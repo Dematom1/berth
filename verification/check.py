@@ -60,10 +60,10 @@ def main():
             raise SystemExit(f"FAIL {name}: unexpected TLC outcome; see {logs}")
         print(f"{'COUNTEREXAMPLE' if violation else 'PASS'} {name}", flush=True)
 
-    lease = {"UnsafeUnknown": False}
+    lease = {"UnsafeUnknown": False, "UnsafeProtected": False}
     admission = {"BypassFIFO": False, "IgnoreBudget": False}
     job = dict.fromkeys(["SkipDurableGate", "DropOnFailure", "OverwriteResult", "WrongDeadline", "IgnoreEOF"], False)
-    check("lease", "Lease", lease, ["ForeignSafe", "UnknownSafe", "FailureRetains"])
+    check("lease", "Lease", lease, ["ForeignSafe", "UnknownSafe", "FailureRetains", "ProtectedSafe"])
     check("admission", "Admission", admission, ["BudgetSafe", "NoBackfill", "QueueUnique"])
     check("job-session", "JobSession", job,
           ["DurableBeforeExec", "FailureRetains", "CleanupBeforeDelete", "CompletionWins", "ReceivedResult"])
@@ -80,6 +80,7 @@ def main():
     # Sensitivity checks: each passing safety family must reject a broken model.
     for name, module, constants, flag, invariant in [
         ("unknown", "Lease", lease, "UnsafeUnknown", "UnknownSafe"),
+        ("protected", "Lease", lease, "UnsafeProtected", "ProtectedSafe"),
         ("fifo", "Admission", admission, "BypassFIFO", "NoBackfill"),
         ("budget", "Admission", admission, "IgnoreBudget", "BudgetSafe"),
         ("durable", "JobSession", job, "SkipDurableGate", "DurableBeforeExec"),

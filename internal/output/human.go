@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -40,6 +41,18 @@ func humanValue(key string, value any, now time.Time) string {
 	if key == "age" {
 		return fmt.Sprint(value) + " ago"
 	}
+	// Print labels in their --label key=value form, not Go map syntax.
+	if labels, ok := value.(map[string]string); ok {
+		if len(labels) == 0 {
+			return "-"
+		}
+		pairs := make([]string, 0, len(labels))
+		for k, v := range labels {
+			pairs = append(pairs, k+"="+v)
+		}
+		sort.Strings(pairs)
+		return humanText(strings.Join(pairs, ", "))
+	}
 	return humanText(fmt.Sprint(value))
 }
 
@@ -48,6 +61,10 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 		switch key {
 		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code":
 			continue
+		case "protect_live_owner":
+			if value[key] == true {
+				fmt.Fprintln(w, "protected: only proven owner death reclaims this lease")
+			}
 		case "budget":
 			fmt.Fprintln(w, value[key].(map[string]any)["summary"])
 		case "evidence":
@@ -82,6 +99,9 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 				cells := make([]string, len(fields))
 				for i, field := range fields {
 					cells[i] = humanValue(field, row[field], now)
+					if field == "liveness" && row["protect_live_owner"] == true {
+						cells[i] += ", protected"
+					}
 				}
 				fmt.Fprintln(table, strings.Join(cells, "\t"))
 			}

@@ -18,47 +18,52 @@ import (
 // Executable bindings, not a proof of the Go binary. Independent truth-table
 // oracle: dead is reclaimable; unknown needs expiry; foreign is never eligible.
 // Alive+expired is a KNOWN counterexample F1, not the requested safety promise.
+// A protected lease is reclaimable only on proven death, and a live owner may
+// renew it after expiry while its resource is present.
 
 func TestFormalLeaseDomain(t *testing.T) {
 	for _, live := range []ownerpkg.Liveness{ownerpkg.Alive, ownerpkg.Dead, ownerpkg.Unknown} {
 		for _, local := range []bool{false, true} {
 			for _, expired := range []bool{false, true} {
-				l := testLease(t)
-				host := "foreign"
-				if local {
-					host = l.Machine
-				}
-				now := testNow
-				if expired {
-					now = l.Expires
-				}
-				check := func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return live }
-				want := false
-				if local {
-					switch live {
-					case ownerpkg.Dead:
-						want = true
-					case ownerpkg.Alive, ownerpkg.Unknown:
-						want = expired
+				for _, protected := range []bool{false, true} {
+					l := testLease(t)
+					l.ProtectLiveOwner = protected
+					host := "foreign"
+					if local {
+						host = l.Machine
 					}
-				}
-				got, _ := reclaimable(l, host, now, check)
-				if got != want {
-					t.Fatalf("local=%v expired=%v live=%s: reclaim=%v want=%v", local, expired, live, got, want)
-				}
-				for _, job := range []bool{false, true} {
-					for _, ttl := range []time.Duration{-1, 0, time.Minute} {
-						copy := l
-						if job {
-							copy.Reservation = &ReservationView{}
+					now := testNow
+					if expired {
+						now = l.Expires
+					}
+					check := func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return live }
+					want := false
+					if local {
+						switch live {
+						case ownerpkg.Dead:
+							want = true
+						case ownerpkg.Alive, ownerpkg.Unknown:
+							want = expired && !protected
 						}
-						err := extendLease(&copy, host, ttl, now, check)
-						allowed := local && live == ownerpkg.Alive && !expired && !job && ttl > 0
-						if (err == nil) != allowed {
-							t.Fatalf("extend local=%v expired=%v live=%s job=%v ttl=%v: %v", local, expired, live, job, ttl, err)
-						}
-						if !allowed && !copy.Expires.Equal(l.Expires) {
-							t.Fatal("rejected extension changed deadline")
+					}
+					got, _ := reclaimable(l, host, now, check)
+					if got != want {
+						t.Fatalf("local=%v expired=%v live=%s protected=%v: reclaim=%v want=%v", local, expired, live, protected, got, want)
+					}
+					for _, job := range []bool{false, true} {
+						for _, ttl := range []time.Duration{-1, 0, time.Minute} {
+							copy := l
+							if job {
+								copy.Reservation = &ReservationView{}
+							}
+							_, err := extendLease(&copy, host, ttl, now, check, func(Lease) (bool, error) { return true, nil })
+							allowed := local && live == ownerpkg.Alive && (!expired || protected) && !job && ttl > 0
+							if (err == nil) != allowed {
+								t.Fatalf("extend local=%v expired=%v live=%s job=%v ttl=%v: %v", local, expired, live, job, ttl, err)
+							}
+							if !allowed && !copy.Expires.Equal(l.Expires) {
+								t.Fatal("rejected extension changed deadline")
+							}
 						}
 					}
 				}

@@ -30,8 +30,12 @@ The positive lifetime used to set a lease's expiry, measured from creation or re
 _Avoid_: heartbeat staleness, admission wait
 
 **Expiry**:
-The instant at which a lease becomes reclaimable regardless of owner liveness, on its authoritative machine.
+The instant at which a lease becomes reclaimable regardless of owner liveness, on its authoritative machine, unless the lease has live-owner protection.
 _Avoid_: owner death, automatic deletion
+
+**Live-owner protection**:
+A per-lease opt-in, available once the machine enables the `live_owner_protection` setting, under which only proven owner death makes the lease reclaimable, and a live owner may renew it after expiry while its resource is still present.
+_Avoid_: pinning, lease lock, keep-alive
 
 **Heartbeat**:
 A periodically refreshed indication that an owner remains present, with a freshness limit independent of the lease's expiry.

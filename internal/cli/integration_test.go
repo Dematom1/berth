@@ -253,3 +253,44 @@ func TestIntegrationCompose(t *testing.T) {
 		t.Fatalf("stack survived cleanup: %s, %v", out, err)
 	}
 }
+
+// A supervisor outage lets a protected lease expire: sweep keeps the live
+// owner's real resource, a late renew reattaches, and a vanished resource refuses.
+func TestIntegrationProtectedLeaseReattach(t *testing.T) {
+	for _, driver := range []string{"kind", "k3d", "compose"} {
+		t.Run(driver, func(t *testing.T) {
+			integrationReady(t, driver)
+			enableProtection(t)
+			t.Setenv("DOCKER_HOST", "")
+			args := []string{"create", "--adapter", driver, "--ttl", "1s", "--protect-live-owner"}
+			if driver == "compose" {
+				file := filepath.Join(t.TempDir(), "compose.yaml")
+				if err := os.WriteFile(file, []byte("services:\n  test:\n    image: alpine:3.23\n    command: [sleep, '600']\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--file", file)
+			}
+			id := invoke(t, 0, args...)["record"].(map[string]any)["id"].(string)
+			expire := func() {
+				l, _, err := testApplication().leases.Get(context.Background(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				time.Sleep(time.Until(l.Expires) + 100*time.Millisecond)
+			}
+			expire()
+			if r := invoke(t, 0, "sweep", "--confirm"); len(r["reclaimed"].([]any)) != 0 {
+				t.Fatalf("sweep reclaimed a live owner's protected lease: %+v", r)
+			}
+			if r := invoke(t, 0, "extend", id, "--ttl", "1s"); r["status"] != "reattached" {
+				t.Fatalf("late renew of a present resource: %+v", r)
+			}
+			removeIntegrationResource(t, id)
+			expire()
+			if r := invoke(t, 3, "extend", id, "--ttl", "1h"); r["reason"] != "resource_absent" {
+				t.Fatalf("late renew of a removed resource: %+v", r)
+			}
+			invoke(t, 0, "release", id, "--confirm")
+		})
+	}
+}

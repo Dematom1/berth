@@ -15,7 +15,7 @@ type Adapter interface {
 }
 ```
 
-A `Target` carries the `ResourceRef` captured at prepare time and the lease `Metadata`: lease ID, machine, owner, expiry, and labels. A `Definition` adds what the core needs around the adapter: `Name`, `CreateAllowed`, `RequiresFile`, and the functions `Prepare`, `Validate`, `Env`, and optionally `Discover`. `NewRegistry` panics on an incomplete or duplicate definition, so a broken adapter fails at startup, not on first use.
+A `Target` carries the `ResourceRef` captured at prepare time and the lease `Metadata`: lease ID, machine, owner, expiry, and labels. A `Definition` adds what the core needs around the adapter: `Name`, `CreateAllowed`, `RequiresFile`, and the functions `Prepare`, `Validate`, `Env`, and optionally `Discover` and `Exists`. `NewRegistry` panics on an incomplete or duplicate definition, so a broken adapter fails at startup, not on first use.
 
 The callers in `internal/lease/manager.go` and `internal/lease/lease.go` enforce the contract:
 
@@ -24,6 +24,7 @@ The callers in `internal/lease/manager.go` and `internal/lease/lease.go` enforce
 - `Destroy` tolerates a resource that is partly created or already gone.
 - `Destroy` returns nil only after it has verified that the resource is gone (verify-gone). `kind`, `k3d`, and `compose` delete the resource and then list what remains. `none` has nothing to verify.
 - A `Destroy` error keeps the lease, and a later `release` or `sweep` retries it.
+- `Exists` reports whether the pinned resource is still present: `true`, `false` for proven absent, or an error for unknown. Only a late renew of a protected lease calls it. See [Live-owner protection](leases.md#live-owner-protection). `none` always reports present, because it has no resource. `kind`, `k3d`, and `compose` use `DockerExists` in `internal/adapter/inventory.go`. It runs `DiscoverDocker` on the pinned context and, when the lease pins a `DockerHost`, first requires the context to still resolve to that endpoint. An adapter without `Exists` cannot reattach a protected lease after expiry.
 
 `releaseLease` refuses a lease whose adapter is not in the registry and keeps the lease. An older binary therefore never drops a record it cannot clean up.
 

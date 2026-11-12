@@ -2,7 +2,8 @@ exit: 0
 stdout:
 dibs create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
   [--resources TEXT] [--label key=value ...] [--adapter none|kind|k3d|compose]
-  [--file PATH (required for compose)] [--quiet | -q] [--axi | --json]
+  [--file PATH (required for compose)] [--protect-live-owner]
+  [--quiet | -q] [--axi | --json]
 Owner defaults to DIBS_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
 not a Unix SID. heartbeat:<path> must already be a fresh regular file.
@@ -10,6 +11,9 @@ kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
+--protect-live-owner: sweep never reclaims while the owner is alive or unknown,
+even after expiry; only proven owner death reclaims. Use the worker's own owner.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 Examples:
   dibs create --owner pid:1234 --ttl 2h --resources '2 CPUs, test lab'
   dibs create --adapter kind --owner session:1234 --ttl 1h
@@ -18,6 +22,8 @@ Examples:
 Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
 reclaimable: a live owner missing either cadence loses its resources.
+With --protect-live-owner, only proven owner death reclaims; a late extend
+with a live owner reattaches when the resource is still present.
 Output: --axi for agents, --json for scripts (mutually exclusive).
 Default: human on terminals; AXI for pipes or DIBS_AXI=1.
 Lease commands: --full restores complete AXI records/text; JSON is always complete.

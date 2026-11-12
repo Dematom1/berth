@@ -33,6 +33,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	outputpkg.Flags(fs, &mode)
 	contextName := fs.String("context", "", "Docker context (default selected context)")
 	var owner, file string
+	var protect bool
 	var ttl time.Duration
 	stale := 15 * time.Minute
 	if command == "adopt" {
@@ -40,6 +41,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		fs.DurationVar(&ttl, "ttl", 0, "required positive lifetime")
 		fs.DurationVar(&stale, "stale", stale, "heartbeat staleness")
 		fs.StringVar(&file, "file", "", "Compose file")
+		fs.BoolVar(&protect, "protect-live-owner", false, "reclaim only on proven owner death")
 	}
 	if err := parseFlags(fs, args); err != nil {
 		return outputpkg.Error(out, mode, 2, err.Error(), help(command))
@@ -55,6 +57,9 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || owner == "" || ttl <= 0 || d.RequiresFile != (file != "") {
 			return outputpkg.Error(out, mode, 2, "require type, name, explicit --owner and positive --ttl; --file is required only for compose", help(command))
 		}
+		if protect && !liveOwnerProtectionEnabled() {
+			return outputpkg.Error(out, mode, 2, liveOwnerProtectionOff, help(command))
+		}
 		var err error
 		parsedOwner, err = app.owners.Bind(ctx, owner, stale, time.Now().UTC())
 		if err != nil {
@@ -69,7 +74,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	}
 	if command == "adopt" {
 		r.Adapter, r.Name = fs.Arg(0), fs.Arg(1)
-		l, err := app.leases.Adopt(ctx, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file})
+		l, err := app.leases.Adopt(ctx, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, ProtectLiveOwner: protect})
 		if err != nil {
 			return app.leaseError(out, mode, command, err)
 		}

@@ -17,14 +17,19 @@ Child exit 255 is preserved and is not confused with SSH failure.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
-reclaimable: a live owner missing either cadence loses its resources.`
+reclaimable: a live owner missing either cadence loses its resources.
+With --protect-live-owner, only proven owner death reclaims; a late extend
+with a live owner reattaches when the resource is still present.`
 
 var commandHelp = map[string]string{
 	"adopt": `dibs adopt <kind|k3d|compose> <name> --owner KIND:ID --ttl D
-  [--context NAME] [--file PATH (required for compose)] [--stale 15m] [--full] [--axi | --json]
+  [--context NAME] [--file PATH (required for compose)] [--stale 15m]
+  [--protect-live-owner] [--full] [--axi | --json]
 Explicitly lease an existing resource. Existence must be verified and no lease
 may already own it. Captures cleanup configuration; does not recreate resources.
 Owner and positive TTL are required. Release/sweep keep their preview defaults.
+--protect-live-owner: only proven owner death reclaims; expiry alone never does.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 Examples:
   dibs adopt kind my-lab --owner pid:1234 --ttl 1h
   dibs adopt compose my-stack --file compose.yaml --owner pid:1234 --ttl 2h`,
@@ -49,7 +54,8 @@ Examples:
   dibs env <id>`,
 	"create": `dibs create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
   [--resources TEXT] [--label key=value ...] [--adapter {{adapters}}]
-  [--file PATH (required for compose)] [--quiet | -q] [--axi | --json]
+  [--file PATH (required for compose)] [--protect-live-owner]
+  [--quiet | -q] [--axi | --json]
 Owner defaults to DIBS_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
 not a Unix SID. heartbeat:<path> must already be a fresh regular file.
@@ -57,6 +63,9 @@ kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
+--protect-live-owner: sweep never reclaims while the owner is alive or unknown,
+even after expiry; only proven owner death reclaims. Use the worker's own owner.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 Examples:
   dibs create --owner pid:1234 --ttl 2h --resources '2 CPUs, test lab'
   dibs create --adapter kind --owner session:1234 --ttl 1h
@@ -73,6 +82,10 @@ Examples:
 	"extend": `dibs extend <id> --ttl D [--json]
 Set expiry to now + D (positive Go duration). Only an unexpired lease with a
 verified live owner on this machine can be extended. It cannot be resurrected.
+A --protect-live-owner lease with a live owner also renews after expiry when its
+resource is still present (status reattached). A protected lease refused for
+reason owner_dead, owner_unknown, resource_absent or resource_unknown exits 3;
+every other refusal exits 1. A refusal leaves the lease unchanged.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json`,
@@ -85,7 +98,8 @@ Examples:
   dibs release <id> --confirm`,
 	"sweep": `dibs sweep [--confirm] [--machine NAME] [--json]
 Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
-are retained unless expired. Foreign-machine leases are always retained, even
+are retained unless expired. --protect-live-owner leases are reclaimed only on
+proven owner death. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
 Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:

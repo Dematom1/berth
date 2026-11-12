@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,10 +37,15 @@ func axiView(value map[string]any, fullCommand string) map[string]any {
 			rows := item.([]map[string]any)
 			total := len(rows)
 			shown := make([]map[string]any, 0, min(total, axiListLimit))
+			// The protection column appears only when a shown lease is protected, so unprotected tables keep their shape.
+			protected := slices.ContainsFunc(rows[:min(total, axiListLimit)], func(row map[string]any) bool { return row["protect_live_owner"] == true })
 			for _, row := range rows[:min(total, axiListLimit)] {
 				compact := map[string]any{}
 				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
 					compact[field] = row[field]
+				}
+				if protected {
+					compact["protect_live_owner"] = row["protect_live_owner"] == true
 				}
 				if text, ok := compact["resources"].(string); ok {
 					compact["resources"] = preview(text)

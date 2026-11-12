@@ -2,6 +2,7 @@ package lease
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -12,6 +13,7 @@ import (
 
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	nonepkg "github.com/Dematom1/dibs/internal/adapter/none"
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
 )
 
@@ -62,7 +64,8 @@ func TestReclaimAndExtend(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("reclaimable = %v, want %v", got, tc.want)
 			}
-			err := extendLease(&l, host, 2*time.Hour, testNow.Add(tc.elapsed), check)
+			present := func(Lease) (bool, error) { t.Fatal("unprotected extend checked resource presence"); return false, nil }
+			_, err := extendLease(&l, host, 2*time.Hour, testNow.Add(tc.elapsed), check, present)
 			canExtend := tc.live == ownerpkg.Alive && !tc.foreign && tc.elapsed < time.Hour
 			if (err == nil) != canExtend {
 				t.Fatalf("extend error = %v, canExtend = %v", err, canExtend)
@@ -72,6 +75,152 @@ func TestReclaimAndExtend(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProtectedReclaimAndRenew(t *testing.T) {
+	gone := errors.New("docker unreachable")
+	for _, tc := range []struct {
+		name      string
+		live      ownerpkg.Liveness
+		elapsed   time.Duration
+		present   bool
+		presErr   error
+		reclaim   bool
+		status    string
+		reason    string
+		checksRes bool
+	}{
+		{"live", ownerpkg.Alive, 0, true, nil, false, Renewed, "", false},
+		{"expired live owner, resource present", ownerpkg.Alive, time.Hour, true, nil, false, Reattached, "", true},
+		{"expired live owner, resource absent", ownerpkg.Alive, time.Hour, false, nil, false, "", ResourceAbsent, true},
+		{"expired live owner, resource unknown", ownerpkg.Alive, time.Hour, false, gone, false, "", ResourceUnknown, true},
+		{"unknown owner", ownerpkg.Unknown, 0, true, nil, false, "", OwnerUnknown, false},
+		{"expired unknown owner", ownerpkg.Unknown, time.Hour, true, nil, false, "", OwnerUnknown, false},
+		{"dead owner", ownerpkg.Dead, 0, true, nil, true, "", OwnerDead, false},
+		{"expired dead owner", ownerpkg.Dead, time.Hour, true, nil, true, "", OwnerDead, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := testLease(t)
+			l.ProtectLiveOwner = true
+			now := testNow.Add(tc.elapsed)
+			check := func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live }
+			if got, _ := reclaimable(l, l.Machine, now, check); got != tc.reclaim {
+				t.Fatalf("reclaimable = %v, want %v", got, tc.reclaim)
+			}
+			if got, _ := reclaimable(l, "elsewhere", now, check); got {
+				t.Fatal("foreign protected lease is reclaimable")
+			}
+			checked := false
+			present := func(Lease) (bool, error) { checked = true; return tc.present, tc.presErr }
+			before := l
+			status, err := extendLease(&l, l.Machine, 2*time.Hour, now, check, present)
+			if checked != tc.checksRes {
+				t.Fatalf("resource presence checked = %v, want %v", checked, tc.checksRes)
+			}
+			if tc.reason != "" {
+				var refusal *RenewRefusal
+				if !errors.As(err, &refusal) || refusal.Reason != tc.reason {
+					t.Fatalf("err = %v, want reason %s", err, tc.reason)
+				}
+				if tc.presErr != nil && !errors.Is(err, tc.presErr) {
+					t.Fatalf("refusal lost its cause: %v", err)
+				}
+				if l.Expires != before.Expires || l.TTL != before.TTL {
+					t.Fatal("refused renew changed the lease")
+				}
+				return
+			}
+			if err != nil || status != tc.status || !l.Expires.Equal(now.Add(2*time.Hour)) {
+				t.Fatalf("status=%q err=%v expires=%v", status, err, l.Expires)
+			}
+			// Renew is idempotent: repeating it succeeds on the same lease.
+			if again, err := extendLease(&l, l.Machine, 2*time.Hour, now, check, present); err != nil || again != Renewed {
+				t.Fatalf("repeat renew = %q, %v", again, err)
+			}
+		})
+	}
+}
+
+func TestProtectedSweepSurvivesSupervisorOutage(t *testing.T) {
+	for _, live := range []ownerpkg.Liveness{ownerpkg.Alive, ownerpkg.Unknown} {
+		s := testStore(t)
+		l := testLease(t)
+		l.ProtectLiveOwner = true
+		s.Leases[l.ID] = l
+		check := func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return live }
+		r := sweep(context.Background(), s, l.Machine, testNow.Add(24*time.Hour), true, check, testAdapters())
+		if len(s.Leases) != 1 || len(r.Eligible) != 0 {
+			t.Fatalf("live=%s: expired protected lease was reclaimed: %+v", live, r)
+		}
+	}
+	s := testStore(t)
+	l := testLease(t)
+	l.ProtectLiveOwner = true
+	s.Leases[l.ID] = l
+	r := sweep(context.Background(), s, l.Machine, testNow, true, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return ownerpkg.Dead }, testAdapters())
+	if len(s.Leases) != 0 || len(r.Reclaimed) != 1 {
+		t.Fatalf("dead owner's protected lease was not reclaimed: %+v", r)
+	}
+}
+
+func TestProtectedStateFormat(t *testing.T) {
+	dir := t.TempDir()
+	s, err := testManager().openStore(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, protected := testLease(t), testLease(t)
+	protected.ProtectLiveOwner = true
+	s.Leases[plain.ID], s.Leases[protected.ID] = plain, protected
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	data, err := os.ReadFile(filepath.Join(dir, "state.json"))
+	if err != nil || !strings.Contains(string(data), `"version": 3`) || !strings.Contains(string(data), `"protect_live_owner": true`) {
+		t.Fatalf("protected ledger not saved as format 3: %s %v", data, err)
+	}
+	s, err = testManager().openStore(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Leases[protected.ID].ProtectLiveOwner || s.Leases[plain.ID].ProtectLiveOwner {
+		t.Fatal("protection did not round-trip")
+	}
+	delete(s.Leases, protected.ID)
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	data, _ = os.ReadFile(filepath.Join(dir, "state.json"))
+	if !strings.Contains(string(data), `"version": 2`) {
+		t.Fatalf("ledger without protected leases stayed format 3: %s", data)
+	}
+	job := protected
+	job.ResourceRef.Adapter = "process"
+	job.Reservation = &ReservationView{Budget: budgetpkg.Amount{Cores: 1, Memory: 1}, Class: "default"}
+	for _, bad := range []string{
+		`{"version":2,"leases":{"` + protected.ID + `":` + leaseJSON(t, protected) + `}}`,
+		`{"version":3,"leases":{"` + job.ID + `":` + leaseJSON(t, job) + `}}`,
+		`{"version":4,"leases":{}}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(bad), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if s, err := testManager().openStore(context.Background(), dir); err == nil {
+			s.Close()
+			t.Fatalf("accepted invalid protected state: %s", bad)
+		}
+	}
+}
+
+func leaseJSON(t *testing.T, l Lease) string {
+	t.Helper()
+	data, err := json.Marshal(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 type failingAdapter struct{}
