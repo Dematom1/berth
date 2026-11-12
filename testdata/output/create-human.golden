@@ -4,7 +4,7 @@ cores: 0
 expires: in 1h0m0s
 id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 kubeconfig: /tmp/lab's kubeconfig
-labels: map[task:lab]
+labels: task=lab
 liveness: alive
 machine: lab
 memory: 0 B

@@ -26,7 +26,7 @@ All production code lives under `internal/`. `main.go` holds only the entry poin
 
 ## Rules that span components
 
-- **Never reclaim a live, unexpired owner.** Reclaim requires a dead owner or an expired lease. `unknown` liveness is never dead. See [Leases](leases.md#reclaim-rule).
+- **Never reclaim a live, unexpired owner.** Reclaim requires a dead owner or an expired lease. `unknown` liveness is never dead. A lease with live-owner protection is reclaimed only on proven owner death. See [Leases](leases.md#reclaim-rule).
 - **A record is removed only after verify-gone.** Every `Destroy` verifies that the resource is gone before dibs deletes the lease, and a failure keeps the lease for retry. The process group has one documented exception. See [Adapters](adapters.md#contract) and [Jobs](jobs.md#process-group-cleanup).
 - **Cleanup intent is durable first.** dibs saves the lease before it creates the resource. See [Leases](leases.md#create).
 - **A host acts only on its own leases.** The machine is a stable OS identity, not a hostname. See [State](state.md#machine-identity).

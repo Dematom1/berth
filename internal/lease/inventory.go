@@ -49,6 +49,8 @@ type AdoptRequest struct {
 	TTL      time.Duration
 	Resource adapterpkg.ResourceRef
 	File     string
+	// ProtectLiveOwner opts the lease out of expiry-only reclaim.
+	ProtectLiveOwner bool
 }
 
 func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, error) {
@@ -64,6 +66,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, error) {
 	if err != nil {
 		return Lease{}, err
 	}
+	l.ProtectLiveOwner = r.ProtectLiveOwner
 	d, ok := m.options.Adapters.Lookup(r.Resource.Adapter)
 	if !ok || d.Discover == nil || !adapterpkg.ValidResourceName(r.Resource.Name) || d.RequiresFile != (r.File != "") {
 		return Lease{}, errors.New("unsupported adoption target or missing Compose file")

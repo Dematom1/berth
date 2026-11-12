@@ -7,5 +7,5 @@ budget:
   used_cores: 9
   used_memory_bytes: 1073741824
 help[1]: "Run dibs --axi ps --full for all fields, complete text and all matching leases"
-leases[1]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,resource,resources}:
-  9,"2026-11-09T13:00:00Z",job,"",alive,lab,1073741824,":","process:",""
+leases[1]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,protect_live_owner,resource,resources}:
+  9,"2026-11-09T13:00:00Z",job,"",alive,lab,1073741824,":",false,"process:",""

@@ -6,7 +6,7 @@ Run `just formal` to generate full machine traces `F1-live-expiry.log`, `F2-orph
 
 ## F1: resolved by policy
 
-Authorized policy clarification R-B3: TTL expiry permits reclaim even when the owner is Alive. The verified safety property is therefore narrower: never reclaim a live owner before expiry. `NeverReclaimLive` checks that boundary. Real-code tests `TestReclaimAndExtend/expired_live_owner` and `TestSweepDecisions` retain coverage of the documented expiry behavior. No product-code change was needed.
+Authorized policy clarification R-B3: TTL expiry permits reclaim even when the owner is Alive. The verified safety property is therefore narrower: never reclaim a live owner before expiry. `NeverReclaimLive` checks that boundary. Real-code tests `TestReclaimAndExtend/expired_live_owner` and `TestSweepDecisions` retain coverage of the documented expiry behavior. No product-code change was needed. A lease that opts into live-owner protection ([ADR 0008](../docs/adr/0008-live-owner-protection.md)) is outside F1: `ProtectedSafe` checks that it is swept only on Dead evidence.
 
 ## F2: reaped leader permits forgetting a surviving group (confirmed limitation)
 

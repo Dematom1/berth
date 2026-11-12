@@ -20,11 +20,12 @@ func LeaseRecord(l leasepkg.Lease, kubeconfig string) map[string]any {
 	decoder.UseNumber()
 	_ = decoder.Decode(&record)
 	record["kubeconfig"] = kubeconfig
+	record["protect_live_owner"] = l.ProtectLiveOwner
 	return record
 }
 
 func LeaseView(l leasepkg.Lease, live ownerpkg.Liveness, now time.Time, kubeconfig string) map[string]any {
-	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Description, "resource": l.ResourceRef.Adapter + ":" + l.ResourceRef.Name, "resource_adapter": l.ResourceRef.Adapter, "resource_name": l.ResourceRef.Name, "labels": l.Labels, "kubeconfig": kubeconfig}
+	view := map[string]any{"id": l.ID, "owner": l.Owner.String(), "liveness": string(live), "machine": l.Machine, "age": now.Sub(l.Created).Round(time.Second).String(), "expires": l.Expires.Format(time.RFC3339Nano), "resources": l.Description, "resource": l.ResourceRef.Adapter + ":" + l.ResourceRef.Name, "resource_adapter": l.ResourceRef.Adapter, "resource_name": l.ResourceRef.Name, "labels": l.Labels, "kubeconfig": kubeconfig, "protect_live_owner": l.ProtectLiveOwner}
 	view["cores"], view["memory"], view["memory_bytes"], view["class"] = 0, "0B", int64(0), ""
 	if l.Reservation != nil {
 		view["cores"], view["memory"], view["memory_bytes"], view["class"] = l.Reservation.Budget.Cores, strconv.FormatInt(l.Reservation.Budget.Memory, 10)+"B", l.Reservation.Budget.Memory, l.Reservation.Class

@@ -191,3 +191,32 @@ func TestReadOnlyInventoryAndStateMigration(t *testing.T) {
 		t.Fatal("generated naming restriction removed")
 	}
 }
+func TestProtectedAdoptReattachesOnlyToPinnedEndpoint(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "")
+	for _, driver := range []string{"kind", "k3d", "compose"} {
+		t.Run(driver, func(t *testing.T) {
+			ctx := context.Background()
+			m := inventoryManager(t, driver, inventoryRunner(t, driver, "existing-lab"))
+			r := adoptionRequest(t, driver)
+			r.TTL, r.ProtectLiveOwner = time.Nanosecond, true
+			l, err := m.Adopt(ctx, r)
+			if err != nil || !l.ProtectLiveOwner {
+				t.Fatalf("protected adoption: %+v %v", l, err)
+			}
+			if _, status, err := m.Extend(ctx, l.ID, time.Nanosecond); err != nil || status != Reattached {
+				t.Fatalf("late renew on pinned endpoint = %q, %v", status, err)
+			}
+			moved := inventoryRunner(t, driver, "existing-lab")
+			m.options.Adapters = inventoryManager(t, driver, func(ctx context.Context, env []string, tool string, args ...string) ([]byte, error) {
+				if strings.Contains(strings.Join(args, " "), "context inspect") {
+					return []byte("unix:///other.sock"), nil
+				}
+				return moved(ctx, env, tool, args...)
+			}).options.Adapters
+			var refusal *RenewRefusal
+			if _, _, err := m.Extend(ctx, l.ID, time.Hour); !errors.As(err, &refusal) || refusal.Reason != ResourceUnknown {
+				t.Fatalf("renew through a moved context = %v", err)
+			}
+		})
+	}
+}

@@ -13,6 +13,7 @@ leases[1]:
     memory: 0B
     memory_bytes: 0
     owner: "pid:123"
+    protect_live_owner: false
     resource: "kind:dibs-lab"
     resource_adapter: kind
     resource_name: dibs-lab
@@ -28,6 +29,7 @@ records[1]:
     owner:
       id: "123"
       kind: pid
+    protect_live_owner: false
     resource:
       adapter: kind
       file: /tmp/lab's kubeconfig

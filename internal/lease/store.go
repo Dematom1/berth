@@ -20,8 +20,8 @@ import (
 
 var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
-// stateVersion is the newest state schema this binary reads and writes.
-const stateVersion = 2
+// stateVersion is the newest state schema this binary reads.
+const stateVersion = 3
 
 type store struct {
 	Version int `json:"version"`
@@ -192,7 +192,7 @@ func (s *store) validate() error {
 			return errors.New("invalid lease record")
 		}
 		if l.ResourceRef.Adapter == "process" {
-			if l.Reservation == nil || l.Reservation.Budget.Cores <= 0 || l.Reservation.Budget.Memory <= 0 || l.Reservation.Class == "" {
+			if l.ProtectLiveOwner || l.Reservation == nil || l.Reservation.Budget.Cores <= 0 || l.Reservation.Budget.Memory <= 0 || l.Reservation.Class == "" {
 				return errors.New("invalid job reservation")
 			}
 			if leader := l.Reservation.Leader; leader.ID != "" {
@@ -205,6 +205,9 @@ func (s *store) validate() error {
 		}
 		if l.Reservation != nil {
 			return errors.New("job reservation requires process adapter")
+		}
+		if l.ProtectLiveOwner && s.Version < 3 {
+			return errors.New("invalid live-owner protection")
 		}
 		if l.ResourceRef.Adopted && s.Version < 2 {
 			return errors.New("invalid adopted resource identity")
@@ -225,7 +228,18 @@ func (s *store) IDs() []string {
 	return ids
 }
 
+// A protected lease needs format 3 so an older binary refuses the ledger instead
+// of ignoring protection and reclaiming the lease at expiry.
 func (s *store) Save() error {
+	protected := false
+	for _, l := range s.Leases {
+		protected = protected || l.ProtectLiveOwner
+	}
+	if protected {
+		s.Version = 3
+	} else if s.Version == 3 {
+		s.Version = 2
+	}
 	s.Writer = s.binary
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

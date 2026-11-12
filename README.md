@@ -433,6 +433,45 @@ does. `extend` refuses expired leases and owners that are dead or unknown.
  dibs extend <id> --ttl 1h
 ```
 
+### Protect a live owner's lease
+
+A supervisor that renews leases for long-lived workers can opt a lease out of
+the expiry backstop. Pass `--protect-live-owner` to `create` or `adopt`. Then
+sweep reclaims the lease only when its owner is proven dead. An owner that is
+alive or unknown keeps the lease, even after expiry, so a supervisor outage
+never costs a running worker its resources. Leases without the flag behave
+exactly as above.
+
+```sh
+ id=$(dibs create --adapter kind --owner "pid:$worker_pid" --ttl 30m \
+   --protect-live-owner --quiet)
+ dibs extend "$id" --ttl 30m       # status: renewed, or reattached after expiry
+ dibs release "$id" --confirm      # explicit release needs nothing extra
+```
+
+Use the worker's own process, session, or heartbeat as the owner. If the
+supervisor's PID is the owner, or the supervisor touches the heartbeat, its
+outage reads as owner death.
+
+`extend` on a protected lease with a live owner succeeds before expiry
+(`status: renewed`). After expiry it reattaches the same lease (`status:
+reattached`) only when the adapter proves the pinned resource is still present.
+For kind, k3d, and Compose, the cluster or project must still be visible in the
+pinned Docker context, at the pinned endpoint for adopted resources. A renew
+never creates a lease. Every other refusal exits 3, leaves the lease
+unchanged, and names a `reason` in AXI and JSON output:
+
+| `reason` | Meaning | Next step |
+| --- | --- | --- |
+| `owner_dead` | The owner is proven dead | `dibs release <id> --confirm` or `dibs sweep --confirm` |
+| `owner_unknown` | The owner cannot be verified | Retry later; the lease is kept and not reclaimable |
+| `resource_absent` | The expired lease's resource is gone | `dibs release <id> --confirm`, then lease a new resource |
+| `resource_unknown` | The resource could not be checked | Retry once the resource tool is reachable |
+
+A protected lease whose owner stays unknown is never reclaimed automatically.
+It stays in `dibs ps` until someone releases it. Job reservations cannot be
+protected.
+
 Durations use Go syntax such as `30m`, `2h`, or `1h30m`. Every lease has a positive
 TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
 `extend --ttl` sets the expiry to now plus that duration.
@@ -448,7 +487,7 @@ TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
 | `dibs list`, `ls`, `ps`, or `who` | Owner, liveness, age, expiry, machine, and resource description for every lease |
 | `dibs env <id>` | Print a shell-safe kubeconfig export for a kind or k3d lease |
 | `dibs setup hooks [--remove]` | Install or remove managed agent integrations |
-| `dibs extend <id> --ttl D` | Renew an unexpired lease with a live owner |
+| `dibs extend <id> --ttl D` | Renew an unexpired lease with a live owner; a protected lease may also reattach after expiry |
 | `dibs release <id>` or `down` | Preview cleanup; `--confirm` performs it |
 | `dibs sweep` | Preview reclaim of dead-owner or expired leases; `--confirm` performs it |
 | `dibs job [--machine NAME] [flags] -- <cmd...>` | FIFO machine-budget admission, deadline, and child exit-code passthrough |
@@ -496,6 +535,7 @@ heartbeat paths, numeric PID spellings, and PR selector forms (lowercased
 | `0` | Success, including already absent releases and empty sweeps |
 | `1` | Dibs operation failed; cleanup records are retained on resource failure |
 | `2` | Invalid command, argument, or flag; no child was started |
+| `3` | `dibs extend` refused a protected lease; see `reason` |
 | Child's code | `dibs job` when its child runs to completion |
 | `124` | `dibs job` deadline killed the child (coreutils `timeout` convention) |
 | `75` | `dibs job`: no slot frees within `--wait`, `EX_TEMPFAIL` |
@@ -571,6 +611,11 @@ version, and the newest version it supports. Upgrade dibs, and run
 `which -a dibs berth` to find a stale binary earlier on `PATH`. Binaries built
 before `writer_version` existed report `unsupported or incomplete state format`
 for the same state and do not name the versions.
+
+State schema version 3 is version 2 plus at least one lease with live-owner
+protection. Older binaries reject it rather than ignoring the protection and
+reclaiming the lease at expiry. The state returns to version 2 once no
+protected lease remains.
 
 A stable `lock` file serializes ordinary readers and writers through kernel `flock`.
 `orphans` reads an atomic state snapshot without locks or writes. Its answer is

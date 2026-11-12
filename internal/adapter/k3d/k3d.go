@@ -104,6 +104,8 @@ func validate(dir string, metadata adapterpkg.Metadata, ref adapterpkg.ResourceR
 func New(run adapterpkg.CommandRunner) adapterpkg.Definition {
 	return adapterpkg.Definition{Discover: func(ctx context.Context, r adapterpkg.ResourceRef) ([]map[string]any, error) {
 		return adapterpkg.DiscoverDocker(ctx, r, "k3d", run)
+	}, Exists: func(ctx context.Context, t adapterpkg.Target) (bool, error) {
+		return adapterpkg.DockerExists(ctx, t.Ref, "k3d", run)
 	}, Name: "k3d", Adapter: k3dAdapter{run}, CreateAllowed: true, RequiresFile: false,
 		Prepare: func(ctx context.Context, r adapterpkg.PrepareRequest) (adapterpkg.ResourceRef, error) {
 			return prepare(ctx, r, run)

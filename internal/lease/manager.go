@@ -91,6 +91,8 @@ type CreateRequest struct {
 	Labels      map[string]string
 	Adapter     string
 	File        string
+	// ProtectLiveOwner opts the lease out of expiry-only reclaim.
+	ProtectLiveOwner bool
 }
 
 func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, error) {
@@ -106,6 +108,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, error) {
 	if err != nil {
 		return Lease{}, err
 	}
+	l.ProtectLiveOwner = r.ProtectLiveOwner
 	d, ok := m.options.Adapters.Lookup(r.Adapter)
 	if !ok {
 		return Lease{}, errors.New("unsupported resource adapter")
@@ -166,22 +169,32 @@ func (m *Manager) Get(ctx context.Context, id string) (Lease, bool, error) {
 	l, ok := s.Leases[id]
 	return detached(l), ok, nil
 }
-func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lease, error) {
+
+// Extend renews a lease and reports Renewed or Reattached.
+func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lease, string, error) {
 	s, host, now, err := m.open(ctx)
 	if err != nil {
-		return Lease{}, err
+		return Lease{}, "", err
 	}
 	defer s.Close()
 	l, ok := s.Leases[id]
 	if !ok {
-		return Lease{}, errors.New("lease does not exist; use dibs create for a new lease")
+		return Lease{}, "", errors.New("lease does not exist; use dibs create for a new lease")
 	}
-	if err := extendLease(&l, host, ttl, now, m.checkOwner); err != nil {
-		return Lease{}, err
+	present := func(l Lease) (bool, error) {
+		d, ok := m.options.Adapters.Lookup(l.ResourceRef.Adapter)
+		if !ok || d.Exists == nil {
+			return false, fmt.Errorf("resource adapter %q cannot verify presence", l.ResourceRef.Adapter)
+		}
+		return d.Exists(ctx, target(l))
+	}
+	status, err := extendLease(&l, host, ttl, now, m.checkOwner, present)
+	if err != nil {
+		return Lease{}, "", err
 	}
 	s.Leases[id] = l
 	err = s.Save()
-	return detached(l), err
+	return detached(l), status, err
 }
 
 type ReleaseRequest struct {

@@ -45,18 +45,21 @@ Release does not delete `resources/<lease-id>/`. The README says these snapshots
 
 `validate` rejects the whole file when any of these is true:
 
-- `version` is below `1`, or `leases` is missing.
+- `version` is below `1` or above `3`, or `leases` is missing.
 - A waiter has a malformed ID, an empty machine, a zero `expires`, an owner kind other than `pid` or `session`, or an empty owner identity.
 - A lease map key does not match the lease's own `id`, or the ID is not 32 lowercase hex characters.
 - A lease has an empty `machine`, a zero `created` or `expires`, or a non-positive `ttl`.
 - A `process` lease has no `job`, a non-positive budget, or an empty class. Its leader, when set, must be a `pid` owner with a PID above 1 and a recorded identity.
 - A non-`process` lease has a `job`.
 - A lease marked adopted appears in a version 1 file. Adopted identities need version 2.
+- A lease with `protect_live_owner` appears in a file below version 3, or on a `process` lease.
 - The adapter's `Validate` rejects the managed resource. Each built-in checks its name pattern (`dibs-`, or the legacy `berth-` name for existing leases), its Docker context, and that its private file sits inside `<dir>/resources/<id>/`. See [Adapters](adapters.md#built-in-adapters).
 
 ## Writing
 
-`Save` encodes the store with two-space indentation and a trailing newline, then calls `atomicfile.Write`:
+`Save` first sets the format version. A store with any protected lease is saved as version 3. A version 3 store without one goes back to version 2, so older binaries can read it again. Test: `TestProtectedStateFormat`.
+
+`Save` then encodes the store with two-space indentation and a trailing newline, then calls `atomicfile.Write`:
 
 1. Read the previous file content, if any.
 2. Write the new content to a temporary file `.dibs-*` in the same directory.
@@ -92,7 +95,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 
 ## Format version 2
 
-`state.json` is one JSON object. Durations are Go `time.Duration` values, which JSON encodes as integer nanoseconds. Times are RFC 3339 with nanoseconds. New state is written as version 2. Version 1 files still read, and migrate to version 2 on open as described above.
+`state.json` is one JSON object. Durations are Go `time.Duration` values, which JSON encodes as integer nanoseconds. Times are RFC 3339 with nanoseconds. New state is written as version 2. Version 1 files still read, and migrate to version 2 on open as described above. Version 3 is version 2 plus at least one lease with `protect_live_owner: true`. It exists so that an older binary rejects the ledger instead of ignoring protection and reclaiming the lease at expiry.
 
 ```json
 {
@@ -119,7 +122,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 
 | Field | Go field and type | Notes |
 | --- | --- | --- |
-| `version` | `store.Version`, int | `2` for new state. `1` and `2` are accepted. |
+| `version` | `store.Version`, int | `2` for new state, `3` while any lease is protected. `1`, `2`, and `3` are accepted. |
 | `writer_version` | `store.Writer`, string | Version of the dibs binary that last saved the file. Additive, so the format stays version 2. Omitted when empty. Test: `TestStateWithWriterVersionLoadsAndRecordsWriter`. |
 | `leases` | `map[string]Lease` | Keyed by lease ID |
 | `waiters` | `[]waiter` | FIFO job admission queue. Omitted when empty. |
@@ -135,6 +138,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 | `job.budget.cores`, `job.budget.memory_bytes` | `budget.Amount` | Reserved cores and bytes |
 | `job.class` | `ReservationView.Class` | Class name used for the request |
 | `job.leader` | `ReservationView.Leader` | `pid` owner of the process group leader. Empty until the child starts. |
+| `protect_live_owner` | `Lease.ProtectLiveOwner` | `true` for live-owner protection. Version 3 only. Omitted when false. |
 
 ## Invariants
 
@@ -144,9 +148,9 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 4. **Every mutation happens under the lock.** Load, change, and `Save` happen between `openStore` and `Close` in one process.
 5. **State stays private.** The directory is `0700`, and files are `0600`. Test: `TestOpenStoreRestrictsExistingDirectory`.
 6. **State is local to one host and one Unix user.** Leases carry a stable `machine`, and other hosts never act on them. Do not share the directory over a network filesystem.
-7. **Format changes are contract changes.** `validate` accepts only versions 1 and 2. A new field, a renamed field, a new adapter name, or a new version changes what older binaries accept. Older binaries reject version 2, so a version 2 file needs a compatible binary for every invocation, as the README states. Binaries that record `writer_version` refuse any newer version with an upgrade hint instead of a bare format error.
+7. **Format changes are contract changes.** `validate` accepts versions 1 to 3, with version 3 used only while a protected lease exists. A new field, a renamed field, a new adapter name, or a new version changes what older binaries accept. Older binaries reject version 2, so a version 2 file needs a compatible binary for every invocation, as the README states. Binaries that record `writer_version` refuse any newer version with an upgrade hint instead of a bare format error.
 8. **Resource files stay inside their state directory.** Each adapter's `Validate` checks its file with `SnapshotMatches` (`internal/adapter/snapshot.go`), which accepts the legacy `berth` root only when it resolves to the same ledger.
 
 ## Planned
 
-The approved direction in [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md) includes a state schema with migrations and a stable CLI contract. Only the version 1 to version 2 steps above exist. A general migration framework and any version 3 are not built, and each future format change needs its own migration and version bump. Accounting and an audit trail are in scope for dibs but not built. No accounting record exists in the store.
+The approved direction in [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md) includes a state schema with migrations and a stable CLI contract. Only the version 1 to version 2 steps above and the protection-driven version 3 exist. A general migration framework is not built, and each future format change needs its own migration and version bump. Accounting and an audit trail are in scope for dibs but not built. No accounting record exists in the store.

@@ -38,7 +38,7 @@ func axiView(value map[string]any, fullCommand string) map[string]any {
 			shown := make([]map[string]any, 0, min(total, axiListLimit))
 			for _, row := range rows[:min(total, axiListLimit)] {
 				compact := map[string]any{}
-				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
+				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig", "protect_live_owner"} {
 					compact[field] = row[field]
 				}
 				if text, ok := compact["resources"].(string); ok {

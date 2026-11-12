@@ -17,5 +17,7 @@ func New() adapterpkg.Definition {
 		},
 		Validate: func(string, adapterpkg.Metadata, adapterpkg.ResourceRef) error { return nil },
 		Env:      func(adapterpkg.ResourceRef) adapterpkg.Environment { return adapterpkg.Environment{} },
+		// A metadata-only lease has no resource to lose.
+		Exists: func(context.Context, adapterpkg.Target) (bool, error) { return true, nil },
 	}
 }

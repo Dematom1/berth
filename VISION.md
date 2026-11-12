@@ -8,7 +8,7 @@ It owns exactly one thing: the lease lifecycle and its guarantees.
 
 Dibs owns the lease ledger and its state machine: owner, expiry, labels, and budget.
 It owns owner liveness, judged alive, dead, or unknown against a recorded identity so a recycled PID never passes as the original owner.
-It owns expiry and extend; expiry is a hard backstop even for a live owner, and `extend` refuses dead, unknown, or expired owners.
+It owns expiry and extend; expiry is a hard backstop even for a live owner, and `extend` refuses dead, unknown, or expired owners, unless the caller opts that lease into live-owner protection, where only proven owner death reclaims it and a live owner may renew it after expiry while its resource is still present.
 It owns admission: per-machine core and memory budgets that always leave owner room, admitted FIFO by default.
 It owns accounting and audit: who held what, for how long, and how it ended.
 How a specific resource is built, scheduled, secured, or networked belongs to an adapter, an owner, or another tool, never to dibs's core.
@@ -16,6 +16,7 @@ How a specific resource is built, scheduled, secured, or networked belongs to an
 ## Reclaim requires proof
 
 A lease is reclaimable when its owner is dead or its lease has expired; unknown liveness alone never permits reclaim.
+A lease with live-owner protection is reclaimable only when its owner is proven dead, so a missed renewal is never proof that an active owner may lose its resource.
 Dibs records cleanup intent before anything is created, so a crash at any point leaves a lease that `release` or `sweep` can finish.
 A lease record is forgotten only after destroy succeeds and verify-gone confirms the resource is absent; any failure keeps the lease and exits 1.
 Release and sweep preview by default and act only with `--confirm`.

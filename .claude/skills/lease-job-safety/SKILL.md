@@ -26,7 +26,7 @@ The package mapping below was rechecked with `just formal` after the behavior-pr
 
 Run `git diff 11e1da46ff0c479a5027661622dbda459350d755 -- internal/lease internal/owner internal/remote internal/config internal/cli internal/adapter internal/atomicfile internal/budget internal/job internal/output`. Re-read changed covered functions before trusting a pass.
 
-- `verification/Lease.tla` covers `internal/lease/lease.go:reclaimable`, `extendLease`, `releaseLease`, and `sweep`. A sweep uses owner evidence at its eligibility decision. Explicit release may destroy a live resource. Destroy or Save failure retains the cleanup intent.
+- `verification/Lease.tla` covers `internal/lease/lease.go:reclaimable`, `extendLease`, `releaseLease`, and `sweep`. A sweep uses owner evidence at its eligibility decision. A protected lease is eligible only on Dead evidence, and a live owner may extend it after expiry only while its resource is present. Explicit release may destroy a live resource, protected or not. Destroy or Save failure retains the cleanup intent.
 - `verification/Admission.tla` covers `internal/lease/job_admission.go:Manager.admitJob`, `budgetFits`, `pruneWaiters`, and `removeWaiter`, plus `internal/lease/store.go:Manager.openStore`, `Save`, and `Close`. A successful locked store transaction is one model step. This is valid only while read, prune, FIFO check, budget check, insertion, and Save share the same flock. Do not preserve this abstraction if the lock scope changes.
 - `verification/JobSession.tla` covers `internal/lease/job_start.go:Manager.startJob`, `Exec`, `childCompletion`, `processResource.Destroy`, `internal/lease/job_run.go:Manager.RunJob`, and `internal/lease/job_finish.go:Manager.finishJob`; `internal/lease/job_wait_linux.go` and `internal/lease/job_wait_darwin.go` supply unreaped completion observations. Persist, final deadline check, and gate write are separate steps. Time and owner-channel EOF can advance between them.
 - The same model covers `internal/remote/agent.go:Serve` and `internal/remote/ssh.go:Run`. Ready follows version validation, child output cannot create a result frame, delivered stdin EOF cancels the remote context, and a received result is authoritative during transport teardown.
@@ -40,6 +40,7 @@ Move the source baseline forward only after confirming that these abstractions s
 The independent safety promises and their harms are:
 
 - `ForeignSafe` and `UnknownSafe`: a sweep does not destroy a foreign resource or an unexpired resource with uncertain ownership. A wrong decision deletes someone else's work.
+- `ProtectedSafe`: a sweep reclaims a lease with live-owner protection only on proven owner death, expired or not. A wrong decision destroys a running worker's resource during a supervisor outage.
 - `FailureRetains` and `CleanupBeforeDelete`: failed cleanup keeps its retry record. Dropping it leaks resources and frees budget prematurely.
 - `BudgetSafe`: admitted reservations fit both core and memory capacity. An over-admission makes jobs contend beyond the agreed budget.
 - `NoBackfill`: a smaller request cannot bypass the first eligible waiter, including a new zero-wait request. Bypassing can starve large jobs.
@@ -52,7 +53,7 @@ The independent safety promises and their harms are:
 
 ## Respect the bounds
 
-- Lease exploration uses one lease, three liveness values, local or foreign ownership, and before or at expiry. Exact durations and token generation are abstracted.
+- Lease exploration uses one lease, three liveness values, local or foreign ownership, protected or not, and before or at expiry. Exact durations and token generation are abstracted.
 - Admission explores every ordering for three distinct callers, all core and memory requests in `{1,2} x {1,2}`, capacity `{2,2}`, every combination of waiting and zero-wait callers, and queued expiry or death. An unexpired Unknown waiter is retained, not treated as dead. Jobs finish at most once. All invocations share a host, state directory, and capacity configuration.
 - Job and session exploration uses one job, a boolean deadline boundary, matching or mismatching versions, five group-identity observations, and child codes 0, 37, and 255. Failed cleanup can retry. Weak fairness applies only to consuming delivered owner-channel EOF.
 

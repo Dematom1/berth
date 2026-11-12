@@ -3,6 +3,10 @@ stdout:
 dibs extend <id> --ttl D [--json]
 Set expiry to now + D (positive Go duration). Only an unexpired lease with a
 verified live owner on this machine can be extended. It cannot be resurrected.
+A --protect-live-owner lease with a live owner also renews after expiry when its
+resource is still present (status reattached). Its other refusals exit 3 with
+reason owner_dead, owner_unknown, resource_absent or resource_unknown and leave
+the lease unchanged.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json
@@ -10,6 +14,8 @@ Examples:
 Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
 reclaimable: a live owner missing either cadence loses its resources.
+With --protect-live-owner, only proven owner death reclaims; a late extend
+with a live owner reattaches when the resource is still present.
 Output: --axi for agents, --json for scripts (mutually exclusive).
 Default: human on terminals; AXI for pipes or DIBS_AXI=1.
 Lease commands: --full restores complete AXI records/text; JSON is always complete.
