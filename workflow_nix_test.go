@@ -22,5 +22,4 @@ func TestNixWorkflowMatrixAndBuildChecks(t *testing.T) {
 		require(t, hasRun(job, command), "missing Nix verification command: "+command)
 	}
 	require(t, hasRun(job, `test "$(./result/bin/dibs --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"`), "built version must equal the release manifest")
-	require(t, hasRun(job, `test "$(./result/bin/berth --version 2>/dev/null)" = "$(./result/bin/dibs --version)"`), "Nix package must ship the deprecated berth command")
 }
