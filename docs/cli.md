@@ -38,14 +38,14 @@ The SSH handshake compares this string exactly. See [Remote jobs over SSH](remot
 
 | Command | Flags | Positional |
 | --- | --- | --- |
-| `create`, `up` | `--owner`, `--ttl` (default `8h`), `--stale` (default `15m`), `--resources`, `--label key=value` (repeatable), `--adapter none\|kind\|k3d\|compose` (default `none`), `--file` (Compose only, required for Compose), `--protect-live-owner`, `--quiet`, `-q` | none |
+| `create`, `up` | `--owner`, `--ttl` (default `8h`), `--stale` (default `15m`), `--resources`, `--label key=value` (repeatable), `--adapter none\|kind\|k3d\|compose` (default `none`), `--file` (Compose only, required for Compose), `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2), `--quiet`, `-q` | none |
 | `list`, `ls`, `ps`, `who` | `--owner`, `--machine` | none |
 | `extend` | `--ttl` (required, positive) | lease ID |
 | `release`, `down` | `--confirm` | lease ID |
 | `sweep` | `--confirm`, `--machine` | none |
 | `env` | none | lease ID |
 | `job` | `--cores`, `--memory`, `--class` (default `default`), `--timeout`, `--wait` (default `30m`), `--machine` | `-- <cmd...>` |
-| `adopt` | `--owner` (required), `--ttl` (required, positive), `--stale` (default `15m`), `--file` (Compose only), `--context`, `--protect-live-owner` | `<kind\|k3d\|compose> <name>` |
+| `adopt` | `--owner` (required), `--ttl` (required, positive), `--stale` (default `15m`), `--file` (Compose only), `--context`, `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2) | `<kind\|k3d\|compose> <name>` |
 | `orphans` | `--context` | none |
 | `machine install` | `--file` (required) | machine name |
 | `setup hooks` | `--remove` | none |

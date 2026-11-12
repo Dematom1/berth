@@ -143,7 +143,7 @@ dibs has no daemon. Reclaim happens only when someone runs `dibs sweep --confirm
 
 ## Live-owner protection
 
-`--protect-live-owner` on `create` or `adopt` stores `protect_live_owner: true`. Without the flag, nothing on this page changes. [ADR 0008](adr/0008-live-owner-protection.md) records the decision.
+`--protect-live-owner` on `create` or `adopt` stores `protect_live_owner: true`. The flag needs the `live_owner_protection` user config opt-in or `DIBS_LIVE_OWNER_PROTECTION=1`, and fails with code 2 without it. Without the flag, nothing on this page changes. [ADR 0008](adr/0008-live-owner-protection.md) records the decision.
 
 `reclaimable` reclaims a protected lease only on proven owner death. `extendLease` checks a protected lease in this order:
 
@@ -160,7 +160,7 @@ The ttl, machine, and job checks come first and keep their exit 1 errors. A refu
 
 Protection holds through a supervisor outage only when the lease owner is the worker's own liveness source. If the owner is the renewing supervisor's PID, or the supervisor touches the heartbeat file, a supervisor outage reads as owner death and the lease is reclaimed.
 
-Tests: `TestProtectedReclaimAndRenew`, `TestProtectedAdoptReattachesOnlyToPinnedEndpoint`, `TestCLIProtectedRenewRefusalsByOwner`, `TestCLIProtectedLateRenewChecksPinnedResource`, `TestCLIUnprotectedLateRenewUnchanged`.
+Tests: `TestProtectedReclaimAndRenew`, `TestProtectedAdoptReattachesOnlyToPinnedEndpoint`, `TestCLIProtectedRenewRefusalsByOwner`, `TestCLIProtectedLateRenewChecksPinnedResource`, `TestCLIUnprotectedLateRenewUnchanged`, `TestLiveOwnerProtectionOptIn`.
 
 ## Renewal cadence
 

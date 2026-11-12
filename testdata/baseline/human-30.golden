@@ -13,6 +13,7 @@ a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
 --protect-live-owner: sweep never reclaims while the owner is alive or unknown,
 even after expiry; only proven owner death reclaims. Use the worker's own owner.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 Examples:
   dibs create --owner pid:1234 --ttl 2h --resources '2 CPUs, test lab'
   dibs create --adapter kind --owner session:1234 --ttl 1h

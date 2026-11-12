@@ -34,7 +34,7 @@ The instant at which a lease becomes reclaimable regardless of owner liveness, o
 _Avoid_: owner death, automatic deletion
 
 **Live-owner protection**:
-A per-lease opt-in under which only proven owner death makes the lease reclaimable, and a live owner may renew it after expiry while its resource is still present.
+A per-lease opt-in, available once the machine enables the `live_owner_protection` setting, under which only proven owner death makes the lease reclaimable, and a live owner may renew it after expiry while its resource is still present.
 _Avoid_: pinning, lease lock, keep-alive
 
 **Heartbeat**:

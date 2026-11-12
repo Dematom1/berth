@@ -57,6 +57,9 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || owner == "" || ttl <= 0 || d.RequiresFile != (file != "") {
 			return outputpkg.Error(out, mode, 2, "require type, name, explicit --owner and positive --ttl; --file is required only for compose", help(command))
 		}
+		if protect && !liveOwnerProtectionEnabled() {
+			return outputpkg.Error(out, mode, 2, liveOwnerProtectionOff, help(command))
+		}
 		var err error
 		parsedOwner, err = app.owners.Bind(ctx, owner, stale, time.Now().UTC())
 		if err != nil {

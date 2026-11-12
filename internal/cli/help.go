@@ -29,6 +29,7 @@ Explicitly lease an existing resource. Existence must be verified and no lease
 may already own it. Captures cleanup configuration; does not recreate resources.
 Owner and positive TTL are required. Release/sweep keep their preview defaults.
 --protect-live-owner: only proven owner death reclaims; expiry alone never does.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 Examples:
   dibs adopt kind my-lab --owner pid:1234 --ttl 1h
   dibs adopt compose my-stack --file compose.yaml --owner pid:1234 --ttl 2h`,
@@ -64,6 +65,7 @@ a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
 --protect-live-owner: sweep never reclaims while the owner is alive or unknown,
 even after expiry; only proven owner death reclaims. Use the worker's own owner.
+Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 Examples:
   dibs create --owner pid:1234 --ttl 2h --resources '2 CPUs, test lab'
   dibs create --adapter kind --owner session:1234 --ttl 1h
@@ -81,9 +83,9 @@ Examples:
 Set expiry to now + D (positive Go duration). Only an unexpired lease with a
 verified live owner on this machine can be extended. It cannot be resurrected.
 A --protect-live-owner lease with a live owner also renews after expiry when its
-resource is still present (status reattached). Its other refusals exit 3 with
-reason owner_dead, owner_unknown, resource_absent or resource_unknown and leave
-the lease unchanged.
+resource is still present (status reattached). A protected lease refused for
+reason owner_dead, owner_unknown, resource_absent or resource_unknown exits 3;
+every other refusal exits 1. A refusal leaves the lease unchanged.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json`,

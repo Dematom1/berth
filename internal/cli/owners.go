@@ -16,11 +16,20 @@ func newOwners() ownerpkg.Registry {
 	return ownerpkg.NewRegistry(owners...)
 }
 
-// DIBS_PR_OWNER overrides the user config either way and has no BERTH_* alias.
-func prOwnerEnabled() bool {
-	if value, ok := os.LookupEnv("DIBS_PR_OWNER"); ok {
+func prOwnerEnabled() bool { return optedIn("DIBS_PR_OWNER", configpkg.PROwner) }
+
+// liveOwnerProtectionOff names the settings that allow --protect-live-owner.
+const liveOwnerProtectionOff = `--protect-live-owner is off; set DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true in the user config`
+
+func liveOwnerProtectionEnabled() bool {
+	return optedIn("DIBS_LIVE_OWNER_PROTECTION", configpkg.LiveOwnerProtection)
+}
+
+// optedIn lets the DIBS_* variable override the user config either way; it has no BERTH_* alias.
+func optedIn(env string, config func() bool) bool {
+	if value, ok := os.LookupEnv(env); ok {
 		enabled, err := strconv.ParseBool(value)
 		return err == nil && enabled
 	}
-	return configpkg.PROwner()
+	return config()
 }

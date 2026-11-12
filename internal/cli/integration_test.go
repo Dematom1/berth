@@ -260,6 +260,7 @@ func TestIntegrationProtectedLeaseReattach(t *testing.T) {
 	for _, driver := range []string{"kind", "k3d", "compose"} {
 		t.Run(driver, func(t *testing.T) {
 			integrationReady(t, driver)
+			enableProtection(t)
 			t.Setenv("DOCKER_HOST", "")
 			args := []string{"create", "--adapter", driver, "--ttl", "1s", "--protect-live-owner"}
 			if driver == "compose" {

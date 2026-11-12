@@ -10,8 +10,84 @@ import (
 	"testing"
 	"time"
 
+	configpkg "github.com/Dematom1/dibs/internal/config"
 	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
+
+// enableProtection opts this test into --protect-live-owner without reading the user config.
+func enableProtection(t *testing.T) {
+	t.Helper()
+	t.Setenv("DIBS_CONFIG", filepath.Join(t.TempDir(), "absent.json"))
+	t.Setenv("DIBS_LIVE_OWNER_PROTECTION", "1")
+}
+
+func TestLiveOwnerProtectionOptIn(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("DIBS_CONFIG", config)
+	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+	for _, tc := range []struct {
+		name, config, env string
+		setEnv, want      bool
+	}{
+		{name: "absent", want: false},
+		{name: "config off", config: `{"live_owner_protection":false}`, want: false},
+		{name: "config on", config: `{"live_owner_protection":true}`, want: true},
+		{name: "env on", env: "1", setEnv: true, want: true},
+		{name: "env off overrides config", config: `{"live_owner_protection":true}`, env: "0", setEnv: true, want: false},
+		{name: "invalid env stays off", config: `{"live_owner_protection":true}`, env: "yes", setEnv: true, want: false},
+		{name: "invalid config stays off", config: `{"live_owner_protection":true`, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DIBS_STATE", t.TempDir())
+			os.Remove(config)
+			if tc.config != "" {
+				if err := os.WriteFile(config, []byte(tc.config), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("DIBS_LIVE_OWNER_PROTECTION", tc.env)
+			if !tc.setEnv {
+				os.Unsetenv("DIBS_LIVE_OWNER_PROTECTION")
+			}
+			if tc.want {
+				if r := invoke(t, 0, "create", "--protect-live-owner"); r["record"].(map[string]any)["protect_live_owner"] != true {
+					t.Fatalf("enabled protection not recorded: %+v", r)
+				}
+				return
+			}
+			for _, args := range [][]string{
+				{"create", "--protect-live-owner"},
+				{"adopt", "kind", "my-lab", "--owner", "pid:" + strconv.Itoa(os.Getpid()), "--ttl", "1h", "--protect-live-owner"},
+			} {
+				r := invoke(t, 2, args...)
+				if msg, _ := r["error"].(string); !strings.Contains(msg, "DIBS_LIVE_OWNER_PROTECTION=1") || !strings.Contains(msg, `"live_owner_protection": true`) {
+					t.Fatalf("%s while off = %+v", args[0], r)
+				}
+				code, out := runMode(t, "axi", args...)
+				if code != 2 || !strings.Contains(out, "DIBS_LIVE_OWNER_PROTECTION=1") {
+					t.Fatalf("AXI %s while off = %d:\n%s", args[0], code, out)
+				}
+			}
+			if r := invoke(t, 0, "ps"); r["count"] != float64(0) {
+				t.Fatalf("refused protection wrote a lease: %+v", r)
+			}
+			if r := invoke(t, 0, "create"); r["record"].(map[string]any)["protect_live_owner"] != nil {
+				t.Fatalf("unprotected lease shows protection: %+v", r)
+			}
+		})
+	}
+}
+
+func TestConfigAcceptsLiveOwnerProtection(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("DIBS_CONFIG", config)
+	if err := os.WriteFile(config, []byte(`{"live_owner_protection":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := configpkg.Load(); err != nil || !c.LiveOwnerProtection {
+		t.Fatalf("strict config load rejected live_owner_protection: %+v, %v", c, err)
+	}
+}
 
 func runMode(t *testing.T, mode string, args ...string) (int, string) {
 	t.Helper()
@@ -22,6 +98,7 @@ func runMode(t *testing.T, mode string, args ...string) (int, string) {
 
 // A supervisor outage lets a protected lease expire; sweep keeps it and a late renew reattaches.
 func TestCLIProtectedLeaseSurvivesExpiryAndReattaches(t *testing.T) {
+	enableProtection(t)
 	dir := t.TempDir()
 	t.Setenv("DIBS_STATE", dir)
 	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
@@ -83,6 +160,7 @@ func TestCLIProtectedRenewRefusalsByOwner(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			enableProtection(t)
 			dir := t.TempDir()
 			t.Setenv("DIBS_STATE", dir)
 			beat := filepath.Join(dir, "beat")
@@ -111,6 +189,7 @@ func TestCLIProtectedRenewRefusalsByOwner(t *testing.T) {
 
 // Fake kind and docker report the pinned cluster as present, absent, or unreachable.
 func TestCLIProtectedLateRenewChecksPinnedResource(t *testing.T) {
+	enableProtection(t)
 	dir := t.TempDir()
 	t.Setenv("DIBS_STATE", dir)
 	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))

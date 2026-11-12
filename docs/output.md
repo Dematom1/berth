@@ -53,8 +53,8 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 
 Parts of the map:
 
-- `LeaseView` in `internal/output/view.go` builds every lease row with one fixed key set: `id`, `owner`, `liveness`, `machine`, `age`, `expires`, `resources`, `resource`, `resource_adapter`, `resource_name`, `labels`, `kubeconfig`, `protect_live_owner`, `cores`, `memory`, `memory_bytes`, and `class`. `memory` is a string with a `B` suffix. Rows for non-job leases report zeros and an empty class.
-- `LeaseRecord` in `internal/output/view.go` is the stored lease encoded to JSON and decoded back with `UseNumber`, plus `kubeconfig` and an explicit `protect_live_owner`. See [State](state.md#format-version-2).
+- `LeaseView` in `internal/output/view.go` builds every lease row with one fixed key set: `id`, `owner`, `liveness`, `machine`, `age`, `expires`, `resources`, `resource`, `resource_adapter`, `resource_name`, `labels`, `kubeconfig`, `cores`, `memory`, `memory_bytes`, and `class`, plus `protect_live_owner: true` only for a protected lease. `memory` is a string with a `B` suffix. Rows for non-job leases report zeros and an empty class.
+- `LeaseRecord` in `internal/output/view.go` is the stored lease encoded to JSON and decoded back with `UseNumber`, plus `kubeconfig`. `protect_live_owner` appears only when true. See [State](state.md#format-version-2).
 - `BudgetView` reports `used_cores`, `used_memory_bytes`, `usable_cores`, `usable_memory_bytes`, `room_cores`, `room_memory_bytes`, and a one-line `summary`. If the config fails to load, `list` still succeeds, and `budget` holds only the summary `jobs: budget unavailable (check DIBS_CONFIG)`. Test: `TestBudgetSummary`, `TestBrokenBudgetStillLists`.
 
 `Error` in `internal/output/output.go` sets `code` from the exit code:
@@ -76,7 +76,7 @@ When a hint has more than one line, as full help text does, `Error` replaces it 
 AXI is TOON. Unless `--full` is set, `axiView` in `internal/output/axi.go` first makes a bounded copy of the map:
 
 - It drops `record` and `records`, and renames `count` to `total`.
-- It keeps at most 100 rows of `leases` (`axiListLimit`), each reduced to `id`, `owner`, `liveness`, `expires`, `machine`, `resource`, `resources`, `cores`, `memory_bytes`, `kubeconfig`, and `protect_live_owner`. When rows are cut, it adds `shown` and `total`.
+- It keeps at most 100 rows of `leases` (`axiListLimit`), each reduced to `id`, `owner`, `liveness`, `expires`, `machine`, `resource`, `resources`, `cores`, `memory_bytes`, and `kubeconfig`. A `protect_live_owner` column is added only when a shown lease is protected, so lists without protection keep their shape. When rows are cut, it adds `shown` and `total`.
 - It cuts `resources`, and label values in a single `lease`, to 500 characters (`axiTextLimit`). It appends `… (truncated, N chars total)`.
 - When it shows any lease, it adds a hint that names the command that prints everything. The default is `dibs --axi ps --full`. `list` builds the hint from `--machine` and `--owner`, so the hint can be run as written.
 - It never changes the original map.

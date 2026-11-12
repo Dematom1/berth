@@ -436,13 +436,20 @@ does. `extend` refuses expired leases and owners that are dead or unknown.
 ### Protect a live owner's lease
 
 A supervisor that renews leases for long-lived workers can opt a lease out of
-the expiry backstop. Pass `--protect-live-owner` to `create` or `adopt`. Then
-sweep reclaims the lease only when its owner is proven dead. An owner that is
+the expiry backstop. Protection is off by default. Turn it on per machine with
+`"live_owner_protection": true` in the user config, or with
+`DIBS_LIVE_OWNER_PROTECTION=1`; the variable overrides the config either way.
+Project files cannot enable it. While it is off, `--protect-live-owner` fails
+with code 2. Turning it off later does not unprotect leases already recorded
+with it.
+
+Pass `--protect-live-owner` to `create` or `adopt`. Then sweep reclaims the lease only when its owner is proven dead. An owner that is
 alive or unknown keeps the lease, even after expiry, so a supervisor outage
 never costs a running worker its resources. Leases without the flag behave
 exactly as above.
 
 ```sh
+ export DIBS_LIVE_OWNER_PROTECTION=1
  id=$(dibs create --adapter kind --owner "pid:$worker_pid" --ttl 30m \
    --protect-live-owner --quiet)
  dibs extend "$id" --ttl 30m       # status: renewed, or reattached after expiry
@@ -458,8 +465,9 @@ outage reads as owner death.
 reattached`) only when the adapter proves the pinned resource is still present.
 For kind, k3d, and Compose, the cluster or project must still be visible in the
 pinned Docker context, at the pinned endpoint for adopted resources. A renew
-never creates a lease. Every other refusal exits 3, leaves the lease
-unchanged, and names a `reason` in AXI and JSON output:
+never creates a lease. A refusal for one of these reasons exits 3, leaves the
+lease unchanged, and names the `reason` in AXI and JSON output; any other
+refusal, such as a lease on another machine, exits 1 as for any lease:
 
 | `reason` | Meaning | Next step |
 | --- | --- | --- |

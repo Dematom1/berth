@@ -1,4 +1,4 @@
 help[1]: Run dibs --axi ps --full for all 1 matching leases and complete records
-leases[1]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,protect_live_owner,resource,resources}:
-  0,"2026-11-09T13:00:00Z",aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,/tmp/lab's kubeconfig,alive,lab,0,"pid:123",false,"kind:dibs-lab","test, lab"
+leases[1]{cores,expires,id,kubeconfig,liveness,machine,memory_bytes,owner,resource,resources}:
+  0,"2026-11-09T13:00:00Z",aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,/tmp/lab's kubeconfig,alive,lab,0,"pid:123","kind:dibs-lab","test, lab"
 total: 1

@@ -194,6 +194,9 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		if err := app.resources.CheckCreate(driver, file); err != nil {
 			return outputpkg.Error(out, jsonOutput, 2, err.Error(), help(command))
 		}
+		if protect && !liveOwnerProtectionEnabled() {
+			return outputpkg.Error(out, jsonOutput, 2, liveOwnerProtectionOff, help(command))
+		}
 	}
 	fullCommand := "dibs --axi ps"
 	hintMachine := machineName
