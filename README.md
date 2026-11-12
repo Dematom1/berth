@@ -31,13 +31,13 @@ and Docker Compose, plus a running Docker engine.
 ## Upgrade from berth
 
 Dibs is the new name for berth. Update install commands, sweep timers, scripts,
-and remote binary paths to `dibs`. For one minor release, through the 0.3
-releases and removed in 0.4.0, `BERTH_*` variables remain deprecated aliases
-for `DIBS_*`, and the Nix package and release archives also install a
-deprecated `berth` command. `berth` is the same program as `dibs`, with
-identical stdout and exit codes, plus one stderr deprecation line naming
-`dibs`. Existing berth-named leases remain reclaimable. See the [rename release notes](docs/releases/rename-to-dibs.md) for
-the compatibility details and repository-rename ordering.
+and remote binary paths to `dibs`. The Nix package and release archives
+provide a deprecated `berth` command through the 0.3 releases; both it and the
+`BERTH_*` aliases are removed in 0.4.0. `berth` is the same program as `dibs`,
+with identical stdout and exit codes, plus one stderr deprecation line naming
+`dibs`. Existing berth-named leases remain reclaimable. See the [rename release
+notes](docs/releases/rename-to-dibs.md) for compatibility details and
+repository-rename ordering.
 
 ## Output for people, agents, and scripts
 
@@ -596,10 +596,10 @@ Opening existing state migrates schema version 1 to version 2 atomically under
 the state lock, including during previews and listing. Legacy lease and queue
 records with the current hostname receive the stable identity. Other legacy
 hostnames remain foreign until explicitly identified by you. Fully migrated
-version 2 state does not require a hostname lookup. Older berth binaries that
-only support schema version 1 cannot read version 2 state; use a schema-compatible
-binary for every invocation. The naming migration
-does not change the schema or bypass machine-identity migration.
+version 2 state does not require a hostname lookup. Older binaries that only
+support schema version 1 cannot read version 2 state; use a schema-compatible
+binary for every invocation. The naming migration does not change the schema
+or bypass machine-identity migration.
 
 If this machine was renamed before upgrading, first verify that the old hostname
 belongs to this machine and that you are using its original local state directory.
