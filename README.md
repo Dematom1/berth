@@ -251,9 +251,9 @@ Compose lease's file readable until the lease is bound: binding resolves it,
 and release keeps the lease if it cannot.
 
 `--key K` on `create` and `adopt` makes a matching retry return the existing
-lease with `status: already_done`; the same key for a different request,
-including a reused PID with a different start time, is refused. A key is free
-again after release. `reclaim` is the only command that always requires proven
+lease with `status: already_done`; retries ignore TTL, description, and labels,
+returning the original lease unchanged. A key is free again after release.
+`reclaim` is the only command that always requires proven
 owner death; `sweep` and job admission spare a live owner only for a lease
 created with `--protect-live-owner` (see below).
 
