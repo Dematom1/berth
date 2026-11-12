@@ -1,3 +1,3 @@
-exit: 1
+exit: 3
 stdout:
-{"code":"COMMAND_FAILED","error":"lease does not exist; use dibs create for a new lease","exit_code":1,"help":["Run dibs ps to inspect retained leases; retry dibs extend --help for options"]}
+{"code":"COMMAND_FAILED","contract":1,"error":"lease does not exist; acquire a new lease","exit_code":3,"help":["Run dibs create to acquire a new lease; a released lease cannot be restored"],"reason":"not_found"}

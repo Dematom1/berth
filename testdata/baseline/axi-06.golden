@@ -1,4 +1,6 @@
 exit: 0
 stdout:
+contract: 1
+help[1]: Nothing to release; acquire a lease when the work needs the resource
 id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-status: already absent (no-op)
+status: already_done

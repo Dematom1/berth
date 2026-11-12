@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -10,7 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	budgetpkg "github.com/Dematom1/dibs/internal/budget"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
 	outputpkg "github.com/Dematom1/dibs/internal/output"
 )
 
@@ -154,6 +158,109 @@ func TestQuietContractCreate(t *testing.T) {
 		if _, err := os.Stat(state); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("usage error touched state: %v", err)
 		}
+	}
+}
+
+func TestRenewReleaseContractModes(t *testing.T) {
+	for _, mode := range []outputpkg.Mode{outputpkg.AXI, outputpkg.JSON} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Setenv("DIBS_STATE", t.TempDir())
+			t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
+			created := invoke(t, 0, "create", "--ttl", "1h")
+			id := created["record"].(map[string]any)["id"].(string)
+			invokeMode := func(args ...string) (int, string, map[string]any) {
+				var out bytes.Buffer
+				code := runWithOutput(context.Background(), args, &out, mode)
+				result := map[string]any{}
+				if mode == outputpkg.JSON {
+					if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+						t.Fatalf("invalid JSON: %q: %v", out.String(), err)
+					}
+				} else if !strings.Contains(out.String(), "contract: 1") {
+					t.Fatalf("missing AXI contract: %q", out.String())
+				}
+				return code, out.String(), result
+			}
+			assertField := func(code int, text string, got map[string]any, field, value string) {
+				if code != 0 || (mode == outputpkg.JSON && (got["contract"] != float64(1) || got[field] != value)) || (mode == outputpkg.AXI && !strings.Contains(text, field+": "+value)) {
+					t.Fatalf("%s: %d %q %+v", field, code, text, got)
+				}
+			}
+			code, text, got := invokeMode("extend", id, "--ttl", "1h")
+			assertField(code, text, got, "status", "renewed")
+			code, text, got = invokeMode("extend", id, "--ttl", "1h")
+			assertField(code, text, got, "status", "renewed")
+			code, text, got = invokeMode("release", id)
+			assertField(code, text, got, "status", "preview")
+			code, text, got = invokeMode("release", id, "--confirm")
+			assertField(code, text, got, "status", "released")
+			code, text, got = invokeMode("release", id, "--confirm")
+			assertField(code, text, got, "status", "already_done")
+			missing := strings.Repeat("a", 32)
+			code, text, got = invokeMode("extend", missing, "--ttl", "1h")
+			if code != 3 || (mode == outputpkg.JSON && got["reason"] != "not_found") || (mode == outputpkg.AXI && !strings.Contains(text, "reason: not_found")) {
+				t.Fatalf("missing renewal: %d %q %+v", code, text, got)
+			}
+			code, text, got = invokeMode("release", missing, "--confirm")
+			assertField(code, text, got, "status", "already_done")
+
+			mutateLease := func(id string, change func(*leasepkg.Lease)) {
+				s, err := openStore(context.Background(), os.Getenv("DIBS_STATE"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				l := s.Leases[id]
+				change(&l)
+				s.Leases[id] = l
+				if err := s.Save(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, tc := range []struct {
+				name, reason string
+				change       func(*leasepkg.Lease)
+			}{
+				{"wrong-machine", "wrong_machine", func(l *leasepkg.Lease) { l.Machine = "another-machine" }},
+				{"expired", "expired", func(l *leasepkg.Lease) { l.Expires = time.Now().Add(-time.Second) }},
+				{"owner-dead", "owner_dead", func(l *leasepkg.Lease) { l.Owner.Identity = "different-start" }},
+				{"owner-unknown", "owner_unknown", func(l *leasepkg.Lease) { l.Owner.Kind = "missing-owner-kind" }},
+				{"job-deadline", "job_deadline", func(l *leasepkg.Lease) {
+					l.ResourceRef.Adapter = "process"
+					l.Reservation = &leasepkg.ReservationView{Budget: budgetpkg.Amount{Cores: 1, Memory: 1}, Class: "test"}
+				}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					seed := invoke(t, 0, "create", "--ttl", "1h")
+					seedID := seed["record"].(map[string]any)["id"].(string)
+					mutateLease(seedID, tc.change)
+					code, text, result := invokeMode("extend", seedID, "--ttl", "1h")
+					if code != 3 || (mode == outputpkg.JSON && (result["contract"] != float64(1) || result["reason"] != tc.reason)) || (mode == outputpkg.AXI && !strings.Contains(text, "reason: "+tc.reason)) {
+						t.Fatalf("refusal: %d %q %+v", code, text, result)
+					}
+					if tc.name == "wrong-machine" {
+						code, text, result = invokeMode("release", seedID, "--confirm")
+						if code != 3 || (mode == outputpkg.JSON && result["reason"] != "wrong_machine") || (mode == outputpkg.AXI && !strings.Contains(text, "reason: wrong_machine")) {
+							t.Fatalf("release wrong machine: %d %q %+v", code, text, result)
+						}
+					}
+				})
+			}
+			app := testApplication()
+			for _, mode := range []outputpkg.Mode{outputpkg.AXI, outputpkg.JSON} {
+				var refusal bytes.Buffer
+				if code := app.contractOperationError(&refusal, mode, "release", id, &leasepkg.Refusal{Reason: "ambiguous", Message: "multiple resources match"}); code != 3 {
+					t.Fatalf("ambiguous release: %d %s", code, refusal.String())
+				}
+				if mode == outputpkg.JSON {
+					var result map[string]any
+					if err := json.Unmarshal(refusal.Bytes(), &result); err != nil || result["reason"] != "ambiguous" || result["contract"] != float64(1) {
+						t.Fatalf("ambiguous JSON refusal: %s %v", refusal.String(), err)
+					}
+				} else if !strings.Contains(refusal.String(), "reason: ambiguous") {
+					t.Fatalf("ambiguous AXI refusal: %s", refusal.String())
+				}
+			}
+		})
 	}
 }
 

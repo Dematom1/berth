@@ -251,7 +251,9 @@ exit 3 with a stable `reason` when dibs refuses for safety and changes nothing.
 Every other invocation keeps its existing output and exit codes. The
 [consumer contract](docs/consumer-contract.md) lists every status and reason,
 and maps the lifecycle of a supervisor, an agent session, a CI job, or a script
-onto these commands.
+onto these commands. This contract change moves `extend` refusal exit codes from
+1 to 3 and replaces `release`'s previous free-form statuses with `preview`,
+`released`, and `already_done`.
 
 ## Run a local job
 
@@ -468,7 +470,8 @@ Touch a heartbeat file at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. A lease is reclaimable when its owner is
 dead **or** when it has expired. A live owner that misses either cadence loses
 its resources. Unknown liveness alone never permits reclaim, but expiry still
-does. `extend` refuses expired leases and owners that are dead or unknown.
+does. `extend` refuses expired leases and owners that are dead or unknown with
+exit 3 and a stable `reason`.
 
 ```sh
  touch /tmp/my-lab-heartbeat
@@ -544,7 +547,7 @@ heartbeat paths, numeric PID spellings, and PR selector forms (lowercased
 | `0` | Success, including already absent releases and empty sweeps |
 | `1` | Dibs operation failed; cleanup records are retained on resource failure |
 | `2` | Invalid command, argument, or flag; no child was started |
-| `3` | Refused for safety, nothing changed; read `reason` (contract commands and `--pending`/`--key` only) |
+| `3` | Refused for safety, nothing changed; read `reason` (including `extend`, `release`, contract commands, and `--pending`/`--key`) |
 | Child's code | `dibs job` when its child runs to completion |
 | `124` | `dibs job` deadline killed the child (coreutils `timeout` convention) |
 | `75` | `dibs job`: no slot frees within `--wait`, `EX_TEMPFAIL` |

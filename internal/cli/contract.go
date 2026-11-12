@@ -17,7 +17,7 @@ import (
 const contractVersion = 1
 
 var reasonHints = map[string]string{
-	"not_found":       "Run dibs ps to find the lease; a released lease is gone for good",
+	"not_found":       "Run dibs create to acquire a new lease; a released lease cannot be restored",
 	"wrong_machine":   "Run this command on the lease's machine",
 	"not_pending":     "Run dibs explain <id>; the lease already covers a resource",
 	"already_leased":  "Run dibs ps to find the lease that owns the resource",
@@ -25,9 +25,12 @@ var reasonHints = map[string]string{
 	"handle_exists":   "Run dibs adopt for a resource that already exists",
 	"handle_mismatch": "Pass the handle the pending lease recorded; run dibs explain <id>",
 	"resource_absent": "Create the resource first, then retry",
-	"ambiguous":       "Run dibs adopt <type> <handle> --pending <id> for the right match",
+	"ambiguous":       "Resolve the ambiguous resource matches, then retry this command",
 	"owner_alive":     "Wait for the owner to end, or have its owner run dibs release <id> --confirm",
-	"owner_unknown":   "Retry later; unknown owner liveness never permits reclaim",
+	"owner_unknown":   "Retry later; the lease is kept until owner liveness is known",
+	"expired":         "Release the lease and acquire again; do not create a second lease for a resource still covered",
+	"owner_dead":      "Run dibs reclaim <id> --confirm or dibs sweep --confirm",
+	"job_deadline":    "Start a new dibs job with --timeout",
 }
 
 const keyRule = "--key must be 1-200 letters, digits or ._:/@+=- and start with a letter or digit"
@@ -82,6 +85,18 @@ func (app application) contractError(out io.Writer, mode outputpkg.Mode, command
 		return 3
 	}
 	return app.leaseError(out, mode, command, err)
+}
+
+func (app application) contractOperationError(out io.Writer, mode outputpkg.Mode, command, id string, err error) int {
+	var refusal *leasepkg.Refusal
+	if errors.As(err, &refusal) {
+		return app.contractError(out, mode, command, id, err)
+	}
+	outputpkg.Emit(out, mode, map[string]any{
+		"contract": contractVersion, "code": "COMMAND_FAILED", "exit_code": 1,
+		"error": err.Error(), "help": []string{"Retry dibs " + command + " " + id + " after resolving the reported failure"},
+	})
+	return 1
 }
 
 func (app application) runContract(ctx context.Context, command string, args []string, out io.Writer, mode outputpkg.Mode) int {

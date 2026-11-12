@@ -229,7 +229,7 @@ func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lea
 	defer s.Close()
 	l, ok := s.Leases[id]
 	if !ok {
-		return Lease{}, errors.New("lease does not exist; use dibs create for a new lease")
+		return Lease{}, refuse("not_found", "lease does not exist; acquire a new lease")
 	}
 	if err := extendLease(&l, host, ttl, now, m.checkOwner); err != nil {
 		return Lease{}, err
@@ -255,8 +255,11 @@ func (m *Manager) Release(ctx context.Context, r ReleaseRequest) (ReleaseResult,
 		return ReleaseResult{}, err
 	}
 	defer s.Close()
-	_, exists := s.Leases[r.ID]
+	l, exists := s.Leases[r.ID]
 	result := ReleaseResult{ID: r.ID, Exists: exists}
+	if exists && l.Machine != host {
+		return ReleaseResult{}, refuse("wrong_machine", "run dibs release on the lease's machine")
+	}
 	if exists && r.Confirm {
 		result.Released, err = releaseLease(ctx, s, r.ID, host, m.options.Adapters)
 	}

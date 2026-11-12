@@ -4,7 +4,7 @@ This page is for any tool that leases resources for work it starts and must get 
 
 Agents read AXI: TOON on stdout, selected by `--axi`, `DIBS_AXI=1`, or a stdout that is not a terminal. Scripts read `--json`, which carries the same fields and never truncates. Each command's `--help` states its statuses, reasons, and exit codes, and is the contract of record. See [Output modes](output.md) for how the modes are selected and rendered.
 
-Source: `internal/cli/contract.go` (new commands, refusal output), `internal/cli/cli.go` and `internal/cli/inventory.go` (`--key`, `--pending`), `internal/lease/pending.go` (pending leases, reconcile, reclaim, explain, keys). Tests: `internal/lease/pending_test.go`, `internal/cli/contract_test.go`, and `TestIntegrationPendingCrashRecovery` in `internal/cli/pending_integration_test.go` (build tag `integration`, run with `just integration`).
+Source: `internal/cli/contract.go` (versioned results and refusals), `internal/cli/cli.go` (`extend`, `release`, `--key`, `--pending`), `internal/cli/inventory.go` (`adopt`), `internal/lease/manager.go` and `internal/lease/lease.go` (renew and release), and `internal/lease/pending.go` (reconcile, reclaim, explain, and idempotency). Tests: `internal/lease/pending_test.go`, `internal/lease/lease_test.go`, `internal/cli/contract_test.go`, and `TestIntegrationPendingCrashRecovery` in `internal/cli/pending_integration_test.go` (build tag `integration`, run with `just integration`).
 
 ## Verbs
 
@@ -17,7 +17,7 @@ Source: `internal/cli/contract.go` (new commands, refusal output), `internal/cli
 | reconcile | `dibs reconcile [ID] [--confirm]` | you restarted after a crash and may have built a resource without registering it |
 | renew | `dibs extend ID --ttl D` | the work still needs the resource |
 | heartbeat | touch the `heartbeat:<file>` owner file | the owner is a heartbeat; no dibs call is involved |
-| release | `dibs release ID --confirm` | the work is done |
+| release | `dibs release ID [--confirm]` | the work is done; omit `--confirm` to preview |
 | reclaim | `dibs reclaim ID [--confirm]` | you believe the owner died and want dibs to prove it before destroying anything |
 | list | `dibs list [--owner O]` | you need every lease, or the leases of one owner |
 | explain | `dibs explain ID` | you need to know whether sweep or reclaim would act on a lease, and why |
@@ -26,9 +26,9 @@ Source: `internal/cli/contract.go` (new commands, refusal output), `internal/cli
 
 ## Output
 
-Every success and refusal from a contract surface carries `contract: 1`. A success carries `status`. A refusal carries `reason`. Lease commands carry the lease under `lease`, and every response carries `help[]` with the next command to run.
+Every success and refusal from a contract surface carries `contract: 1`. A success carries `status`. A refusal carries `reason`. Responses that return a lease carry it under `lease`; release identifies its lease with `id`. Every response carries `help[]` with the next command to run.
 
-A contract surface is a new command (`reconcile`, `reclaim`, `explain`) or an invocation that uses `--pending` or `--key`. Other invocations keep their original output and exit codes, so existing scripts do not change.
+A contract surface is `reconcile`, `reclaim`, `explain`, `extend`, and `release`, or an invocation that uses `--pending` or `--key`. This versions the existing `extend` refusals (now exit 3) and `release` status values (now `preview`, `released`, `already_done`); these are intentional contract changes. Other invocations keep their original output and exit codes.
 
 AXI, for a retried register step:
 
@@ -87,6 +87,8 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 | `create --key` | `created`, `already_done` |
 | `adopt --key` | `adopted`, `already_done` |
 | `adopt --pending` | `bound`, `already_done` |
+| `extend` | `renewed` |
+| `release` | `preview`, `released`, `already_done` |
 | `reconcile` | top level `preview` or `reconciled`; per lease in `results[]`: `bindable`, `bound`, `absent`, `ambiguous`, `conflict`, `unknown`, `already_done` |
 | `reclaim` | `preview`, `reclaimed`, `already_done` |
 | `explain` | `explained` |
@@ -97,7 +99,7 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 
 | Reason | Meaning | What to do |
 | --- | --- | --- |
-| `not_found` | No lease with that ID exists on this machine | Find the lease with `dibs list`; a released lease cannot come back |
+| `not_found` | No lease with that ID exists on this machine | Acquire a new lease with `dibs create`; a released lease cannot come back |
 | `wrong_machine` | The lease belongs to another machine | Run the command on that machine |
 | `not_pending` | The lease already covers a different resource | Run `dibs explain ID` |
 | `already_leased` | Another lease owns or awaits the resource | Run `dibs list`; never lease one resource twice |
@@ -107,7 +109,10 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 | `resource_absent` | The resource to register or adopt does not exist | Create it, then retry |
 | `ambiguous` | More than one resource matches a pending lease | Register the right one with `dibs adopt T HANDLE --pending ID` |
 | `owner_alive` | `reclaim` found the owner alive, even if the lease expired | Leave it, or release it as its owner |
-| `owner_unknown` | `reclaim` could not verify the owner | Retry later; unknown liveness never permits reclaim |
+| `owner_unknown` | `reclaim` could not verify the owner, or `extend` could not verify a live owner | Retry later; the lease is kept |
+| `expired` | `extend` found the lease expired while its owner is alive | Release it and acquire again; do not create a second lease for a resource still covered |
+| `owner_dead` | `extend` found the owner dead | Run `dibs reclaim ID --confirm` or `dibs sweep --confirm` |
+| `job_deadline` | A job reservation cannot be extended | Start a new `dibs job` with `--timeout` |
 
 ## Idempotency
 
@@ -119,7 +124,7 @@ The other verbs are idempotent without a key:
 
 - `adopt T HANDLE --pending ID` returns `already_done` when the lease already covers that handle.
 - `reconcile ID` returns `already_done` for a lease that is no longer pending.
-- `release ID --confirm` and `reclaim ID --confirm` succeed when the lease is already gone.
+- `release ID --confirm` and `reclaim ID --confirm` return `already_done` when the lease is already gone. Repeating a successful `extend` renews the same lease again.
 
 A keyed `create` that failed after it saved its lease returns `already_done` on retry, with the partly created resource still under that lease. Release the lease and acquire again when the first attempt reported exit 1.
 
@@ -143,17 +148,19 @@ After a crash, the restarted caller runs the same keyed `create --pending` and g
 
 `dibs reconcile` without an ID previews every pending lease on this machine, and `--confirm` binds each single unclaimed match.
 
-Release and sweep finish a pending lease too. `release --confirm`, `reclaim --confirm`, and an eligible `sweep --confirm` first look for the lease's match. A single match is registered, destroyed, and verified gone. No match means nothing was built, and dibs forgets the lease. An ambiguous match or failed discovery retains the lease: `release` and `sweep` exit 1, and `reclaim` exits 3 with `ambiguous` or exits 1 when discovery failed.
+Release and sweep finish a pending lease too. `release --confirm`, `reclaim --confirm`, and an eligible `sweep --confirm` first look for the lease's match. A single match is registered, destroyed, and verified gone. No match means nothing was built, and dibs forgets the lease. An ambiguous match retains the lease: `release` exits 3 with `ambiguous`, `sweep` exits 1, and `reclaim` exits 3. Failed discovery retains the lease and exits 1.
 
 If sweep forgets a pending lease while its caller is still building the resource, the later `adopt --pending` exits 3 with `not_found`. The caller still holds the resource it built and must destroy it or adopt it under a new lease.
 
 ## Renew and heartbeat
 
-`dibs extend ID --ttl D` sets the expiry to now plus `D` for an unexpired lease whose owner is alive. It keeps its original exit codes: 0 when renewed, and 1 when the lease is missing, expired, or has a dead or unknown owner. Treat exit 1 as a refused renewal. Report it, inspect the lease with `dibs explain ID`, and never answer it by creating a second lease for a resource that the first lease still covers.
+`dibs extend ID --ttl D` sets expiry to now plus `D` for an unexpired lease whose owner is alive. Success is contract 1, `status: renewed`, and exit 0; repeating the call renews the same lease. Refusals now use exit 3: `not_found`, `wrong_machine`, `expired`, `owner_dead`, `owner_unknown`, or `job_deadline`. This intentionally changes prior refusal exit 1 to exit 3. When both expiry and owner status would refuse renewal, dead or unknown owner takes precedence. Exit 1 means the operation itself failed. Never answer a refused renewal by creating a second lease for a resource that the first lease still covers.
 
 Renew at the latest when one third of the TTL remains. For a `heartbeat:<file>` owner, touch the file at most every staleness/3. The heartbeat is liveness, not renewal: expiry still reclaims a lease whose owner keeps touching its file.
 
 ## Reclaim
+
+`dibs release ID` returns `preview` without `--confirm`, `released` after successful confirmed cleanup, and `already_done` when no lease exists; each is contract 1 and exit 0. A foreign-machine lease refuses with `wrong_machine` (exit 3). Ambiguous pending cleanup refuses with `ambiguous` (exit 3), while cleanup or discovery failures exit 1 and retain the record. This intentionally changes the previous human status strings to a stable enum.
 
 `dibs reclaim ID` previews, and `--confirm` acts only when the owner check returns `dead` on this machine. An alive owner is refused with `owner_alive` even after the lease has expired, and unknown liveness is refused with `owner_unknown`. Reclaim destroys the resource, verifies it is gone, and then forgets the lease. A cleanup failure retains the lease and exits 1.
 

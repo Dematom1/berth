@@ -1,4 +1,4 @@
-exit: 1
+exit: 3
 stdout:
-Error: lease does not exist; use dibs create for a new lease
-Run dibs ps to inspect retained leases; retry dibs extend --help for options
+Error: lease does not exist; acquire a new lease
+Run dibs create to acquire a new lease; a released lease cannot be restored

@@ -24,8 +24,6 @@ type Lease struct {
 	PendingFile string                 `json:"pending_file,omitempty"`
 	ResourceRef adapterpkg.ResourceRef `json:"resource"`
 	Reservation *ReservationView       `json:"job,omitempty"`
-	// Opt-in: only proven owner death reclaims; expiry alone never does.
-	ProtectLiveOwner bool `json:"protect_live_owner,omitempty"`
 }
 
 func newLease(owner ownerpkg.Reference, ttl time.Duration, resources string, labels map[string]string, now time.Time) (Lease, error) {
@@ -49,82 +47,30 @@ func reclaimable(l Lease, host string, now time.Time, check func(ownerpkg.Refere
 		return false, ownerpkg.Unknown
 	}
 	live := check(l.Owner, now)
-	if l.ProtectLiveOwner {
-		return live == ownerpkg.Dead, live
-	}
 	return live == ownerpkg.Dead || !now.Before(l.Expires), live
 }
 
-// RenewRefusal is a protected lease's renew refusal; the lease is left unchanged.
-type RenewRefusal struct {
-	Reason string
-	Cause  error
-}
-
-const (
-	OwnerDead       = "owner_dead"
-	OwnerUnknown    = "owner_unknown"
-	ResourceAbsent  = "resource_absent"
-	ResourceUnknown = "resource_unknown"
-)
-
-func (r *RenewRefusal) Error() string {
-	message := map[string]string{
-		OwnerDead:       "renew refused: the lease owner is dead; the lease is retained for reclaim",
-		OwnerUnknown:    "renew refused: the lease owner cannot be verified; the lease is retained and not reclaimable",
-		ResourceAbsent:  "renew refused: the expired lease's resource is gone; the lease is retained",
-		ResourceUnknown: "renew refused: the expired lease's resource cannot be verified; the lease is retained",
-	}[r.Reason]
-	if r.Cause != nil {
-		message += ": " + r.Cause.Error()
-	}
-	return message
-}
-func (r *RenewRefusal) Unwrap() error { return r.Cause }
-
-const (
-	Renewed    = "renewed"
-	Reattached = "reattached"
-)
-
-// present reports whether a lease's pinned resource still exists; an error means unknown.
-func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check func(ownerpkg.Reference, time.Time) ownerpkg.Liveness, present func(Lease) (bool, error)) (string, error) {
+func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check func(ownerpkg.Reference, time.Time) ownerpkg.Liveness) error {
 	if ttl <= 0 {
-		return "", errors.New("--ttl must be positive")
+		return errors.New("--ttl must be positive")
 	}
 	if l.Machine != host {
-		return "", errors.New("run dibs extend on the lease's machine")
+		return refuse("wrong_machine", "run dibs extend on the lease's machine")
 	}
 	if l.Reservation != nil {
-		return "", errors.New("job deadlines cannot be extended; start a new dibs job with --timeout")
+		return refuse("job_deadline", "job deadlines cannot be extended; start a new dibs job with --timeout")
 	}
-	status := Renewed
-	if !l.ProtectLiveOwner {
-		if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != ownerpkg.Alive {
-			return "", errors.New("lease is expired, dead, or its owner cannot be verified; create a new lease")
-		}
-	} else {
-		switch check(l.Owner, now) {
-		case ownerpkg.Alive:
-		case ownerpkg.Dead:
-			return "", &RenewRefusal{Reason: OwnerDead}
-		default:
-			return "", &RenewRefusal{Reason: OwnerUnknown}
-		}
-		// A late renew reattaches only to the same, still-present resource; it never recreates one.
-		if !now.Before(l.Expires) {
-			found, err := present(*l)
-			if err != nil {
-				return "", &RenewRefusal{Reason: ResourceUnknown, Cause: err}
-			}
-			if !found {
-				return "", &RenewRefusal{Reason: ResourceAbsent}
-			}
-			status = Reattached
-		}
+	switch live := check(l.Owner, now); live {
+	case ownerpkg.Dead:
+		return refuse("owner_dead", "lease owner is dead; reclaim the lease")
+	case ownerpkg.Unknown:
+		return refuse("owner_unknown", "lease owner cannot be verified; retry later")
+	}
+	if !now.Before(l.Expires) {
+		return refuse("expired", "lease is expired; release it and acquire again")
 	}
 	l.TTL, l.Expires = ttl, now.Add(ttl)
-	return status, nil
+	return nil
 }
 
 // A cleanup failure keeps the durable intent; a later release or sweep retries it.

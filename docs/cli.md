@@ -124,13 +124,13 @@ Rules that the code enforces:
 - `dibs sweep --confirm` exits 1 when any eligible lease failed cleanup, and still prints the full result.
 - The output mode never changes the exit code.
 
-The consumer contract adds exit 3 for safety refusals, with a stable `reason` field. Only new commands (`reconcile`, `reclaim`, `explain`) and invocations that use `--pending` or `--key` return it. The `contractCodes` constant in `internal/cli/help.go` states it in their help, and [Consumer contract](consumer-contract.md#exit-codes) lists every reason. Test: `TestContractKeysReclaimExplain`.
+The versioned consumer contract returns exit 3 for safety refusals, with a stable `reason` field. `extend` and `release` now join `reconcile`, `reclaim`, and `explain`, as do invocations using `--pending` or `--key`. This intentionally changes `extend` refusals from exit 1 to 3 and replaces `release` status strings with stable enum values. `contractCodes` in `internal/cli/help.go` states the contract in command help, and [Consumer contract](consumer-contract.md#exit-codes) lists every reason. Test: `TestRenewReleaseContractModes`.
 
 Tests: `TestJobsRealProcesses` subtests "exit codes and transparent argv", "wait exhaustion does not start child", and "deadline flag class and grandchildren", `TestOutputProcessesAndTTY`, and the `TestSSHIntegration` subtests for 255, 75, and 76.
 
 ## Invariants
 
-1. **The exit-code contract is stable.** Codes 0, 1, 2, 3 (contract surfaces only), 75, 76, 124, 125, 126, and `128 + signal` keep their meanings. Changing one breaks every caller that branches on it.
+1. **The exit-code contract is stable.** Codes 0, 1, 2, 3 (versioned contract surfaces), 75, 76, 124, 125, 126, and `128 + signal` keep their meanings. Changing one breaks every caller that branches on it.
 2. **Usage errors happen before state access.** A usage error never reads or writes state, edits agent config, or runs a resource tool. Test: `TestCLIRejectsUsageBeforeStateAccess`.
 3. **The help text matches the behavior.** A change to flags, defaults, or exit codes updates `commandHelp` or `exitCodes`, the README, and the matching doc in `docs/`.
 4. **No prompts.** `release` and `sweep` are previews unless `--confirm` is set.

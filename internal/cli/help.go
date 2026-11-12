@@ -15,11 +15,12 @@ failures after start use 125/126 and diagnostics on stderr.
 76 is SSH transport/protocol failure with unknown remote result (stderr).
 Child exit 255 is preserved and is not confused with SSH failure.`
 
-const contractCodes = `Contract 1 (new commands and the --pending/--key flags): exit 0 success with
-status; 1 failed, records retained; 2 usage; 3 refused, nothing changed, with a
-stable reason: not_found, wrong_machine, not_pending, already_leased,
-key_conflict, handle_exists, handle_mismatch, resource_absent, ambiguous,
-owner_alive, owner_unknown. Output carries contract: 1. See docs/consumer-contract.md.`
+const contractCodes = `Contract 1 (reconcile, reclaim, explain, extend, release, and --pending/--key):
+exit 0 success with status; 1 operation failed, records retained; 2 usage;
+3 refused, nothing changed, with a stable reason: not_found, wrong_machine,
+not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
+resource_absent, ambiguous, owner_alive, owner_unknown, expired, owner_dead,
+job_deadline. Output carries contract: 1. See docs/consumer-contract.md.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
@@ -122,16 +123,19 @@ Aliases: ls, ps, who. No arguments shows the live home view.
 Examples:
   dibs ps
   dibs who --owner pid:1234 --json`,
-	"extend": `dibs extend <id> --ttl D [--json]
+	"extend": `dibs extend <id> --ttl D [--axi | --json]
 Set expiry to now + D (positive Go duration). Only an unexpired lease with a
 verified live owner on this machine can be extended. It cannot be resurrected.
+Status: renewed. Refusal reasons: not_found, wrong_machine, expired, owner_dead,
+owner_unknown, job_deadline. Refusals exit 3; operation failures exit 1.
 Examples:
   dibs extend <id> --ttl 2h
   dibs extend <id> --ttl 30m --json`,
-	"release": `dibs release <id> [--confirm] [--json]
+	"release": `dibs release <id> [--confirm] [--axi | --json]
 Preview by default. --confirm destroys managed resources (including Compose
-volumes) and removes the lease only on success. Already absent is success.
-A failed cleanup retains the lease for retry. down is an alias.
+volumes) and removes the lease only on success. A failed cleanup retains the
+lease for retry. Statuses: preview, released, already_done. Refusal reasons:
+wrong_machine, ambiguous. Refusals exit 3; cleanup failures exit 1. down is an alias.
 Examples:
   dibs release <id>
   dibs release <id> --confirm`,
@@ -212,7 +216,7 @@ Run dibs <command> --help for command flags.`
 		body += "\nOutput: --axi for agents, --json for scripts (mutually exclusive).\nDefault: human on terminals; AXI for pipes or DIBS_AXI=1.\nLease commands: --full restores complete AXI records/text; JSON is always complete."
 	}
 	switch command {
-	case "create", "adopt", "reconcile", "reclaim", "explain":
+	case "create", "adopt", "reconcile", "reclaim", "explain", "extend", "release":
 		body += "\n\n" + contractCodes
 	}
 	return body + "\n\n" + exitCodes + "\n"

@@ -42,11 +42,12 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 | `dibs` (home view, no arguments) | Everything from `list`, plus `bin` and `description` |
 | `list` | `budget`, `count`, `help`, `leases`, `records` |
 | `create` | `help`, `lease`, `record` |
-| `extend` | `lease` |
-| `release` | `id`, `status` |
+| `extend` | `contract`, `help`, `lease`, `status` |
+| `release` | `contract`, `help`, `id`, `status` |
 | `sweep` | `confirmed`, `eligible`, `reclaimed`, `unknown`. Adds `help` when not confirmed. Adds `code`, `error`, `exit_code`, and `failures` on failure. |
 | `adopt` | `help`, `lease`, `record` |
 | `create` or `adopt` with `--key` or `--pending` | The keys above, plus `contract` and `status` |
+| `extend` or `release` refusal | `code`, `contract`, `error`, `exit_code`, `help`, `reason` |
 | `reconcile` | `contract`, `count`, `help`, `results`, `status`. Each result has `id`, `status`, `resource_adapter`, `resource_name`, `matches`, and `conflicts`. |
 | `reclaim` | `contract`, `help`, `id`, `status`. Adds `liveness` unless the lease was already gone. |
 | `explain` | `contract`, `expired`, `help`, `lease`, `liveness`, `reclaim_would_reclaim`, `record`, `status`, `sweep_would_reclaim`, `this_machine`, `why` |
@@ -54,7 +55,7 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 | `orphans` | `count`, `help`, `orphans`. Each row has `type`, `name`, `docker_context`, `created`, `labels`, `working_dir`, `working_dir_status`, `config_files`, `evidence`, and `adopt` (the command template). |
 | `machine install` | `help`, `machine`, `status`, `version` |
 | `setup hooks` | `changed`, `help`, `status` |
-| Any error | `code`, `error`, `exit_code`, `help` |
+| Any error | `code`, `error`, `exit_code`, `help`; contract operation failures also carry `contract` |
 
 Parts of the map:
 

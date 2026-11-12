@@ -1,8 +1,8 @@
 # Leases and owner liveness
 
-A lease records who owns a resource on this machine and when the resource expires. Automatic reclaim (`sweep` and job admission) happens only when the owner is dead or the lease has expired. A lease with live-owner protection is reclaimed automatically only when its owner is dead. An explicit `release --confirm` destroys a lease regardless of owner liveness or expiry. This page describes the lease lifecycle and the owner liveness checks that decide reclaim.
+A lease records who owns a resource on this machine and when the resource expires. Automatic reclaim (`sweep` and job admission) happens only when the owner is dead or the lease has expired. An explicit `release --confirm` destroys a lease regardless of owner liveness or expiry. This page describes the lease lifecycle and the owner liveness checks that decide reclaim.
 
-Source: `internal/lease/lease.go` (record, reclaim, extend, release, sweep), `internal/lease/manager.go` (the commands' ordering under the state lock), `internal/owner/reference.go` and `internal/owner/registry.go` (owner parsing and liveness), and the lease commands in `internal/cli/cli.go`. Tests: `internal/lease/lease_test.go`, `internal/owner/reference_test.go`, `internal/cli/cli_test.go`, and `TestFormalLeaseDomain` in `internal/lease/formal_test.go` (build tag `formal`, run with `just formal`). Formal model: `verification/Lease.tla`. Decisions: [ADR 0001](adr/0001-lease-lifecycle-and-ttl.md), [ADR 0002](adr/0002-reclaim-with-proof.md), [ADR 0003](adr/0003-owner-identity-and-liveness.md), [ADR 0008](adr/0008-live-owner-protection.md).
+Source: `internal/lease/lease.go` (record, reclaim, extend, release, sweep), `internal/lease/manager.go` (the commands' ordering under the state lock), `internal/owner/reference.go` and `internal/owner/registry.go` (owner parsing and liveness), and the lease commands in `internal/cli/cli.go`. Tests: `internal/lease/lease_test.go`, `internal/owner/reference_test.go`, `internal/cli/cli_test.go`, and `TestFormalLeaseDomain` in `internal/lease/formal_test.go` (build tag `formal`, run with `just formal`). Formal model: `verification/Lease.tla`. Decisions: [ADR 0001](adr/0001-lease-lifecycle-and-ttl.md), [ADR 0002](adr/0002-reclaim-with-proof.md), [ADR 0003](adr/0003-owner-identity-and-liveness.md).
 
 ## Lease record
 
@@ -16,7 +16,6 @@ Source: `internal/lease/lease.go` (record, reclaim, extend, release, sweep), `in
 - `Labels` is free-form `key=value` metadata from repeatable `--label` flags.
 - `ResourceRef` names the adapter and the managed resource identity. A lease without a managed resource uses adapter `none`. See [Adapters](adapters.md).
 - `Reservation` (JSON `job`) is set only for job reservations, which use adapter `process`. See [Jobs](jobs.md).
-- `ProtectLiveOwner` (JSON `protect_live_owner`) is set by `--protect-live-owner` on `create` or `adopt`. See [Live-owner protection](#live-owner-protection). Job reservations never carry it.
 
 The on-disk layout of these fields is in [State](state.md#format-version-2).
 
@@ -73,8 +72,7 @@ Tests: `TestOwnerLiveness`, `TestOutOfRangePIDIsUnknownNotDead`, `TestHeartbeatI
 `reclaimable` in `internal/lease/lease.go` is the single reclaim decision. `sweep`, `list`, and job admission all call it.
 
 1. If the lease's `Machine` is not this host, the lease is not reclaimable. The owner check does not run, and liveness reports `unknown`.
-2. If the lease has live-owner protection, it is reclaimable only when the owner is `dead`.
-3. Otherwise the lease is reclaimable when the owner is `dead` **or** `now >= Expires`.
+2. Otherwise the lease is reclaimable when the owner is `dead` **or** `now >= Expires`.
 
 These cases follow from the rule:
 
@@ -86,15 +84,7 @@ These cases follow from the rule:
 | `alive` or `unknown` | yes | yes |
 | any, on a foreign machine | either | no |
 
-With live-owner protection:
-
-| Owner | Expired | Reclaimable |
-| --- | --- | --- |
-| `alive` or `unknown` | either | no |
-| `dead` | either | yes |
-| any, on a foreign machine | either | no |
-
-Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestCLIExpiredLiveOwnerAndFailure`, `TestProtectedReclaimAndRenew`, `TestProtectedSweepSurvivesSupervisorOutage`.
+Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestCLIExpiredLiveOwnerAndFailure`.
 
 ## Lifecycle commands
 
@@ -121,22 +111,20 @@ With `--key`, `keyed` runs first, right after the lock: a lease on this machine 
 - The lease is a job reservation (`Reservation != nil`). Job deadlines never move.
 - The lease is reclaimable, or its owner is not `alive`.
 
-An expired lease cannot come back. Create a new one instead. Test: `TestReclaimAndExtend`.
-
-A protected lease follows [Live-owner protection](#live-owner-protection) instead of the last rule. `Manager.Extend` reports `renewed` or `reattached` as the result's `status`.
+An expired lease cannot come back. Create a new one instead. Renewal now returns contract 1 and exit 3 with a stable refusal reason instead of the previous exit 1; when owner state is dead or unknown, that reason takes precedence over `expired`. A successful renewal is `status: renewed` and may be repeated on the same lease. Test: `TestExtendRefusalReasons`.
 
 ### Release
 
-`dibs release <id>` is a preview unless `--confirm` is set. With `--confirm`, `Manager.Release` calls `releaseLease`, which:
+`dibs release <id>` is a preview unless `--confirm` is set. It now returns contract 1 statuses `preview`, `released`, or `already_done` (replacing the previous free-form status strings). With `--confirm`, `Manager.Release` calls `releaseLease`, which:
 
-1. Returns success with no change when the lease is absent.
-2. Refuses a lease from another machine.
+1. Returns `already_done` with no change when the lease is absent.
+2. Refuses a lease from another machine with `wrong_machine` (exit 3).
 3. Refuses a lease whose adapter this binary does not know, and keeps the lease. The `process` adapter is handled by the lease package itself, not the adapter registry.
-4. For a pending lease, `settlePending` looks for its match first. One match is bound, then destroyed below. No match means nothing was built, and the lease is forgotten without an adapter call. Several matches, or a failed discovery, keep the lease. Test: `TestPendingCleanupAfterCrash`, `TestReconcileAmbiguousConflictUnknown`.
+4. For a pending lease, `settlePending` looks for its match first. One match is bound, then destroyed below. No match means nothing was built, and the lease is forgotten without an adapter call. Several matches refuse with `ambiguous` (exit 3); failed discovery exits 1 and retains the lease. Test: `TestPendingCleanupAfterCrash`, `TestReconcileAmbiguousConflictUnknown`.
 5. Calls the adapter's `Destroy`, or the process group's `Destroy`. On error, keeps the lease.
 6. Deletes the lease and saves (`forget`). If the save fails, restores the lease in memory and returns the error.
 
-`release --confirm` does not check owner liveness or expiry, with or without live-owner protection. It is an explicit operator action on a specific lease. Tests: `TestCLILeaseLifecycle`, `TestCLIReleaseFailureDoesNotReportReleased`.
+`release --confirm` does not check owner liveness or expiry. It is an explicit operator action on a specific lease. Cleanup failures exit 1 and retain the lease. Tests: `TestCLILeaseLifecycle`, `TestCLIReleaseWrongMachineRefused`.
 
 ### Sweep
 
@@ -147,27 +135,6 @@ A protected lease follows [Live-owner protection](#live-owner-protection) instea
 `Manager.Reclaim` in `internal/lease/pending.go` is a targeted reclaim that is stricter than both `release` and the reclaim rule above. It acts only when the owner check returns `dead` on this machine. An `alive` owner is refused even after expiry, and `unknown` liveness is refused. It previews without `--confirm`, then calls `releaseLease`. An absent lease is success. `Manager.Explain` reports the reclaim rule's answer, the targeted reclaim's answer, and a readable reason, without acting. Tests: `TestReclaimRequiresProvenDeath`, `TestExplainUnexpired`.
 
 dibs has no daemon. Reclaim happens only when someone runs `dibs sweep --confirm`, `dibs release --confirm`, `dibs reclaim --confirm`, or `dibs job` (whose admission reclaims eligible job leases). The help text tells users to run sweep from a host timer.
-
-## Live-owner protection
-
-`--protect-live-owner` on `create` or `adopt` stores `protect_live_owner: true`. The flag needs the `live_owner_protection` user config opt-in or `DIBS_LIVE_OWNER_PROTECTION=1`, and fails with code 2 without it. Without the flag, nothing on this page changes. [ADR 0008](adr/0008-live-owner-protection.md) records the decision.
-
-`reclaimable` reclaims a protected lease only on proven owner death. `extendLease` checks a protected lease in this order:
-
-| State | Result | Exit |
-| --- | --- | --- |
-| Owner `dead` | `RenewRefusal` reason `owner_dead` | 3 |
-| Owner `unknown` | reason `owner_unknown` | 3 |
-| Owner `alive`, unexpired | `renewed`, `Expires = now + ttl` | 0 |
-| Owner `alive`, expired, adapter `Exists` reports present | `reattached`, `Expires = now + ttl` | 0 |
-| Owner `alive`, expired, `Exists` reports absent | reason `resource_absent` | 3 |
-| Owner `alive`, expired, `Exists` fails or is missing | reason `resource_unknown` | 3 |
-
-The ttl, machine, and job checks come first and keep their exit 1 errors. A refusal leaves the record unchanged. A renew never creates a lease, so a late renew cannot give one resource two owners. `Exists` runs only for a late renew, under the state lock. See [Adapters](adapters.md#contract).
-
-Protection holds through a supervisor outage only when the lease owner is the worker's own liveness source. If the owner is the renewing supervisor's PID, or the supervisor touches the heartbeat file, a supervisor outage reads as owner death and the lease is reclaimed.
-
-Tests: `TestProtectedReclaimAndRenew`, `TestProtectedAdoptReattachesOnlyToPinnedEndpoint`, `TestCLIProtectedRenewRefusalsByOwner`, `TestCLIProtectedLateRenewChecksPinnedResource`, `TestCLIUnprotectedLateRenewUnchanged`, `TestLiveOwnerProtectionOptIn`.
 
 ## Renewal cadence
 
@@ -182,7 +149,7 @@ The cadence is a recommendation. Missing it does not by itself make a lease recl
 
 Reviewers check every change to `internal/lease/lease.go`, `internal/lease/manager.go`, `internal/owner/`, and the lease commands in `internal/cli/cli.go` against these rules.
 
-1. **Never reclaim a live, unexpired owner.** Automatic reclaim (`sweep`, job admission) goes through `reclaimable`, which requires `dead` or expired. Expiry wins even over a live owner, by policy (ADR 0001, finding F1 in `verification/findings.md`). A protected lease requires `dead` (ADR 0008, `ProtectedSafe` in `verification/Lease.tla`). Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestFormalLeaseDomain`, `TestProtectedReclaimAndRenew`.
+1. **Never reclaim a live, unexpired owner.** Automatic reclaim (`sweep`, job admission) goes through `reclaimable`, which requires `dead` or expired. Expiry wins even over a live owner, by policy (ADR 0001, finding F1 in `verification/findings.md`). Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestFormalLeaseDomain`.
 2. **`unknown` is never `dead`.** Any error that does not prove absence returns `unknown`. An `unknown` owner keeps its lease until expiry. Tests: `TestOwnerLiveness`, `TestOutOfRangePIDIsUnknownNotDead`.
 3. **A host acts only on its own leases.** `reclaimable`, `extendLease`, and `releaseLease` compare `Machine` with this host before anything else. Expired foreign leases stay. Test: `TestReclaimAndExtend`.
 4. **A record is removed only after verify-gone.** `releaseLease` deletes the lease only after `Destroy` returns nil, and every built-in adapter's `Destroy` verifies absence before returning nil. The one exception is a job reservation whose group leader is already gone and reaped: `processResource.Destroy` then succeeds without verifying that descendants are gone. See [Jobs](jobs.md#process-group-cleanup) and [ADR 0002](adr/0002-reclaim-with-proof.md#existing-process-exception). See [Adapters](adapters.md#invariants). Test: `TestSweepPreviewRetryAndIdempotence`.
@@ -190,8 +157,7 @@ Reviewers check every change to `internal/lease/lease.go`, `internal/lease/manag
 6. **Preview by default.** `release` and `sweep` change nothing without `--confirm`. Test: `TestSweepPreviewRetryAndIdempotence`.
 7. **Expiry is checked after the lock.** `Manager.open` reads the clock after `openStore` has acquired the lock.
 8. **PID owners pin start identity.** A reused PID reads as `dead`, never as the original owner. The registry's `Check` compares the recorded identity with the live one. Test: `TestOwnerLiveness`.
-9. **A late renew never recreates.** A protected lease reattaches only to the same lease ID and a present resource. Every refusal leaves the record unchanged. Test: `TestProtectedReclaimAndRenew`.
-10. **Job deadlines never move.** `extendLease` refuses reservations. Test: `TestJobsRealProcesses` covers the job lifecycle. See [Jobs](jobs.md#invariants).
+9. **Job deadlines never move.** `extendLease` refuses reservations. Test: `TestJobsRealProcesses` covers the job lifecycle. See [Jobs](jobs.md#invariants).
 
 ## Planned
 

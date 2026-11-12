@@ -337,23 +337,27 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	case "extend":
 		id := fs.Arg(0)
 		l, extendErr := app.leases.Extend(ctx, id, ttl)
-		err = extendErr
-		if err == nil {
-			now = l.Expires.Add(-ttl)
-			result = map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l))}
+		if extendErr != nil {
+			return app.contractOperationError(out, jsonOutput, command, id, extendErr)
 		}
+		now = l.Expires.Add(-ttl)
+		result = contractResult("renewed", map[string]any{
+			"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l)),
+			"help":  []string{"Run dibs extend " + id + " --ttl <D> to renew again"},
+		})
 	case "release":
 		id := fs.Arg(0)
 		released, releaseErr := app.leases.Release(ctx, leasepkg.ReleaseRequest{ID: id, Confirm: confirm})
-		err = releaseErr
-		status := "already absent (no-op)"
-		if released.Exists {
-			status = "preview; rerun with --confirm to reclaim"
+		if releaseErr != nil {
+			return app.contractOperationError(out, jsonOutput, command, id, releaseErr)
 		}
-		if released.Released {
-			status = "released"
+		status, hints := "already_done", []string{"Nothing to release; acquire a lease when the work needs the resource"}
+		if released.Exists && !confirm {
+			status, hints = "preview", []string{"Run dibs release " + id + " --confirm to destroy the resource and forget the lease"}
+		} else if released.Released {
+			status, hints = "released", []string{"The resource is released; acquire it again only if needed"}
 		}
-		result = map[string]any{"id": id, "status": status}
+		result = contractResult(status, map[string]any{"id": id, "help": hints})
 	case "sweep":
 		r, sweepErr := app.leases.Sweep(ctx, leasepkg.SweepRequest{Confirm: confirm})
 		if sweepErr != nil {
