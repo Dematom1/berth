@@ -80,7 +80,7 @@ func TestAdoptRefusalsAndDurability(t *testing.T) {
 			if _, err := os.Stat(m.options.Directory + "/state.json"); !os.IsNotExist(err) {
 				t.Fatal("inventory wrote state")
 			}
-			l, err := m.Adopt(ctx, r)
+			l, _, err := m.Adopt(ctx, r)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -91,7 +91,7 @@ func TestAdoptRefusalsAndDurability(t *testing.T) {
 			if err != nil || disk.Version != 2 || disk.Leases[l.ID].ResourceRef.Name != r.Resource.Name {
 				t.Fatalf("not durable: %v %v", disk, err)
 			}
-			if _, err := m.Adopt(ctx, r); err == nil || !strings.Contains(err.Error(), "already under") {
+			if _, _, err := m.Adopt(ctx, r); err == nil || !strings.Contains(err.Error(), "already under") {
 				t.Fatalf("duplicate accepted: %v", err)
 			}
 			alias := r.Resource
@@ -132,7 +132,7 @@ func TestAdoptRefusalsAndDurability(t *testing.T) {
 				panic("unreachable")
 			}
 			m := inventoryManager(t, "kind", run)
-			if _, err := m.Adopt(context.Background(), adoptionRequest(t, "kind")); err == nil {
+			if _, _, err := m.Adopt(context.Background(), adoptionRequest(t, "kind")); err == nil {
 				t.Fatal("unverified adoption accepted")
 			}
 			if _, err := os.Stat(m.options.Directory + "/state.json"); !os.IsNotExist(err) {

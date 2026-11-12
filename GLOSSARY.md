@@ -11,6 +11,15 @@ This language distinguishes a lease's authority from the resource or work it cov
 A time-bounded claim associated with an owner and one authoritative machine, covering a managed resource, a job reservation, or metadata alone.
 _Avoid_: resource, job, slot
 
+**Pending lease**:
+A lease recorded before the resource it covers exists, holding the scope where that resource will be built and the evidence that will identify it: a pinned handle or the resource's `io.dibs.lease` label.
+It becomes an ordinary lease when the resource is registered, and is reclaimable under the same rules meanwhile.
+_Avoid_: reservation, intent, placeholder
+
+**Idempotency key**:
+A caller-chosen name for one live lease on a machine, so that a retried request returns that lease instead of acting twice.
+_Avoid_: lease ID, label
+
 **Lease ledger**:
 The authoritative collection of recorded leases and admission waiters for cooperating invocations on a machine.
 _Avoid_: cluster inventory, cross-host ledger

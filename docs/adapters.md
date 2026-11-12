@@ -109,10 +109,12 @@ The `process` adapter backs job reservations. It is not in the registry. `proces
 
 1. The owner must be alive, and the TTL must be positive.
 2. The adapter must support discovery, the name must be valid, and `--file` must be present exactly when the adapter requires it (Compose).
-3. No existing lease may already own the resource. `resourceLeased` compares adapter and name, and resolves other Docker contexts to rule out a shared endpoint.
-4. The resource must exist. Discovery finds it by its project or cluster label.
+3. No existing lease may already own the resource. `claimant` compares adapter and name, and resolves other Docker contexts to rule out a shared endpoint. A pending lease also claims its pinned handle.
+4. The resource must exist. Discovery finds it by its project or cluster label. A resource labeled `io.dibs.lease=<id>` for a pending lease belongs to that lease and is refused.
 5. The adapter's `Prepare` captures its cleanup scope with `Adopted` set. kind and k3d write their kubeconfig from `kind get kubeconfig` or `k3d kubeconfig get`. Compose verifies adoption.
 6. The lease gets `io.dibs.*` labels, and the state is saved at version 2.
+
+With `--pending ID`, `bindPending` binds the named resource to an existing pending lease instead of creating a lease. The pending lease supplies the owner, TTL, key, and Docker scope. Binding keeps the lease ID, merges the `io.dibs.*` attribution into the lease labels, and writes the same captured cleanup configuration as adoption. `Manager.Reconcile` finds the resource for a pending lease by its pinned handle or its `io.dibs.lease` label and binds a single unclaimed match. See [Consumer contract](consumer-contract.md#crash-safe-acquire). Tests: `TestPendingPinnedHandleLifecycle`, `TestReconcileByLabel`, `TestIntegrationPendingCrashRecovery`.
 
 Adoption does not recreate the resource and does not change its name. The adopted lease is then an ordinary lease: `dibs release <id> --confirm` runs the adapter's `Destroy` and deletes the resource. Adoption therefore carries the same destructive cleanup as a created lease.
 
@@ -120,7 +122,7 @@ For Compose, `verifyComposeAdoption` in `internal/adapter/compose/inventory.go` 
 
 ## Orphans
 
-`dibs orphans [--context NAME]` lists resources that no lease owns. `Manager.Orphans` runs discovery for every adapter that can create, then drops every resource that `resourceLeased` matches.
+`dibs orphans [--context NAME]` lists resources that no lease owns. `Manager.Orphans` runs discovery for every adapter that can create, then drops every resource that `claimant` matches, including resources that a pending lease pinned or labeled.
 
 - Discovery (`DiscoverDocker`) finds containers (`-a`), and for Compose also volumes and networks, by their project or cluster label. It groups them by name and reports labels, creation evidence, and the Compose working directory with its status.
 - The lease check reads a snapshot of `state.json` with `readInventoryStore`. That read takes no lock, writes nothing, and does not migrate state. Its answer is point-in-time evidence.

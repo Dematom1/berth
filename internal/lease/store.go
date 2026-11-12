@@ -20,7 +20,7 @@ import (
 
 var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
-// stateVersion is the newest state schema this binary reads.
+// stateVersion is the newest state schema this binary reads and writes.
 const stateVersion = 3
 
 type store struct {
@@ -182,6 +182,7 @@ func (s *store) validate() error {
 	if s.Version < 1 || s.Version > stateVersion || s.Leases == nil {
 		return errors.New("unsupported or incomplete state format")
 	}
+	keys := map[string]bool{}
 	for _, w := range s.Waiters {
 		if !leaseID.MatchString(w.ID) || w.Machine == "" || w.Expires.IsZero() || (w.Owner.Kind != "pid" && w.Owner.Kind != "session") || w.Owner.Identity == "" {
 			return errors.New("invalid queue record")
@@ -191,8 +192,21 @@ func (s *store) validate() error {
 		if !leaseID.MatchString(id) || id != l.ID || l.Machine == "" || l.Created.IsZero() || l.Expires.IsZero() || l.TTL <= 0 {
 			return errors.New("invalid lease record")
 		}
+		if l.Key != "" {
+			if s.Version < 3 || !ValidKey(l.Key) || keys[l.Machine+"\x00"+l.Key] {
+				return errors.New("invalid lease key")
+			}
+			keys[l.Machine+"\x00"+l.Key] = true
+		}
+		if l.ResourceRef.Pending {
+			d, ok := s.resources.Lookup(l.ResourceRef.Adapter)
+			if s.Version < 3 || l.ResourceRef.Adopted || l.Reservation != nil || !ok || d.Discover == nil || (l.ResourceRef.Name != "" && !adapterpkg.ValidResourceName(l.ResourceRef.Name)) {
+				return errors.New("invalid pending resource")
+			}
+			continue
+		}
 		if l.ResourceRef.Adapter == "process" {
-			if l.ProtectLiveOwner || l.Reservation == nil || l.Reservation.Budget.Cores <= 0 || l.Reservation.Budget.Memory <= 0 || l.Reservation.Class == "" {
+			if l.Reservation == nil || l.Reservation.Budget.Cores <= 0 || l.Reservation.Budget.Memory <= 0 || l.Reservation.Class == "" {
 				return errors.New("invalid job reservation")
 			}
 			if leader := l.Reservation.Leader; leader.ID != "" {
@@ -205,9 +219,6 @@ func (s *store) validate() error {
 		}
 		if l.Reservation != nil {
 			return errors.New("job reservation requires process adapter")
-		}
-		if l.ProtectLiveOwner && s.Version < 3 {
-			return errors.New("invalid live-owner protection")
 		}
 		if l.ResourceRef.Adopted && s.Version < 2 {
 			return errors.New("invalid adopted resource identity")
@@ -228,18 +239,8 @@ func (s *store) IDs() []string {
 	return ids
 }
 
-// A protected lease needs format 3 so an older binary refuses the ledger instead
-// of ignoring protection and reclaiming the lease at expiry.
 func (s *store) Save() error {
-	protected := false
-	for _, l := range s.Leases {
-		protected = protected || l.ProtectLiveOwner
-	}
-	if protected {
-		s.Version = 3
-	} else if s.Version == 3 {
-		s.Version = 2
-	}
+	s.settleVersion()
 	s.Writer = s.binary
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

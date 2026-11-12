@@ -110,6 +110,8 @@ Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestCLIExpiredLiveOwnerAnd
 
 If `Create` fails, the lease stays in state so that `release` or `sweep` can clean up a partial resource. The error names the retained lease ID: `creation incomplete; lease <id> retained for cleanup`. Test: `TestCLICreateFailureKeepsDurableCleanupIntent`.
 
+With `--key`, `keyed` runs first, right after the lock: a lease on this machine with the same key, owner, adapter, and handle is returned unchanged, and a different request with that key is refused. With `--pending`, `recordPending` replaces steps 3 to 5: it records the scope and optional pinned handle, refuses a pinned handle that already exists or that another lease claims, and saves the lease without running the adapter. The caller builds the resource and binds it with `adopt --pending`. See [Consumer contract](consumer-contract.md#crash-safe-acquire). Tests: `TestIdempotencyKeys`, `TestPendingPinnedHandleLifecycle`.
+
 ### Extend
 
 `extendLease` sets `Expires = now + ttl`. It refuses when any of these is true:
@@ -130,8 +132,9 @@ A protected lease follows [Live-owner protection](#live-owner-protection) instea
 1. Returns success with no change when the lease is absent.
 2. Refuses a lease from another machine.
 3. Refuses a lease whose adapter this binary does not know, and keeps the lease. The `process` adapter is handled by the lease package itself, not the adapter registry.
-4. Calls the adapter's `Destroy`, or the process group's `Destroy`. On error, keeps the lease.
-5. Deletes the lease and saves. If the save fails, restores the lease in memory and returns the error.
+4. For a pending lease, `settlePending` looks for its match first. One match is bound, then destroyed below. No match means nothing was built, and the lease is forgotten without an adapter call. Several matches, or a failed discovery, keep the lease. Test: `TestPendingCleanupAfterCrash`, `TestReconcileAmbiguousConflictUnknown`.
+5. Calls the adapter's `Destroy`, or the process group's `Destroy`. On error, keeps the lease.
+6. Deletes the lease and saves (`forget`). If the save fails, restores the lease in memory and returns the error.
 
 `release --confirm` does not check owner liveness or expiry, with or without live-owner protection. It is an explicit operator action on a specific lease. Tests: `TestCLILeaseLifecycle`, `TestCLIReleaseFailureDoesNotReportReleased`.
 
@@ -139,7 +142,11 @@ A protected lease follows [Live-owner protection](#live-owner-protection) instea
 
 `sweep` in `internal/lease/lease.go` walks leases in sorted ID order. It records `unknown` owners, collects reclaimable leases as `eligible`, and, with `--confirm`, calls `releaseLease` on each eligible lease. A failed release goes into `Failures` and keeps its lease. `dibs sweep` exits 1 when any failure occurred. A second sweep after success is a no-op. Test: `TestSweepPreviewRetryAndIdempotence`.
 
-dibs has no daemon. Reclaim happens only when someone runs `dibs sweep --confirm`, `dibs release --confirm`, or `dibs job` (whose admission reclaims eligible job leases). The help text tells users to run sweep from a host timer.
+### Reclaim and explain
+
+`Manager.Reclaim` in `internal/lease/pending.go` is a targeted reclaim that is stricter than both `release` and the reclaim rule above. It acts only when the owner check returns `dead` on this machine. An `alive` owner is refused even after expiry, and `unknown` liveness is refused. It previews without `--confirm`, then calls `releaseLease`. An absent lease is success. `Manager.Explain` reports the reclaim rule's answer, the targeted reclaim's answer, and a readable reason, without acting. Tests: `TestReclaimRequiresProvenDeath`, `TestExplainUnexpired`.
+
+dibs has no daemon. Reclaim happens only when someone runs `dibs sweep --confirm`, `dibs release --confirm`, `dibs reclaim --confirm`, or `dibs job` (whose admission reclaims eligible job leases). The help text tells users to run sweep from a host timer.
 
 ## Live-owner protection
 

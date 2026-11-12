@@ -20,6 +20,7 @@ type Lease struct {
 	TTL         time.Duration          `json:"ttl"`
 	Description string                 `json:"resources"`
 	Labels      map[string]string      `json:"labels"`
+	Key         string                 `json:"key,omitempty"`
 	ResourceRef adapterpkg.ResourceRef `json:"resource"`
 	Reservation *ReservationView       `json:"job,omitempty"`
 	// Opt-in: only proven owner death reclaims; expiry alone never does.
@@ -138,6 +139,15 @@ func releaseLease(ctx context.Context, s *store, id, host string, adapters adapt
 	if !ok && l.ResourceRef.Adapter != "process" {
 		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible dibs version", l.ResourceRef.Adapter)
 	}
+	if l.ResourceRef.Pending {
+		absent, err := settlePending(ctx, s, &l)
+		if err != nil {
+			return false, err
+		}
+		if absent {
+			return forget(s, l)
+		}
+	}
 	var cleanupErr error
 	if l.ResourceRef.Adapter == "process" {
 		cleanupErr = (processResource{}).Destroy(ctx, l)
@@ -147,9 +157,13 @@ func releaseLease(ctx context.Context, s *store, id, host string, adapters adapt
 	if err := cleanupErr; err != nil {
 		return false, err
 	}
-	delete(s.Leases, id)
+	return forget(s, l)
+}
+
+func forget(s *store, l Lease) (bool, error) {
+	delete(s.Leases, l.ID)
 	if err := s.Save(); err != nil {
-		s.Leases[id] = l
+		s.Leases[l.ID] = l
 		return false, err
 	}
 	return true, nil

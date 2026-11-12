@@ -1,0 +1,5 @@
+help[1]: Run dibs --axi ps --full for all 2 matching leases and complete records
+leases[2]{cores,expires,id,key,kubeconfig,liveness,machine,memory_bytes,owner,pending,resource,resources}:
+  0,"2026-11-09T13:00:00Z",dddddddddddddddddddddddddddddddd,"","",alive,lab,0,"heartbeat:/run/task.beat",false,"none:",""
+  0,"2026-11-09T13:00:00Z",bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,"task-7:lab","",alive,lab,0,"heartbeat:/run/task.beat",true,"kind:lab-7",""
+total: 2

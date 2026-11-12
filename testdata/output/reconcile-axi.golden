@@ -1,0 +1,16 @@
+contract: 1
+results[2]:
+  - conflicts: []
+    id: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    matches[1]: lab-7
+    resource_adapter: kind
+    resource_name: lab-7
+    status: bindable
+  - conflicts: []
+    id: cccccccccccccccccccccccccccccccc
+    matches: []
+    resource_adapter: compose
+    resource_name: ""
+    status: absent
+status: preview
+total: 2

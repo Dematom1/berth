@@ -1,0 +1,2 @@
+Error: lease aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa does not exist on this machine
+Run dibs ps to find the lease; a released lease is gone for good

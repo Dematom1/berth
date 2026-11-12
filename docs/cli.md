@@ -38,14 +38,17 @@ The SSH handshake compares this string exactly. See [Remote jobs over SSH](remot
 
 | Command | Flags | Positional |
 | --- | --- | --- |
-| `create`, `up` | `--owner`, `--ttl` (default `8h`), `--stale` (default `15m`), `--resources`, `--label key=value` (repeatable), `--adapter none\|kind\|k3d\|compose` (default `none`), `--file` (Compose only, required for Compose), `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2), `--quiet`, `-q` | none |
+| `create`, `up` | `--owner`, `--ttl` (default `8h`), `--stale` (default `15m`), `--resources`, `--label key=value` (repeatable), `--adapter none\|kind\|k3d\|compose` (default `none`), `--file` (Compose only, required for Compose), `--quiet`, `-q`, `--key`, `--pending`, `--name` (with `--pending`) | none |
 | `list`, `ls`, `ps`, `who` | `--owner`, `--machine` | none |
 | `extend` | `--ttl` (required, positive) | lease ID |
 | `release`, `down` | `--confirm` | lease ID |
 | `sweep` | `--confirm`, `--machine` | none |
 | `env` | none | lease ID |
 | `job` | `--cores`, `--memory`, `--class` (default `default`), `--timeout`, `--wait` (default `30m`), `--machine` | `-- <cmd...>` |
-| `adopt` | `--owner` (required), `--ttl` (required, positive), `--stale` (default `15m`), `--file` (Compose only), `--context`, `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2) | `<kind\|k3d\|compose> <name>` |
+| `adopt` | `--owner` (required), `--ttl` (required, positive), `--stale` (default `15m`), `--file` (Compose only), `--context`, `--key`; or `--pending ID` alone, with optional `--file` | `<kind\|k3d\|compose> <name>` |
+| `reconcile` | `--confirm` | optional lease ID |
+| `reclaim` | `--confirm` | lease ID |
+| `explain` | none | lease ID |
 | `orphans` | `--context` | none |
 | `machine install` | `--file` (required) | machine name |
 | `setup hooks` | `--remove` | none |
@@ -59,6 +62,7 @@ Behavior lives in the component docs:
 
 - `create`, `list`, `extend`, `release`, and `sweep`: [Leases](leases.md).
 - `adopt`, `orphans`, and the adapter flags: [Adapters](adapters.md).
+- `--pending`, `--key`, `reconcile`, `reclaim`, and `explain`: [Consumer contract](consumer-contract.md).
 - `job`: [Jobs](jobs.md).
 - `agent`, `machine install`, and `--machine`: [Remote jobs over SSH](remote.md).
 - `setup hooks`: [Agent hooks](hooks.md).
@@ -107,7 +111,6 @@ The `exitCodes` constant in `internal/cli/help.go` is the contract. The README r
 | Child's code | `dibs job`: the child ran to completion |
 | `124` | `dibs job`: the deadline fired before the child was confirmed exited, or completion could not be verified at the deadline (the coreutils `timeout` convention) |
 | `75` | `dibs job`: no slot freed within `--wait` (`EX_TEMPFAIL`). No child started. |
-| `3` | `dibs extend` refused a lease with live-owner protection. `reason` is `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`, and the lease is unchanged. The `extend` help states this. Unprotected leases keep exit 1. |
 | `76` | SSH transport or protocol failure after SSH started. The remote result is unknown. A remote child that exits 76 also returns 76, so the code alone does not prove a transport failure. Check stderr for the `SSH transport/protocol failed` line. |
 | `128 + signal` | `dibs job`: a signal ended the child |
 | `125` | `dibs job`: the helper exited before it ran the child, or the child's wait status was unavailable |
@@ -121,11 +124,13 @@ Rules that the code enforces:
 - `dibs sweep --confirm` exits 1 when any eligible lease failed cleanup, and still prints the full result.
 - The output mode never changes the exit code.
 
-Tests: `TestJobsRealProcesses` subtests "exit codes and transparent argv", "wait exhaustion does not start child", and "deadline flag class and grandchildren", `TestOutputProcessesAndTTY`, the `TestSSHIntegration` subtests for 255, 75, and 76, and `TestCLIProtectedRenewRefusalsByOwner` for 3.
+The consumer contract adds exit 3 for safety refusals, with a stable `reason` field. Only new commands (`reconcile`, `reclaim`, `explain`) and invocations that use `--pending` or `--key` return it. The `contractCodes` constant in `internal/cli/help.go` states it in their help, and [Consumer contract](consumer-contract.md#exit-codes) lists every reason. Test: `TestContractKeysReclaimExplain`.
+
+Tests: `TestJobsRealProcesses` subtests "exit codes and transparent argv", "wait exhaustion does not start child", and "deadline flag class and grandchildren", `TestOutputProcessesAndTTY`, and the `TestSSHIntegration` subtests for 255, 75, and 76.
 
 ## Invariants
 
-1. **The exit-code contract is stable.** Codes 0, 1, 2, 3, 75, 76, 124, 125, 126, and `128 + signal` keep their meanings. Changing one breaks every caller that branches on it.
+1. **The exit-code contract is stable.** Codes 0, 1, 2, 3 (contract surfaces only), 75, 76, 124, 125, 126, and `128 + signal` keep their meanings. Changing one breaks every caller that branches on it.
 2. **Usage errors happen before state access.** A usage error never reads or writes state, edits agent config, or runs a resource tool. Test: `TestCLIRejectsUsageBeforeStateAccess`.
 3. **The help text matches the behavior.** A change to flags, defaults, or exit codes updates `commandHelp` or `exitCodes`, the README, and the matching doc in `docs/`.
 4. **No prompts.** `release` and `sweep` are previews unless `--confirm` is set.

@@ -91,40 +91,84 @@ type CreateRequest struct {
 	Labels      map[string]string
 	Adapter     string
 	File        string
-	// ProtectLiveOwner opts the lease out of expiry-only reclaim.
-	ProtectLiveOwner bool
+	// Key makes a retry return the lease it already created instead of a second one.
+	Key string
+	// Pending records the lease before the caller creates the resource in Scope,
+	// optionally pinning its handle as Name.
+	Pending bool
+	Name    string
+	Scope   adapterpkg.ResourceRef
 }
 
-func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, error) {
-	s, _, now, err := m.open(ctx)
+// Create reports true when Key named an existing lease and nothing was done.
+func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, error) {
+	s, host, now, err := m.open(ctx)
 	if err != nil {
-		return Lease{}, err
+		return Lease{}, false, err
 	}
 	defer s.Close()
+	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
+		return l.Owner.String() == r.Owner.String() && l.ResourceRef.Adapter == r.Adapter && (r.Name == "" || l.ResourceRef.Name == r.Name)
+	}); done || err != nil {
+		return l, done, err
+	}
 	if m.checkOwner(r.Owner, now) != ownerpkg.Alive {
-		return Lease{}, errors.New("owner became stale or unavailable while waiting; refresh the owner and retry dibs create")
+		return Lease{}, false, errors.New("owner became stale or unavailable while waiting; refresh the owner and retry dibs create")
 	}
 	l, err := newLease(r.Owner, r.TTL, r.Description, r.Labels, now)
 	if err != nil {
-		return Lease{}, err
+		return Lease{}, false, err
 	}
-	l.ProtectLiveOwner = r.ProtectLiveOwner
+	l.Key = r.Key
 	d, ok := m.options.Adapters.Lookup(r.Adapter)
 	if !ok {
-		return Lease{}, errors.New("unsupported resource adapter")
+		return Lease{}, false, errors.New("unsupported resource adapter")
+	}
+	if r.Pending {
+		return m.recordPending(ctx, s, l, d, r)
 	}
 	l.ResourceRef, err = d.Prepare(ctx, adapterpkg.PrepareRequest{Metadata: target(l).Metadata, SnapshotDir: filepath.Join(s.dir, "resources", l.ID), File: r.File})
 	if err != nil {
-		return Lease{}, err
+		return Lease{}, false, err
 	}
 	s.Leases[l.ID] = l
 	if err := s.Save(); err != nil {
-		return Lease{}, err
+		return Lease{}, false, err
 	}
 	if err := d.Adapter.Create(ctx, target(l)); err != nil {
-		return Lease{}, fmt.Errorf("creation incomplete; lease %s retained for cleanup: %w", l.ID, err)
+		return Lease{}, false, fmt.Errorf("creation incomplete; lease %s retained for cleanup: %w", l.ID, err)
 	}
-	return detached(l), nil
+	return detached(l), false, nil
+}
+
+// A pinned handle must not exist yet: an existing resource enters only through adopt.
+func (m *Manager) recordPending(ctx context.Context, s *store, l Lease, d adapterpkg.Definition, r CreateRequest) (Lease, bool, error) {
+	if d.Discover == nil || (r.Name != "" && !adapterpkg.ValidResourceName(r.Name)) {
+		return Lease{}, false, errors.New("unsupported pending resource adapter or handle")
+	}
+	l.ResourceRef = r.Scope
+	l.ResourceRef.Adapter, l.ResourceRef.Name, l.ResourceRef.File, l.ResourceRef.Pending, l.ResourceRef.Adopted = r.Adapter, r.Name, r.File, true, false
+	if r.Name != "" {
+		if other, err := claimant(ctx, s, l.ResourceRef, nil, l.ID, adapterpkg.RunCommand); err != nil {
+			return Lease{}, false, err
+		} else if other != "" {
+			return Lease{}, false, refuse("already_leased", "handle "+r.Name+" is already claimed by lease "+other)
+		}
+		rows, err := d.Discover(ctx, l.ResourceRef)
+		if err != nil {
+			return Lease{}, false, err
+		}
+		for _, row := range rows {
+			if row["name"] == r.Name {
+				return Lease{}, false, refuse("handle_exists", "resource "+r.Name+" already exists; use dibs adopt for an existing resource")
+			}
+		}
+	}
+	s.Leases[l.ID] = l
+	if err := s.Save(); err != nil {
+		return Lease{}, false, err
+	}
+	return detached(l), false, nil
 }
 
 type Filter struct{ Owner string }
@@ -169,32 +213,22 @@ func (m *Manager) Get(ctx context.Context, id string) (Lease, bool, error) {
 	l, ok := s.Leases[id]
 	return detached(l), ok, nil
 }
-
-// Extend renews a lease and reports Renewed or Reattached.
-func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lease, string, error) {
+func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lease, error) {
 	s, host, now, err := m.open(ctx)
 	if err != nil {
-		return Lease{}, "", err
+		return Lease{}, err
 	}
 	defer s.Close()
 	l, ok := s.Leases[id]
 	if !ok {
-		return Lease{}, "", errors.New("lease does not exist; use dibs create for a new lease")
+		return Lease{}, errors.New("lease does not exist; use dibs create for a new lease")
 	}
-	present := func(l Lease) (bool, error) {
-		d, ok := m.options.Adapters.Lookup(l.ResourceRef.Adapter)
-		if !ok || d.Exists == nil {
-			return false, fmt.Errorf("resource adapter %q cannot verify presence", l.ResourceRef.Adapter)
-		}
-		return d.Exists(ctx, target(l))
-	}
-	status, err := extendLease(&l, host, ttl, now, m.checkOwner, present)
-	if err != nil {
-		return Lease{}, "", err
+	if err := extendLease(&l, host, ttl, now, m.checkOwner); err != nil {
+		return Lease{}, err
 	}
 	s.Leases[id] = l
 	err = s.Save()
-	return detached(l), status, err
+	return detached(l), err
 }
 
 type ReleaseRequest struct {

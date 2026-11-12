@@ -89,3 +89,25 @@ func TestTOONQuotesKeysInEveryShape(t *testing.T) {
 		})
 	}
 }
+
+func TestPendingAndReconcileSnapshots(t *testing.T) {
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	l := leasepkg.Lease{ID: strings.Repeat("b", 32), Machine: "lab", Owner: ownerpkg.Reference{Kind: "heartbeat", ID: "/run/task.beat"}, Created: now, Expires: now.Add(time.Hour), TTL: time.Hour, Key: "task-7:lab", ResourceRef: adapterpkg.ResourceRef{Adapter: "kind", Name: "lab-7", Context: "default", Pending: true}}
+	plain := l
+	plain.ID, plain.Key, plain.ResourceRef = strings.Repeat("d", 32), "", adapterpkg.ResourceRef{Adapter: "none"}
+	list := map[string]any{"count": 2, "leases": []map[string]any{LeaseView(plain, ownerpkg.Alive, now, ""), LeaseView(l, ownerpkg.Alive, now, "")}}
+	results := map[string]any{"contract": 1, "status": "preview", "count": 2, "results": []map[string]any{
+		{"id": l.ID, "status": "bindable", "resource_adapter": "kind", "resource_name": "lab-7", "matches": []string{"lab-7"}, "conflicts": []string{}},
+		{"id": strings.Repeat("c", 32), "status": "absent", "resource_adapter": "compose", "resource_name": "", "matches": []string{}, "conflicts": []string{}},
+	}}
+	for name, value := range map[string]map[string]any{"pending-list": list, "reconcile": results} {
+		for _, mode := range []Mode{AXI, JSON} {
+			var out bytes.Buffer
+			Emit(&out, mode, value)
+			snapshot(t, name+"-"+string(mode), out.String())
+		}
+		var out bytes.Buffer
+		humanObject(&out, value, now)
+		snapshot(t, name+"-human", out.String())
+	}
+}
