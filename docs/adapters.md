@@ -112,7 +112,7 @@ The `process` adapter backs job reservations. It is not in the registry. `proces
 3. No existing lease may already own the resource. `claimant` compares adapter and name, then compares Docker endpoints: recorded endpoints when both exist, otherwise resolved context endpoints. Context names alone count only when both refs lack endpoints and name the same context. If an endpoint cannot be resolved, adoption fails closed. A pending lease also claims its pinned handle.
 4. The resource must exist. Discovery finds it by its project or cluster label. A resource labeled `io.dibs.lease=<id>` for a pending lease belongs to that lease and is refused.
 5. The adapter's `Prepare` captures its cleanup scope with `Adopted` set. kind and k3d write their kubeconfig from `kind get kubeconfig` or `k3d kubeconfig get`. Compose verifies adoption.
-6. The lease gets `io.dibs.*` labels, and the state is saved at version 2.
+6. The lease gets `io.dibs.*` labels. State is saved as version 3 when it has an idempotency key or pending resource; otherwise it remains version 2. See [State](state.md#format-version-2).
 
 With `--pending ID`, `bindPending` binds the named resource to an existing pending lease instead of creating a lease. The pending lease supplies the owner, TTL, key, and Docker scope. Binding keeps the lease ID, merges the `io.dibs.*` attribution into the lease labels, and writes the same captured cleanup configuration as adoption. `Manager.Reconcile` finds the resource for a pending lease by its pinned handle or its `io.dibs.lease` label and binds a single unclaimed match. See [Consumer contract](consumer-contract.md#crash-safe-acquire). Tests: `TestPendingPinnedHandleLifecycle`, `TestReconcileByLabel`, `TestIntegrationPendingCrashRecovery`.
 

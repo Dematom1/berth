@@ -122,7 +122,7 @@ Version 3 adds pending leases and idempotency keys. `store.settleVersion` runs o
 | Field | Go field and type | Notes |
 | --- | --- | --- |
 | `version` | `store.Version`, int | `2` for new state, `3` while a version 3 field exists. `1`, `2`, and `3` are accepted. |
-| `writer_version` | `store.Writer`, string | Version of the dibs binary that last saved the file. Additive, so the format stays version 2. Omitted when empty. Test: `TestStateWithWriterVersionLoadsAndRecordsWriter`. |
+| `writer_version` | `store.Writer`, string | Version of the dibs binary that last saved the file. Additive within each state version. Omitted when empty. Test: `TestStateWithWriterVersionLoadsAndRecordsWriter`. |
 | `leases` | `map[string]Lease` | Keyed by lease ID |
 | `waiters` | `[]waiter` | FIFO job admission queue. Omitted when empty. |
 | `owner.kind`, `owner.id` | `owner.Reference` | See [Leases](leases.md#owner-kinds) |
