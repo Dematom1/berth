@@ -31,11 +31,12 @@ func resourceLeased(ctx context.Context, s *store, r adapterpkg.ResourceRef, run
 }
 
 type AdoptRequest struct {
-	Owner    ownerpkg.Reference
-	TTL      time.Duration
-	Resource adapterpkg.ResourceRef
-	File     string
-	Key      string
+	Owner            ownerpkg.Reference
+	TTL              time.Duration
+	Resource         adapterpkg.ResourceRef
+	File             string
+	ProtectLiveOwner bool
+	Key              string
 	// Pending binds Resource.Name to this pending lease instead of a new one.
 	Pending string
 }
@@ -52,7 +53,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 	}
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		return l.Owner.String() == r.Owner.String() && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost
+		return l.Owner.String() == r.Owner.String() && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost
 	}); done || err != nil {
 		return l, done, err
 	}
@@ -64,6 +65,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 		return Lease{}, false, err
 	}
 	l.Key = r.Key
+	l.ProtectLiveOwner = r.ProtectLiveOwner
 	d, ok := m.options.Adapters.Lookup(r.Resource.Adapter)
 	if !ok || d.Discover == nil || !adapterpkg.ValidResourceName(r.Resource.Name) || d.RequiresFile != (r.File != "") {
 		return Lease{}, false, errors.New("unsupported adoption target or missing Compose file")

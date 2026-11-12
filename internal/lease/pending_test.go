@@ -335,6 +335,37 @@ func TestReconcileAmbiguousConflictUnknown(t *testing.T) {
 	}
 }
 
+func TestPendingCleanupRetainsConflictingResource(t *testing.T) {
+	ctx := context.Background()
+	m, engine, _ := pendingManager(t)
+	pending, _, err := m.Create(ctx, pendingRequest("lab", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.clusters["lab"] = nil
+	s, err := m.openStore(ctx, m.options.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := testLease(t)
+	other.ResourceRef = pending.ResourceRef
+	s.Leases[other.ID] = other
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	if _, err := m.Release(ctx, ReleaseRequest{ID: pending.ID, Confirm: true}); reason(err) != "already_leased" {
+		t.Fatalf("conflicting pending release: %v", err)
+	}
+	if _, ok, err := m.Get(ctx, pending.ID); err != nil || !ok {
+		t.Fatalf("pending lease forgotten: exists=%v err=%v", ok, err)
+	}
+	if len(engine.deleted) != 0 {
+		t.Fatalf("destroyed resource owned by another lease: %v", engine.deleted)
+	}
+}
+
 func TestPendingCleanupAfterCrash(t *testing.T) {
 	ctx := context.Background()
 	m, engine, owner := pendingManager(t)

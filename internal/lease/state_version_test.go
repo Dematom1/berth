@@ -49,6 +49,19 @@ func TestNewerStateRefusedWithUpgradeHint(t *testing.T) {
 	}
 }
 
+func TestProtectedLeaseSavesAsVersionThree(t *testing.T) {
+	s := testStore(t)
+	l := testLease(t)
+	l.ProtectLiveOwner = true
+	s.Leases[l.ID] = l
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if s.Version != 3 {
+		t.Fatalf("protected-only ledger saved as version %d", s.Version)
+	}
+}
+
 func TestStateWithWriterVersionLoadsAndRecordsWriter(t *testing.T) {
 	dir := t.TempDir()
 	l := testLease(t)

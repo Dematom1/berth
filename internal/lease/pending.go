@@ -30,7 +30,7 @@ func ValidKey(key string) bool { return keyPattern.MatchString(key) }
 // Version 3 marks records older binaries must not misread; it lasts only while one exists.
 func (s *store) settleVersion() {
 	for _, l := range s.Leases {
-		if l.Key != "" || l.ResourceRef.Pending {
+		if l.ProtectLiveOwner || l.Key != "" || l.ResourceRef.Pending {
 			s.Version = 3
 			return
 		}
@@ -198,12 +198,15 @@ func attribution(l Lease) map[string]string {
 // settlePending binds a pending lease's single match before cleanup, or reports
 // that nothing was ever created. Any doubt retains the lease.
 func settlePending(ctx context.Context, s *store, l *Lease) (absent bool, err error) {
-	free, _, err := matches(ctx, s, *l, adapterpkg.RunCommand)
+	free, conflicts, err := matches(ctx, s, *l, adapterpkg.RunCommand)
 	if err != nil {
 		return false, err
 	}
 	switch len(free) {
 	case 0:
+		if len(conflicts) != 0 {
+			return false, refuse("already_leased", "pending resource is already under another lease; inspect dibs ps")
+		}
 		return true, nil
 	case 1:
 		return false, bind(ctx, s, l, free[0], l.ResourceRef.File)

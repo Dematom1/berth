@@ -66,7 +66,7 @@ func TestExtendRefusalReasons(t *testing.T) {
 			if tc.job {
 				l.Reservation = &ReservationView{}
 			}
-			err := extendLease(&l, host, time.Hour, testNow, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live })
+			_, err := extendLease(&l, host, time.Hour, testNow, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live }, func(Lease) (bool, error) { return true, nil })
 			if reason(err) != tc.want {
 				t.Fatalf("reason = %q, want %q (%v)", reason(err), tc.want, err)
 			}

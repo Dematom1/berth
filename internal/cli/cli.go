@@ -136,7 +136,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	full := fs.Bool("full", false, "complete AXI records, text and list (JSON is always complete)")
 	var owner, resources, driver, file, machineName, key, name string
 	var ttl, stale time.Duration
-	var confirm, quiet, pending bool
+	var confirm, quiet, pending, protect bool
 	labels := labelsFlag{}
 	if command == "list" || command == "sweep" {
 		fs.StringVar(&machineName, "machine", "", "SSH machine name")
@@ -156,6 +156,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		fs.StringVar(&key, "key", "", "idempotency key")
 		fs.BoolVar(&pending, "pending", false, "record the lease before the caller creates the resource")
 		fs.StringVar(&name, "name", "", "pending resource handle")
+		fs.BoolVar(&protect, "protect-live-owner", false, "reclaim only on proven owner death")
 	}
 	if command == "extend" {
 		fs.DurationVar(&ttl, "ttl", 0, "new lifetime from now")
@@ -192,6 +193,9 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		})
 		if quiet && (pending || key != "") && explicitOutputMode {
 			return outputpkg.Error(out, jsonOutput, 2, "--quiet cannot be combined with --axi or --json for contract creates", help(command))
+		}
+		if protect && !liveOwnerProtectionEnabled() {
+			return outputpkg.Error(out, jsonOutput, 2, liveOwnerProtectionOff, help(command))
 		}
 		if err := app.checkCreate(driver, file, key, name, pending); err != nil {
 			return outputpkg.Error(out, jsonOutput, 2, err.Error(), help(command))
@@ -274,7 +278,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			result["bin"], result["description"] = bin, "Owner-and-expiry leases for local stacks and clusters"
 		}
 	case "create":
-		request := leasepkg.CreateRequest{Owner: newOwner, TTL: ttl, Description: resources, Labels: labels, Adapter: driver, File: file, Key: key, Pending: pending, Name: name}
+		request := leasepkg.CreateRequest{Owner: newOwner, TTL: ttl, Description: resources, Labels: labels, Adapter: driver, File: file, Key: key, Pending: pending, Name: name, ProtectLiveOwner: protect}
 		if pending {
 			// Pin the scope now: reconcile must look where the caller will build the resource.
 			scope, scopeErr := adapterpkg.ResolveDockerContext(ctx, "", adapterpkg.RunCommand)
@@ -336,14 +340,15 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		return 0
 	case "extend":
 		id := fs.Arg(0)
-		l, extendErr := app.leases.Extend(ctx, id, ttl)
+		l, status, extendErr := app.leases.Extend(ctx, id, ttl)
 		if extendErr != nil {
 			return app.contractOperationError(out, jsonOutput, command, id, extendErr)
 		}
 		now = l.Expires.Add(-ttl)
-		result = contractResult("renewed", map[string]any{
+		result = contractResult(status, map[string]any{
 			"lease": outputpkg.LeaseView(l, ownerpkg.Alive, now, kubeconfigFor(app.resources, l)),
-			"help":  []string{"Run dibs extend " + id + " --ttl <D> to renew again"},
+			"id":    id,
+			"help":  []string{"Run dibs extend " + id + " --ttl " + ttl.String() + " to renew again"},
 		})
 	case "release":
 		id := fs.Arg(0)

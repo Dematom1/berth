@@ -199,7 +199,7 @@ func TestProtectedAdoptReattachesOnlyToPinnedEndpoint(t *testing.T) {
 			m := inventoryManager(t, driver, inventoryRunner(t, driver, "existing-lab"))
 			r := adoptionRequest(t, driver)
 			r.TTL, r.ProtectLiveOwner = time.Nanosecond, true
-			l, err := m.Adopt(ctx, r)
+			l, _, err := m.Adopt(ctx, r)
 			if err != nil || !l.ProtectLiveOwner {
 				t.Fatalf("protected adoption: %+v %v", l, err)
 			}

@@ -39,7 +39,7 @@ func axiView(value map[string]any, fullCommand string) map[string]any {
 			// Optional columns appear only when some row has them, on every row of the table.
 			optional := map[string]any{}
 			for _, row := range rows[:min(total, axiListLimit)] {
-				for field, empty := range map[string]any{"pending": false, "key": ""} {
+				for field, empty := range map[string]any{"pending": false, "key": "", "protect_live_owner": false} {
 					if _, ok := row[field]; ok {
 						optional[field] = empty
 					}
@@ -47,7 +47,7 @@ func axiView(value map[string]any, fullCommand string) map[string]any {
 			}
 			for _, row := range rows[:min(total, axiListLimit)] {
 				compact := map[string]any{}
-				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
+				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig", "protect_live_owner"} {
 					compact[field] = row[field]
 				}
 				for field, empty := range optional {

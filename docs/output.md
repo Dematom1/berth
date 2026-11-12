@@ -42,7 +42,7 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 | `dibs` (home view, no arguments) | Everything from `list`, plus `bin` and `description` |
 | `list` | `budget`, `count`, `help`, `leases`, `records` |
 | `create` | `help`, `lease`, `record` |
-| `extend` | `contract`, `help`, `lease`, `status` |
+| `extend` | `contract`, `help`, `id`, `lease`, `status` (`renewed` or `reattached`) |
 | `release` | `contract`, `help`, `id`, `status` |
 | `sweep` | `confirmed`, `eligible`, `reclaimed`, `unknown`. Adds `help` when not confirmed. Adds `code`, `error`, `exit_code`, and `failures` on failure. |
 | `adopt` | `help`, `lease`, `record` |
@@ -59,7 +59,7 @@ Commands build one `map[string]any` and pass it to `Emit`. `Emit` renders the sa
 
 Parts of the map:
 
-- `LeaseView` in `internal/output/view.go` builds every lease row with one fixed key set: `id`, `owner`, `liveness`, `machine`, `age`, `expires`, `resources`, `resource`, `resource_adapter`, `resource_name`, `labels`, `kubeconfig`, `cores`, `memory`, `memory_bytes`, and `class`. `memory` is a string with a `B` suffix. Rows for non-job leases report zeros and an empty class. It adds `pending: true` for a pending lease and `key` for a keyed lease; neither key appears otherwise, so existing output is unchanged.
+- `LeaseView` in `internal/output/view.go` builds every lease row with one fixed key set: `id`, `owner`, `liveness`, `machine`, `age`, `expires`, `resources`, `resource`, `resource_adapter`, `resource_name`, `labels`, `kubeconfig`, `cores`, `memory`, `memory_bytes`, and `class`. `memory` is a string with a `B` suffix. Rows for non-job leases report zeros and an empty class. It adds `pending: true` for a pending lease, `key` for a keyed lease, and `protect_live_owner: true` for a protected lease; absent fields stay omitted otherwise. AXI list rows include a `protect_live_owner` column when any displayed lease is protected.
 - `LeaseRecord` in `internal/output/view.go` is the stored lease encoded to JSON and decoded back with `UseNumber`, plus `kubeconfig`. See [State](state.md#format-version-2).
 - `BudgetView` reports `used_cores`, `used_memory_bytes`, `usable_cores`, `usable_memory_bytes`, `room_cores`, `room_memory_bytes`, and a one-line `summary`. If the config fails to load, `list` still succeeds, and `budget` holds only the summary `jobs: budget unavailable (check DIBS_CONFIG)`. Test: `TestBudgetSummary`, `TestBrokenBudgetStillLists`.
 

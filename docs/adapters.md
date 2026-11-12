@@ -51,10 +51,10 @@ The `Prepare` function of each Docker-backed adapter then:
 
 1. Creates `<state>/resources/<id>/` with mode `0700`.
 2. Sets the resource name to `dibs-<lease id>`, or `dibs-<first 26 ID characters>` for k3d, which limits cluster names to 32 characters.
-3. For k3d only, records the context's endpoint from `docker context inspect` as `docker_host`. kind and Compose record the context name and never an endpoint.
+3. For k3d only, records the context's endpoint from `docker context inspect` as `docker_host`. kind and Compose record the context name and never an endpoint for resources they create.
 4. For Compose, writes the resolved config snapshot described under [Compose](#compose).
 
-Later commands use the pinned context name, not the caller's current environment. kind and Compose resolve the endpoint from that named context on every call, so if the context is later pointed at another daemon, cleanup targets that daemon. k3d is the only adapter that pins the endpoint itself:
+Later commands for created kind and Compose resources use the pinned context name, not the caller's current environment. They resolve the endpoint from that named context on every call, so if the context is later pointed at another daemon, cleanup targets that daemon. Adopted and pending-bound resources capture `docker_host` during adoption; ownership checks compare resolved endpoints, and cleanup requires that endpoint. k3d-created resources also pin the endpoint itself:
 
 - `DockerEnv` (kind, Compose, and discovery) sets `DOCKER_HOST=` (empty), `DOCKER_CONTEXT=<recorded context name>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `COMPOSE_INTERACTIVE_NO_CLI=1`.
 - `k3dEnv` sets `DOCKER_CONTEXT=` (empty), `DOCKER_HOST=<pinned endpoint>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `KUBECONFIG=<private file>`.

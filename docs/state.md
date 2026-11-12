@@ -94,7 +94,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 
 `state.json` is one JSON object. Durations are Go `time.Duration` values, which JSON encodes as integer nanoseconds. Times are RFC 3339 with nanoseconds. New state is written as version 2. Version 1 files still read, and migrate to version 2 on open as described above.
 
-Version 3 adds pending leases and idempotency keys. `store.settleVersion` runs on every `Save`: it writes version 3 while any lease has a `key` or a pending `resource`, and writes version 2 again once none does. Older binaries reject version 3 rather than ignore a pending record and forget a resource that the caller built. Test: `TestVersionThreeValidation`, `TestPendingCleanupAfterCrash`.
+Version 3 adds pending leases, idempotency keys, and live-owner protection. `store.settleVersion` runs on every `Save`: it writes version 3 while any lease has `protect_live_owner`, a `key`, or a pending `resource`, and writes version 2 again once none does. Older binaries reject version 3 rather than ignore a safety field. Test: `TestVersionThreeValidation`, `TestProtectedLeaseSavesAsVersionThree`, `TestPendingCleanupAfterCrash`.
 
 ```json
 {
@@ -131,6 +131,7 @@ Version 3 adds pending leases and idempotency keys. `store.settleVersion` runs o
 | `resource.adapter` | `ResourceRef.Adapter` | `none`, `kind`, `k3d`, `compose`, or `process` |
 | `resource.name` | `ResourceRef.Name` | Managed resource name. Omitted for `none` and `process`. |
 | `key` | `Lease.Key` | Idempotency key from `--key`. At most one lease per machine has a given key. Version 3 only. Omitted when empty. |
+| `protect_live_owner` | `Lease.ProtectLiveOwner` | `true` when expiry alone must not reclaim the lease. Version 3 only. Omitted when false. |
 | `resource.adopted` | `ResourceRef.Adopted` | `true` for a resource taken over by `dibs adopt`. Version 2 only. |
 | `resource.pending` | `ResourceRef.Pending` | `true` while a pending lease waits for its resource. `name` is then the pinned handle or empty, and `file` is the caller's absolute Compose file. Version 3 only. |
 | `resource.docker_context` | `ResourceRef.Context` | Docker context captured at create |

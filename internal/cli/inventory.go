@@ -33,6 +33,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	outputpkg.Flags(fs, &mode)
 	contextName := fs.String("context", "", "Docker context (default selected context)")
 	var owner, file, key, pending string
+	var protect bool
 	var ttl time.Duration
 	stale := 15 * time.Minute
 	if command == "adopt" {
@@ -42,6 +43,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		fs.StringVar(&file, "file", "", "Compose file")
 		fs.StringVar(&key, "key", "", "idempotency key")
 		fs.StringVar(&pending, "pending", "", "bind to this pending lease")
+		fs.BoolVar(&protect, "protect-live-owner", false, "reclaim only on proven owner death")
 	}
 	if err := parseFlags(fs, args); err != nil {
 		return outputpkg.Error(out, mode, 2, err.Error(), help(command))
@@ -55,13 +57,16 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	if command == "adopt" {
 		d, known := app.resources.Lookup(fs.Arg(0))
 		if pending != "" {
-			if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || !leasepkg.ValidID(pending) || owner != "" || ttl != 0 || key != "" || *contextName != "" || (!d.RequiresFile && file != "") {
+			if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || !leasepkg.ValidID(pending) || owner != "" || ttl != 0 || key != "" || protect || *contextName != "" || (!d.RequiresFile && file != "") {
 				return outputpkg.Error(out, mode, 2, "--pending takes type, handle and a lease id; the pending lease already fixes owner, TTL, key and context", help(command))
 			}
 			return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Resource: adapterpkg.ResourceRef{Adapter: fs.Arg(0), Name: fs.Arg(1)}, File: file, Pending: pending}, true)
 		}
 		if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || owner == "" || ttl <= 0 || d.RequiresFile != (file != "") {
 			return outputpkg.Error(out, mode, 2, "require type, name, explicit --owner and positive --ttl; --file is required only for compose", help(command))
+		}
+		if protect && !liveOwnerProtectionEnabled() {
+			return outputpkg.Error(out, mode, 2, liveOwnerProtectionOff, help(command))
 		}
 		if key != "" && !leasepkg.ValidKey(key) {
 			return outputpkg.Error(out, mode, 2, keyRule, help(command))
@@ -80,7 +85,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	}
 	if command == "adopt" {
 		r.Adapter, r.Name = fs.Arg(0), fs.Arg(1)
-		return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, Key: key}, key != "")
+		return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, Key: key, ProtectLiveOwner: protect}, key != "")
 	}
 	rows, err := app.leases.Orphans(ctx, r)
 	if err != nil {

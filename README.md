@@ -241,9 +241,13 @@ failed discovery keeps the lease.
 
 `--key K` on `create` and `adopt` makes a matching retry return the existing
 lease with `status: already_done`; the same key for a different request is
-refused. A key is free again after release. `reclaim` is the only command that
-requires proven owner death; `sweep --confirm` and job admission still reclaim
-expired leases even when the owner is alive or unknown, so renew before expiry.
+refused. A key is free again after release. `reclaim` is the only command that always
+requires proven owner death. By default, `sweep --confirm` and job admission still
+reclaim expired leases even when the owner is alive or unknown. Create or adopt
+with `--protect-live-owner` to opt that lease into death-only reclamation; it
+requires `DIBS_LIVE_OWNER_PROTECTION=1` or user config
+`live_owner_protection: true`. Protected leases remain while liveness is alive or
+unknown, and a late renewal reattaches only if the same resource still exists.
 
 These new commands, and any invocation with `--pending` or `--key`, follow
 version 1 of the consumer contract: `contract: 1`, a `status` on success, and

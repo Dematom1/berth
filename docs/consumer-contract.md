@@ -110,7 +110,7 @@ Exit 3 always means that dibs changed nothing. A consumer can retry a 1, but sho
 | `ambiguous` | More than one resource matches a pending lease | Register the right one with `dibs adopt T HANDLE --pending ID` |
 | `owner_alive` | `reclaim` found the owner alive, even if the lease expired | Leave it, or release it as its owner |
 | `owner_unknown` | `reclaim` could not verify the owner, or `extend` could not verify a live owner | Retry later; the lease is kept |
-| `expired` | `extend` found the lease expired while its owner is alive | Release it and acquire again; do not create a second lease for a resource still covered |
+| `expired` | `extend` found an unprotected lease expired while its owner is alive | Release it and acquire again; do not create a second lease for a resource still covered |
 | `owner_dead` | `extend` found the owner dead | Run `dibs reclaim ID --confirm` or `dibs sweep --confirm` |
 | `job_deadline` | A job reservation cannot be extended | Start a new `dibs job` with `--timeout` |
 
@@ -148,13 +148,15 @@ After a crash, the restarted caller runs the same keyed `create --pending` and g
 
 `dibs reconcile` without an ID previews every pending lease on this machine, and `--confirm` binds each single unclaimed match.
 
-Release and sweep finish a pending lease too. `release --confirm`, `reclaim --confirm`, and an eligible `sweep --confirm` first look for the lease's match. A single match is registered, destroyed, and verified gone. No match means nothing was built, and dibs forgets the lease. An ambiguous match retains the lease: `release` exits 3 with `ambiguous`, `sweep` exits 1, and `reclaim` exits 3. Failed discovery retains the lease and exits 1.
+Release and sweep finish a pending lease too. `release --confirm`, `reclaim --confirm`, and an eligible `sweep --confirm` first look for the lease's match. A single match is registered, destroyed, and verified gone. No match and no conflict means nothing was built, and dibs forgets the lease. An ambiguous match retains the lease: `release` exits 3 with `ambiguous`, `sweep` exits 1, and `reclaim` exits 3. A match already claimed by another lease retains this pending lease and refuses with `already_leased`; failed discovery retains the lease and exits 1.
 
 If sweep forgets a pending lease while its caller is still building the resource, the later `adopt --pending` exits 3 with `not_found`. The caller still holds the resource it built and must destroy it or adopt it under a new lease.
 
 ## Renew and heartbeat
 
-`dibs extend ID --ttl D` sets expiry to now plus `D` for an unexpired lease whose owner is alive. Success is contract 1, `status: renewed`, and exit 0; repeating the call renews the same lease. Refusals now use exit 3: `not_found`, `wrong_machine`, `expired`, `owner_dead`, `owner_unknown`, or `job_deadline`. This intentionally changes prior refusal exit 1 to exit 3. When both expiry and owner status would refuse renewal, dead or unknown owner takes precedence. Exit 1 means the operation itself failed. Never answer a refused renewal by creating a second lease for a resource that the first lease still covers.
+`dibs extend ID --ttl D` renews an unexpired lease whose owner is alive. For a lease created with `--protect-live-owner`, a late renewal reattaches only when its owner is alive and the pinned resource still exists; it reports `status: reattached`. Otherwise success reports `status: renewed`. Both succeed with exit 0 and may be repeated. Contract refusals use exit 3. Protected renewals also use exit 3 with `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`; other protected renewal failures and unprotected renew refusals retain their existing exit 1 behavior. When both expiry and owner status would refuse renewal, dead or unknown owner takes precedence. Exit 1 means the operation itself failed. Never answer a refused renewal by creating a second lease for a resource that the first lease still covers.
+
+Protection is enabled per lease with `--protect-live-owner`, gated by `DIBS_LIVE_OWNER_PROTECTION=1` or user config `live_owner_protection: true`. Sweep and job admission spare alive and unknown owners only for protected leases; unprotected leases retain expiry-based reclamation. `reclaim` always requires proven owner death.
 
 Renew at the latest when one third of the TTL remains. For a `heartbeat:<file>` owner, touch the file at most every staleness/3. The heartbeat is liveness, not renewal: expiry still reclaims a lease whose owner keeps touching its file.
 

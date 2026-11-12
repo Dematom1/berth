@@ -111,7 +111,7 @@ With `--key`, `keyed` runs first, right after the lock: a lease on this machine 
 - The lease is a job reservation (`Reservation != nil`). Job deadlines never move.
 - The lease is reclaimable, or its owner is not `alive`.
 
-An expired lease cannot come back. Create a new one instead. Renewal now returns contract 1 and exit 3 with a stable refusal reason instead of the previous exit 1; when owner state is dead or unknown, that reason takes precedence over `expired`. A successful renewal is `status: renewed` and may be repeated on the same lease. Test: `TestExtendRefusalReasons`.
+An unprotected expired lease cannot come back. A protected lease can reattach after expiry only when its owner is alive and its pinned resource still exists; the result is `status: reattached`. Protected renewal refusals for owner or resource state use contract 1 and exit 3 with stable reasons; other extend refusals keep exit 1. When owner state is dead or unknown, that reason takes precedence over expiry. Renewal may be repeated on the same lease. Test: `TestExtendRefusalReasons`, `TestProtectedReclaimAndRenew`.
 
 ### Release
 
@@ -120,7 +120,7 @@ An expired lease cannot come back. Create a new one instead. Renewal now returns
 1. Returns `already_done` with no change when the lease is absent.
 2. Refuses a lease from another machine with `wrong_machine` (exit 3).
 3. Refuses a lease whose adapter this binary does not know, and keeps the lease. The `process` adapter is handled by the lease package itself, not the adapter registry.
-4. For a pending lease, `settlePending` looks for its match first. One match is bound, then destroyed below. No match means nothing was built, and the lease is forgotten without an adapter call. Several matches refuse with `ambiguous` (exit 3); failed discovery exits 1 and retains the lease. Test: `TestPendingCleanupAfterCrash`, `TestReconcileAmbiguousConflictUnknown`.
+4. For a pending lease, `settlePending` looks for its match first. One match is bound, then destroyed below. No match and no conflict means nothing was built, and the lease is forgotten without an adapter call. Several matches refuse with `ambiguous` (exit 3); a match already claimed by another lease refuses with `already_leased` (exit 3). Failed discovery exits 1 and retains the lease. Tests: `TestPendingCleanupAfterCrash`, `TestPendingCleanupRetainsConflictingResource`, `TestReconcileAmbiguousConflictUnknown`.
 5. Calls the adapter's `Destroy`, or the process group's `Destroy`. On error, keeps the lease.
 6. Deletes the lease and saves (`forget`). If the save fails, restores the lease in memory and returns the error.
 

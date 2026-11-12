@@ -85,12 +85,13 @@ func detached(l Lease) Lease {
 }
 
 type CreateRequest struct {
-	Owner       ownerpkg.Reference
-	TTL         time.Duration
-	Description string
-	Labels      map[string]string
-	Adapter     string
-	File        string
+	Owner            ownerpkg.Reference
+	TTL              time.Duration
+	Description      string
+	Labels           map[string]string
+	Adapter          string
+	File             string
+	ProtectLiveOwner bool
 	// Key makes a retry return the lease it already created instead of a second one.
 	Key string
 	// Pending records the lease before the caller creates the resource in Scope,
@@ -109,7 +110,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 	defer s.Close()
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		if l.Owner.String() != r.Owner.String() || ref.Adapter != r.Adapter || (ref.Pending || ref.Adopted) != r.Pending || (r.Name != "" && ref.Name != r.Name) {
+		if l.Owner.String() != r.Owner.String() || l.ProtectLiveOwner != r.ProtectLiveOwner || ref.Adapter != r.Adapter || (ref.Pending || ref.Adopted) != r.Pending || (r.Name != "" && ref.Name != r.Name) {
 			return false
 		}
 		if !r.Pending {
@@ -127,6 +128,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 		return Lease{}, false, err
 	}
 	l.Key = r.Key
+	l.ProtectLiveOwner = r.ProtectLiveOwner
 	d, ok := m.options.Adapters.Lookup(r.Adapter)
 	if !ok {
 		return Lease{}, false, errors.New("unsupported resource adapter")
@@ -221,22 +223,30 @@ func (m *Manager) Get(ctx context.Context, id string) (Lease, bool, error) {
 	l, ok := s.Leases[id]
 	return detached(l), ok, nil
 }
-func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lease, error) {
+func (m *Manager) Extend(ctx context.Context, id string, ttl time.Duration) (Lease, string, error) {
 	s, host, now, err := m.open(ctx)
 	if err != nil {
-		return Lease{}, err
+		return Lease{}, "", err
 	}
 	defer s.Close()
 	l, ok := s.Leases[id]
 	if !ok {
-		return Lease{}, refuse("not_found", "lease does not exist; acquire a new lease")
+		return Lease{}, "", refuse("not_found", "lease does not exist; acquire a new lease")
 	}
-	if err := extendLease(&l, host, ttl, now, m.checkOwner); err != nil {
-		return Lease{}, err
+	present := func(l Lease) (bool, error) {
+		d, ok := m.options.Adapters.Lookup(l.ResourceRef.Adapter)
+		if !ok || d.Exists == nil {
+			return false, fmt.Errorf("resource adapter %q cannot verify presence", l.ResourceRef.Adapter)
+		}
+		return d.Exists(ctx, target(l))
+	}
+	status, err := extendLease(&l, host, ttl, now, m.checkOwner, present)
+	if err != nil {
+		return Lease{}, "", err
 	}
 	s.Leases[id] = l
 	err = s.Save()
-	return detached(l), err
+	return detached(l), status, err
 }
 
 type ReleaseRequest struct {

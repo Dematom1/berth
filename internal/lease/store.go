@@ -192,6 +192,9 @@ func (s *store) validate() error {
 		if !leaseID.MatchString(id) || id != l.ID || l.Machine == "" || l.Created.IsZero() || l.Expires.IsZero() || l.TTL <= 0 {
 			return errors.New("invalid lease record")
 		}
+		if l.ProtectLiveOwner && s.Version < 3 {
+			return errors.New("invalid live-owner protection")
+		}
 		if l.Key != "" {
 			if s.Version < 3 || !ValidKey(l.Key) || keys[l.Machine+"\x00"+l.Key] {
 				return errors.New("invalid lease key")
@@ -206,7 +209,7 @@ func (s *store) validate() error {
 			continue
 		}
 		if l.ResourceRef.Adapter == "process" {
-			if l.Reservation == nil || l.Reservation.Budget.Cores <= 0 || l.Reservation.Budget.Memory <= 0 || l.Reservation.Class == "" {
+			if l.ProtectLiveOwner || l.Reservation == nil || l.Reservation.Budget.Cores <= 0 || l.Reservation.Budget.Memory <= 0 || l.Reservation.Class == "" {
 				return errors.New("invalid job reservation")
 			}
 			if leader := l.Reservation.Leader; leader.ID != "" {

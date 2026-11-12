@@ -17,10 +17,9 @@ Child exit 255 is preserved and is not confused with SSH failure.`
 
 const contractCodes = `Contract 1 (reconcile, reclaim, explain, extend, release, and --pending/--key):
 exit 0 success with status; 1 operation failed, records retained; 2 usage;
-3 refused, nothing changed, with a stable reason: not_found, wrong_machine,
-not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
-resource_absent, ambiguous, owner_alive, owner_unknown, expired, owner_dead,
-job_deadline. Output carries contract: 1. See docs/consumer-contract.md.`
+3 refused, nothing changed, with a stable reason. Protected renewals use exit 3
+for owner/resource refusals; other extend refusals retain exit 1. Output carries
+contract: 1. See docs/consumer-contract.md.`
 
 const cadence = `Touch heartbeat files at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. Owner death OR expiry makes a lease
@@ -28,12 +27,14 @@ reclaimable: a live owner missing either cadence loses its resources.`
 
 var commandHelp = map[string]string{
 	"adopt": `dibs adopt <kind|k3d|compose> <name> --owner KIND:ID --ttl D [--key K]
-  [--context NAME] [--file PATH (required for compose)] [--stale 15m] [--full] [--axi | --json]
+  [--context NAME] [--file PATH (required for compose)] [--stale 15m] [--protect-live-owner] [--full] [--axi | --json]
 dibs adopt <kind|k3d|compose> <handle> --pending ID [--file PATH] [--axi | --json]
 Explicitly lease an existing resource. Existence must be verified and no lease
 may already own it. Captures cleanup configuration; does not recreate resources.
 Owner and positive TTL are required. Release/sweep keep their preview defaults.
 --key K: a retry with the same key and request returns status already_done.
+--protect-live-owner: sweep reclaims only on proven owner death; requires the
+DIBS_LIVE_OWNER_PROTECTION=1 environment variable or user config opt-in.
 --pending ID registers a resource the caller created for a pending lease (see
 dibs create --pending); owner, TTL and context come from that lease. A retry
 returns status already_done. Statuses: adopted, bound, already_done.
@@ -90,7 +91,7 @@ Examples:
   dibs env <id>`,
 	"create": `dibs create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
   [--resources TEXT] [--label key=value ...] [--adapter {{adapters}}]
-  [--file PATH (required for compose)] [--key K] [--pending [--name HANDLE]]
+  [--file PATH (required for compose)] [--protect-live-owner] [--key K] [--pending [--name HANDLE]]
   [--quiet | -q] [--axi | --json]
 Owner defaults to DIBS_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
@@ -99,6 +100,9 @@ kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
 only and performs no external cleanup. up is an alias.
+--protect-live-owner: sweep and job admission reclaim only on proven owner death;
+expiry alone and unknown liveness never reclaim. Requires opt-in via
+DIBS_LIVE_OWNER_PROTECTION=1 or user config live_owner_protection=true.
 --key K: a retry with the same key and request returns status already_done.
 With --pending or --key, --quiet prints only the lease ID (including on retry);
 exit codes distinguish success from failure. --quiet cannot combine with --axi
