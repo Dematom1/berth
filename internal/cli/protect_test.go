@@ -143,8 +143,8 @@ func TestCLIUnprotectedLateRenewUnchanged(t *testing.T) {
 	t.Setenv("DIBS_STATE", t.TempDir())
 	t.Setenv("DIBS_OWNER", "pid:"+strconv.Itoa(os.Getpid()))
 	id := invoke(t, 0, "create", "--ttl", "1ns")["record"].(map[string]any)["id"].(string)
-	if r := invoke(t, 1, "extend", id, "--ttl", "1h"); r["reason"] != nil || r["exit_code"] != float64(1) {
-		t.Fatalf("unprotected late renew changed: %+v", r)
+	if r := invoke(t, 3, "extend", id, "--ttl", "1h"); r["reason"] != "expired" || r["exit_code"] != float64(3) {
+		t.Fatalf("unprotected late renew refusal: %+v", r)
 	}
 }
 

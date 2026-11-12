@@ -5,4 +5,5 @@ contract: 1
 error: lease does not exist; acquire a new lease
 exit_code: 3
 help[1]: Run dibs create to acquire a new lease; a released lease cannot be restored
+id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 reason: not_found
