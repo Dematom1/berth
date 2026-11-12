@@ -21,7 +21,7 @@ On an SSH machine, the remote dibs reads its own config. The client's budget and
 
 `Load` in `internal/config/config.go` picks the path:
 
-1. `DIBS_CONFIG`, or the legacy `BERTH_CONFIG`. A missing file is an error. The explicit path is used exactly as given.
+1. `DIBS_CONFIG`, or the legacy `BERTH_CONFIG`. A non-empty value is an explicit path: a missing file is an error, and the path is used exactly as given. An empty `DIBS_CONFIG` counts as unset, so the implicit path below is used. An empty `DIBS_CONFIG` still overrides `BERTH_CONFIG`, so the legacy value is ignored.
 2. `$XDG_CONFIG_HOME/dibs/config.json`, or `~/.config/dibs/config.json`. A missing file means defaults.
 3. If the dibs file is absent, the legacy `$XDG_CONFIG_HOME/berth/config.json` (or `~/.config/berth/config.json`) is read instead. A missing file there also means defaults.
 

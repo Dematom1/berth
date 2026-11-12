@@ -19,7 +19,7 @@ A `Target` carries the `ResourceRef` captured at prepare time and the lease `Met
 
 The callers in `internal/lease/manager.go` and `internal/lease/lease.go` enforce the contract:
 
-- `Prepare` runs before the lease is saved, and captures the Docker context and endpoint and the private files. See [Docker endpoint pinning](#docker-endpoint-pinning).
+- `Prepare` runs before the lease is saved, and captures the Docker context and endpoint and the private files. See [Docker endpoint pinning](#docker-context-pinning).
 - `Create` runs only after the lease is saved. A failed `Create` keeps the lease.
 - `Destroy` tolerates a resource that is partly created or already gone.
 - `Destroy` returns nil only after it has verified that the resource is gone (verify-gone). `kind`, `k3d`, and `compose` delete the resource and then list what remains. `none` has nothing to verify.
@@ -39,7 +39,7 @@ The callers in `internal/lease/manager.go` and `internal/lease/lease.go` enforce
 
 Tests inject a fake `CommandRunner` through each adapter's `New(run)` to check the exact argv and environment. Test: `TestAdapterCommandsAndSurvivors`.
 
-## Docker endpoint pinning
+## Docker context pinning
 
 `DockerContext` in `internal/adapter/docker.go` runs before the lease is saved, for every Docker-backed adapter:
 
@@ -50,12 +50,12 @@ The `Prepare` function of each Docker-backed adapter then:
 
 1. Creates `<state>/resources/<id>/` with mode `0700`.
 2. Sets the resource name to `dibs-<lease id>`, or `dibs-<first 26 ID characters>` for k3d, which limits cluster names to 32 characters.
-3. For k3d, records the context's endpoint from `docker context inspect` as `docker_host`.
+3. For k3d only, records the context's endpoint from `docker context inspect` as `docker_host`. kind and Compose record the context name and never an endpoint.
 4. For Compose, writes the resolved config snapshot described under [Compose](#compose).
 
-Later commands run with the pinned endpoint, not the caller's current environment:
+Later commands use the pinned context name, not the caller's current environment. kind and Compose resolve the endpoint from that named context on every call, so if the context is later pointed at another daemon, cleanup targets that daemon. k3d is the only adapter that pins the endpoint itself:
 
-- `DockerEnv` (kind, Compose, and discovery) sets `DOCKER_HOST=` (empty), `DOCKER_CONTEXT=<pinned context>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `COMPOSE_INTERACTIVE_NO_CLI=1`.
+- `DockerEnv` (kind, Compose, and discovery) sets `DOCKER_HOST=` (empty), `DOCKER_CONTEXT=<recorded context name>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `COMPOSE_INTERACTIVE_NO_CLI=1`.
 - `k3dEnv` sets `DOCKER_CONTEXT=` (empty), `DOCKER_HOST=<pinned endpoint>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `KUBECONFIG=<private file>`.
 
 ## Built-in adapters
@@ -135,7 +135,7 @@ Unleased does not mean unused. Age never authorizes cleanup. Test: `TestReadOnly
 
 1. **A record is removed only after verify-gone.** `Destroy` returns nil only after it lists the remaining resources and finds none. A new adapter must do the same. The only exception is the `process` adapter's reaped-leader case in ADR 0002, and a change to it needs its own decision.
 2. **`Destroy` tolerates absence.** An already-absent or partly created resource is not a reason to keep failing, so retries converge. Test: `TestSweepPreviewRetryAndIdempotence`.
-3. **Cleanup never depends on the caller's environment.** Adapters use the pinned context, endpoint, and private files recorded in the lease, never the current `DOCKER_HOST`, `DOCKER_CONTEXT`, `KUBECONFIG`, or the original Compose file. Test: `TestK3dKeepsCallerKubeconfig`.
+3. **Cleanup never depends on the caller's environment.** Adapters use the context name (and, for k3d, the endpoint) and private files recorded in the lease, never the current `DOCKER_HOST`, `DOCKER_CONTEXT`, `KUBECONFIG`, or the original Compose file. The recorded context name is not a pinned endpoint: changing what that context points to changes what cleanup targets. Test: `TestK3dKeepsCallerKubeconfig`.
 4. **dibs touches only resources it named.** Names derive from the lease ID, or come from an adoption the operator made explicitly. Compose rejects fixed names that cleanup could share with another project. dibs never sweeps unleased resources. Test: `TestComposeSnapshotAndUnsafeNames`.
 5. **Every external call is bounded.** `RunCommand` applies a 5-minute timeout.
 6. **No secrets in arguments.** Resolved Compose values go to the private `compose.json` file, not to argv.

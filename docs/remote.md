@@ -75,7 +75,7 @@ A `result` frame carries the child's code, so a child that exits 255 is never mi
 5. `runAgent` in `internal/cli/agent.go` runs `job` through `runJob` with owner kind `session`, so the agent process owns the reservation. It runs `list` and `sweep` through `runWithOutput`. Both render in the requested mode, and their output goes out as `output` frames. Test: `TestAgentRequestedOutput`.
 6. It sends `result` with the exit code.
 
-When the context is cancelled, the job's process group is cleaned up and its reservation is released, including during admission. Test: `TestAgentProtocolRefusal`, and the `TestSSHIntegration` subtest "wait 75 and disconnect kills descendant and releases budget".
+When the context is cancelled, dibs attempts to clean up the job's process group and release its reservation. If group cleanup fails, the reservation is kept for a later sweep. During admission, the waiter is removed, or it expires on its own if removal fails. Test: `TestAgentProtocolRefusal`, and the `TestSSHIntegration` subtest "wait 75 and disconnect kills descendant and releases budget".
 
 The remote uses its own config and state directory. `list --machine` and `sweep --machine` read remote state. Each machine reclaims only its own leases, and no ledger spans hosts.
 
@@ -93,7 +93,7 @@ A size or version mismatch keeps the existing binary. Agents that are already ru
 
 ## Invariants
 
-1. **Exit code 76 means the remote result is unknown.** Return 76 only for transport or protocol failure after SSH started. Never return dibs's own 1 or 2 once a child may have started. Test: `TestSSHIntegration` subtest "transport loss after child start returns 76".
+1. **Exit code 76 from dibs means the remote result is unknown.** dibs returns its own 76 only for transport or protocol failure after SSH started. A remote child's own exit code 76 passes through unchanged, so a 76 by itself does not prove a transport failure. The `SSH transport/protocol failed` stderr line distinguishes them. Never return dibs's own 1 or 2 once a child may have started. Test: `TestSSHIntegration` subtest "transport loss after child start returns 76".
 2. **The `result` frame is authoritative.** No SSH exit status overwrites a received child code. Test: `TestSSHIntegration` subtest "child codes including SSH reserved 255".
 3. **SSH stdin is the liveness channel.** EOF on the agent's stdin cancels the job and releases its reservation. Remote children never read SSH stdin.
 4. **Exact version match on both sides.** A mismatch refuses before any child starts. Test: `TestSSHIntegration` subtest "version checked installation and handshake".

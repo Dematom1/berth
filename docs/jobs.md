@@ -113,7 +113,7 @@ Reviewers treat changes in these areas as behavior changes that need a decision,
 3. **A record is removed only after cleanup succeeds.** With a verified leader, the lease is deleted only after `ps` shows no live group members. The one exception is a leader that is already gone and reaped: dibs then releases without proof that descendants are gone (ADR 0002). Changing that exception is a behavior change that needs its own decision.
 4. **FIFO with no backfill.** Only the first waiter for a machine can be admitted. Test: `TestJobsRealProcesses`.
 5. **Job deadlines never move.** `extendLease` refuses reservations. The deadline starts at admission, not at command launch.
-6. **The child's exit code is authoritative.** dibs's codes 1, 2, and 75 apply only before start. 124 applies only when the deadline killed a running child.
+6. **The child's exit code is authoritative.** dibs's codes 1, 2, and 75 apply only before start. 124 means the deadline fired and dibs did not confirm that the child had already exited. It is returned when the child had not exited, and also when completion cannot be verified at the deadline, even if the child had already exited.
 7. **The budget counts every reservation on the machine**, including admitted but not started ones, until verify-gone removes it. Test: `TestJobBudgetAndConfig`.
 8. **The state lock is never held while waiting or while the child runs.** `admitJob` closes the store before each sleep, and `startJob` and `finishJob` each open it briefly.
 

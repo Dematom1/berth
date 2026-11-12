@@ -105,9 +105,9 @@ The `exitCodes` constant in `internal/cli/help.go` is the contract. The README r
 | `1` | A dibs operation failed. Resource cleanup failures keep their lease. |
 | `2` | Invalid command, argument, flag, or config. No child started. |
 | Child's code | `dibs job`: the child ran to completion |
-| `124` | `dibs job`: the deadline killed the child (the coreutils `timeout` convention) |
+| `124` | `dibs job`: the deadline fired before the child was confirmed exited, or completion could not be verified at the deadline (the coreutils `timeout` convention) |
 | `75` | `dibs job`: no slot freed within `--wait` (`EX_TEMPFAIL`). No child started. |
-| `76` | SSH transport or protocol failure after SSH started. The remote result is unknown. |
+| `76` | SSH transport or protocol failure after SSH started. The remote result is unknown. A remote child that exits 76 also returns 76, so the code alone does not prove a transport failure. Check stderr for the `SSH transport/protocol failed` line. |
 | `128 + signal` | `dibs job`: a signal ended the child |
 | `125` | `dibs job`: the helper exited before it ran the child, or the child's wait status was unavailable |
 | `126` | `dibs job`: the helper could not `exec` the child |

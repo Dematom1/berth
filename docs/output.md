@@ -69,7 +69,7 @@ When a hint has more than one line, as full help text does, `Error` replaces it 
 
 ## JSON
 
-`Emit` writes the map with `json.NewEncoder(w).Encode`: one JSON object, then a newline. JSON is the canonical, complete form. It always includes `records` and `record`, and it never truncates text. Go's encoder sorts map keys and escapes `<`, `>`, and `&` as HTML-safe sequences.
+`Emit` writes the map with `json.NewEncoder(w).Encode`: one JSON object, then a newline. JSON is the canonical, complete form. It includes the result map's own keys (for example `records` for `list` and `record` for `create`), and it never truncates text. Go's encoder sorts map keys and escapes `<`, `>`, and `&` as HTML-safe sequences.
 
 ## AXI
 
@@ -139,7 +139,7 @@ A golden diff in a pull request is a visible change to an output contract.
 ## Invariants
 
 1. **AXI output is byte-stable.** The same values produce the same bytes: sorted keys, fixed quoting, fixed limits, and the same hint text. A change to a key name, a key set, the compact field list, the limits, the quoting rules, or the layout is a contract change. It shows as a golden diff. Test: `TestAXIBoundedListsAndFull`.
-2. **JSON is complete.** JSON never truncates and always includes the full records. Only AXI applies `axiView`.
+2. **JSON is complete.** JSON never truncates and includes every key the command sets, including the full records where a command sets them. Only AXI applies `axiView`.
 3. **Presentation never mutates data.** `axiView` copies. The canonical map stays intact for JSON and `--full`. Test: `TestAXIPresentationDoesNotMutate`.
 4. **Every table row has the same keys.** Build every row from one function, such as `LeaseView`.
 5. **Views hold only rendered types.** Use `string`, `bool`, `int`, `int64`, `json.Number`, `[]string`, `map[string]string`, `map[string]any`, or `[]map[string]any`. Other types print `null` in AXI.

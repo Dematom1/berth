@@ -1,6 +1,6 @@
 # Leases and owner liveness
 
-A lease records who owns a resource on this machine and when the resource expires. dibs reclaims a lease only when its owner is dead or the lease has expired. This page describes the lease lifecycle and the owner liveness checks that decide reclaim.
+A lease records who owns a resource on this machine and when the resource expires. Automatic reclaim (`sweep` and job admission) happens only when the owner is dead or the lease has expired. An explicit `release --confirm` destroys a lease regardless of owner liveness or expiry. This page describes the lease lifecycle and the owner liveness checks that decide reclaim.
 
 Source: `internal/lease/lease.go` (record, reclaim, extend, release, sweep), `internal/lease/manager.go` (the commands' ordering under the state lock), `internal/owner/reference.go` and `internal/owner/registry.go` (owner parsing and liveness), and the lease commands in `internal/cli/cli.go`. Tests: `internal/lease/lease_test.go`, `internal/owner/reference_test.go`, `internal/cli/cli_test.go`, and `TestFormalLeaseDomain` in `internal/lease/formal_test.go` (build tag `formal`, run with `just formal`). Formal model: `verification/Lease.tla`. Decisions: [ADR 0001](adr/0001-lease-lifecycle-and-ttl.md), [ADR 0002](adr/0002-reclaim-with-proof.md), [ADR 0003](adr/0003-owner-identity-and-liveness.md).
 
@@ -10,7 +10,7 @@ Source: `internal/lease/lease.go` (record, reclaim, extend, release, sweep), `in
 
 - `ID` is 32 lowercase hex characters from 16 bytes of `crypto/rand`. The store validates the shape with the `leaseID` pattern `^[a-f0-9]{32}$`.
 - `Machine` is the stable OS identity of the host, such as `linux:<machine-id>`. The lease belongs to that host for its whole life. See [State](state.md#machine-identity).
-- `Created` and `Expires` are UTC times. `Expires` is `Created + TTL`.
+- `Created` and `Expires` are UTC times. At creation, `Expires` is `Created + TTL`. `extend` changes `Expires` to the extension time plus the new TTL, and `Created` stays the same, so `Created + TTL` is no longer the expiry after an extension.
 - `TTL` must be positive. `newLease` and `extendLease` both reject `ttl <= 0`.
 - `Description` is free-text metadata, stored as `resources`. It is not a CPU or memory limit.
 - `Labels` is free-form `key=value` metadata from repeatable `--label` flags.
@@ -136,7 +136,7 @@ The `cadence` constant in `internal/cli/help.go` is printed in `create` and `ext
 - Touch heartbeat files at most every `stale / 3`.
 - Extend a lease at the latest when one third of its TTL remains.
 
-A live owner that misses either cadence loses its resources, because expiry alone makes a lease reclaimable. `TestCLIHomeHelpVersionAndTOON` asserts the help text.
+The cadence is a recommendation. Missing it does not by itself make a lease reclaimable. A live owner that misses it can still extend an unexpired lease. If the lease then expires, or its owner dies, a later `sweep --confirm` reclaims it. `TestCLIHomeHelpVersionAndTOON` asserts the help text.
 
 ## Invariants
 
@@ -145,7 +145,7 @@ Reviewers check every change to `internal/lease/lease.go`, `internal/lease/manag
 1. **Never reclaim a live, unexpired owner.** Automatic reclaim (`sweep`, job admission) goes through `reclaimable`, which requires `dead` or expired. Expiry wins even over a live owner, by policy (ADR 0001, finding F1 in `verification/findings.md`). Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestFormalLeaseDomain`.
 2. **`unknown` is never `dead`.** Any error that does not prove absence returns `unknown`. An `unknown` owner keeps its lease until expiry. Tests: `TestOwnerLiveness`, `TestOutOfRangePIDIsUnknownNotDead`.
 3. **A host acts only on its own leases.** `reclaimable`, `extendLease`, and `releaseLease` compare `Machine` with this host before anything else. Expired foreign leases stay. Test: `TestReclaimAndExtend`.
-4. **A record is removed only after verify-gone.** `releaseLease` deletes the lease only after `Destroy` returns nil, and every built-in adapter's `Destroy` verifies absence before returning nil. See [Adapters](adapters.md#invariants). Test: `TestSweepPreviewRetryAndIdempotence`.
+4. **A record is removed only after verify-gone.** `releaseLease` deletes the lease only after `Destroy` returns nil, and every built-in adapter's `Destroy` verifies absence before returning nil. The one exception is a job reservation whose group leader is already gone and reaped: `processResource.Destroy` then succeeds without verifying that descendants are gone. See [Jobs](jobs.md#process-group-cleanup) and [ADR 0002](adr/0002-reclaim-with-proof.md#existing-process-exception). See [Adapters](adapters.md#invariants). Test: `TestSweepPreviewRetryAndIdempotence`.
 5. **Cleanup intent is durable before the resource exists.** `Manager.Create` saves the lease before the adapter's `Create` runs. Test: `TestCLICreateFailureKeepsDurableCleanupIntent`.
 6. **Preview by default.** `release` and `sweep` change nothing without `--confirm`. Test: `TestSweepPreviewRetryAndIdempotence`.
 7. **Expiry is checked after the lock.** `Manager.open` reads the clock after `openStore` has acquired the lock.
