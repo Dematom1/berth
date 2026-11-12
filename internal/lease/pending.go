@@ -253,6 +253,22 @@ func (m *Manager) bindPending(ctx context.Context, s *store, host string, r Pend
 	}
 	if !l.ResourceRef.Pending {
 		if l.ResourceRef.Adapter == r.Adapter && l.ResourceRef.Name == r.Handle && (r.Scope.DockerHost == "" || l.ResourceRef.DockerHost == r.Scope.DockerHost) {
+			if r.File != "" {
+				requested, err := filepath.Abs(r.File)
+				if err != nil {
+					return Lease{}, false, err
+				}
+				if l.PendingFile == "" {
+					return Lease{}, false, refuse("handle_mismatch", "pending lease "+r.ID+" was bound with a different Compose file")
+				}
+				recorded, err := filepath.Abs(l.PendingFile)
+				if err != nil {
+					return Lease{}, false, err
+				}
+				if requested != recorded {
+					return Lease{}, false, refuse("handle_mismatch", "pending lease "+r.ID+" was bound with a different Compose file")
+				}
+			}
 			return detached(l), true, nil
 		}
 		return Lease{}, false, refuse("not_pending", "lease "+r.ID+" already covers "+l.ResourceRef.Adapter+":"+l.ResourceRef.Name)

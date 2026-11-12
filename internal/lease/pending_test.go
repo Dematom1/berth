@@ -119,7 +119,9 @@ func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	if _, _, err := m.Create(ctx, pendingRequest("taken", "")); reason(err) != "handle_exists" {
 		t.Fatalf("existing handle accepted: %v", err)
 	}
-	l, done, err := m.Create(ctx, pendingRequest("lab-7", ""))
+	request := pendingRequest("lab-7", "")
+	request.File = "file-a.yaml"
+	l, done, err := m.Create(ctx, request)
 	if err != nil || done || !l.ResourceRef.Pending || l.ResourceRef.Name != "lab-7" || l.ResourceRef.Context != "test-context" {
 		t.Fatalf("pending not recorded: %+v %v %v", l, done, err)
 	}
@@ -129,7 +131,7 @@ func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	if _, _, err := m.Create(ctx, pendingRequest("lab-7", "")); reason(err) != "already_leased" {
 		t.Fatalf("second pending lease pinned the same handle: %v", err)
 	}
-	bindReq := AdoptRequest{Resource: adapterpkg.ResourceRef{Adapter: "kind", Name: "lab-7"}, Pending: l.ID}
+	bindReq := AdoptRequest{Resource: adapterpkg.ResourceRef{Adapter: "kind", Name: "lab-7"}, Pending: l.ID, File: "file-a.yaml"}
 	if _, _, err := m.Adopt(ctx, bindReq); reason(err) != "resource_absent" {
 		t.Fatalf("bound before creation: %v", err)
 	}
@@ -158,8 +160,24 @@ func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(m.options.Directory, "resources", l.ID, "kubeconfig")); err != nil {
 		t.Fatalf("bind did not capture cleanup config: %v", err)
 	}
-	if again, done, err := m.Adopt(ctx, bindReq); err != nil || !done || again.ID != l.ID {
-		t.Fatalf("retried bind not idempotent: %v %v", done, err)
+	wrongFile := bindReq
+	wrongFile.File = "file-b.yaml"
+	if _, _, err := m.Adopt(ctx, wrongFile); reason(err) != "handle_mismatch" {
+		t.Fatalf("bound lease accepted a different Compose file: %v", err)
+	}
+	absoluteFile, err := filepath.Abs(bindReq.File)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchingFile := bindReq
+	matchingFile.File = absoluteFile
+	if again, done, err := m.Adopt(ctx, matchingFile); err != nil || !done || again.ID != l.ID {
+		t.Fatalf("matching file retry not idempotent: %v %v", done, err)
+	}
+	noFile := bindReq
+	noFile.File = ""
+	if again, done, err := m.Adopt(ctx, noFile); err != nil || !done || again.ID != l.ID {
+		t.Fatalf("retry without file not idempotent: %v %v", done, err)
 	}
 	if _, _, err := m.Adopt(ctx, wrong); reason(err) != "not_pending" {
 		t.Fatalf("bound lease rebound: %v", err)
