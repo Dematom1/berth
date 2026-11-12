@@ -104,6 +104,13 @@ type CreateRequest struct {
 
 // Create reports true when Key named an existing lease and nothing was done.
 func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, error) {
+	if r.Key != "" && r.Adapter == "compose" && r.File != "" {
+		var err error
+		r.File, err = filepath.Abs(r.File)
+		if err != nil {
+			return Lease{}, false, err
+		}
+	}
 	s, host, now, err := m.open(ctx)
 	if err != nil {
 		return Lease{}, false, err
@@ -115,7 +122,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 			return false
 		}
 		if !r.Pending {
-			return true
+			return r.Adapter != "compose" || l.PendingFile == r.File
 		}
 		return (r.ScopeUnavailable != nil || (ref.Context == r.Scope.Context && ref.DockerHost == r.Scope.DockerHost)) && l.PendingFile == r.File
 	}); done || err != nil {
@@ -133,6 +140,9 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 	}
 	l.Key = r.Key
 	l.ProtectLiveOwner = r.ProtectLiveOwner
+	if r.Key != "" && r.Adapter == "compose" {
+		l.PendingFile = r.File
+	}
 	d, ok := m.options.Adapters.Lookup(r.Adapter)
 	if !ok {
 		return Lease{}, false, errors.New("unsupported resource adapter")

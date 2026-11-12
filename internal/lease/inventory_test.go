@@ -61,6 +61,29 @@ func adoptionRequest(t *testing.T, driver string) AdoptRequest {
 	}
 	return AdoptRequest{Owner: o, TTL: time.Hour, Resource: adapterpkg.ResourceRef{Adapter: driver, Name: "existing-lab", Context: "test-context", DockerHost: "unix:///test.sock"}, File: file}
 }
+func TestKeyedComposeAdoptMatchesFile(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "")
+	m := inventoryManager(t, "compose", inventoryRunner(t, "compose", "existing-lab"))
+	r := adoptionRequest(t, "compose")
+	r.Key = "compose-adopt"
+	lease, done, err := m.Adopt(context.Background(), r)
+	if err != nil || done {
+		t.Fatalf("adopt: done=%v err=%v", done, err)
+	}
+	retry := r
+	retry.File, err = filepath.Abs(r.File)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, done, err := m.Adopt(context.Background(), retry); err != nil || !done || got.ID != lease.ID {
+		t.Fatalf("same absolute file retry: done=%v err=%v", done, err)
+	}
+	retry.File = filepath.Join(t.TempDir(), "other-compose.yaml")
+	if _, _, err := m.Adopt(context.Background(), retry); reason(err) != "key_conflict" {
+		t.Fatalf("different Compose file accepted: %v", err)
+	}
+}
+
 func TestAdoptRefusalsAndDurability(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "")
 	for _, driver := range []string{"kind", "k3d", "compose"} {

@@ -43,6 +43,13 @@ type AdoptRequest struct {
 
 // Adopt reports true when the request was already done and nothing changed.
 func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error) {
+	if r.Pending == "" && r.Key != "" && r.Resource.Adapter == "compose" && r.File != "" {
+		var err error
+		r.File, err = filepath.Abs(r.File)
+		if err != nil {
+			return Lease{}, false, err
+		}
+	}
 	s, host, now, err := m.open(ctx)
 	if err != nil {
 		return Lease{}, false, err
@@ -53,7 +60,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 	}
 	if l, done, err := keyed(s, host, r.Key, func(l Lease) bool {
 		ref := l.ResourceRef
-		return sameOwner(l.Owner, r.Owner) && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost
+		return sameOwner(l.Owner, r.Owner) && l.ProtectLiveOwner == r.ProtectLiveOwner && ref.Adapter == r.Resource.Adapter && ref.Name == r.Resource.Name && ref.DockerHost == r.Resource.DockerHost && (r.Resource.Adapter != "compose" || l.PendingFile == r.File)
 	}); done || err != nil {
 		return l, done, err
 	}
@@ -66,6 +73,9 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 	}
 	l.Key = r.Key
 	l.ProtectLiveOwner = r.ProtectLiveOwner
+	if r.Key != "" && r.Resource.Adapter == "compose" {
+		l.PendingFile = r.File
+	}
 	d, ok := m.options.Adapters.Lookup(r.Resource.Adapter)
 	if !ok || d.Discover == nil || !adapterpkg.ValidResourceName(r.Resource.Name) || d.RequiresFile != (r.File != "") {
 		return Lease{}, false, errors.New("unsupported adoption target or missing Compose file")

@@ -123,7 +123,7 @@ Exit 3 means that dibs changed no lease and touched no resource. Opening the led
 
 ## Idempotency
 
-Pass `--key K` to `create` or `adopt` when a retry must not act twice. A key names one live lease on this machine. A retry returns `already_done` only when owner (including a PID owner's recorded start time), live-owner protection, adapter, request mode, and any pinned handle match. Pending creates also require the same Docker context, Docker host, and Compose file, including after the pending lease is bound. An `adopt` retry also requires the same resource name and Docker context or Docker host. The same key with a different request is refused with `key_conflict`. A key becomes free again when its lease is released.
+Pass `--key K` to `create` or `adopt` when a retry must not act twice. A key names one live lease on this machine. A retry returns `already_done` only when owner (including a PID owner's recorded start time), live-owner protection, adapter, request mode, pinned handle, Docker context and host, and Compose file match. Compose file paths are compared after resolving them to absolute paths. The same key with a different request is refused with `key_conflict`. TTL, description, and labels are ignored on retry; the original lease is returned unchanged, so use `extend` if it needs a longer TTL. A key becomes free again when its lease is released.
 
 Use a key that names the work and the role of the resource, such as `<task>:<attempt>:<role>`. Do not use a random value: after a crash, the restarted caller must be able to compute the same key again.
 

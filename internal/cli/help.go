@@ -41,7 +41,7 @@ dibs adopt <kind|k3d|compose> <handle> --pending ID [--file PATH] [--axi | --jso
 Explicitly lease an existing resource. Existence must be verified and no lease
 may already own it. Captures cleanup configuration; does not recreate resources.
 Owner and positive TTL are required. Release/sweep keep their preview defaults.
---key K: a retry with the same key and request returns status already_done.
+--key K: retries match owner, protection, adapter, mode, resource, Docker scope, and Compose file; TTL, description, and labels are ignored.
 --protect-live-owner: only proven owner death reclaims; expiry alone never does.
 Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 --pending ID registers a resource the caller created for a pending lease (see
@@ -115,7 +115,7 @@ only and performs no external cleanup. up is an alias.
 even after expiry; only proven owner death reclaims. Use the worker's own owner.
 Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
 --key K and --pending need the consumer contract (DIBS_CONSUMER_CONTRACT=1).
---key K: a retry with the same key and request returns status already_done.
+--key K: retries match owner, protection, adapter, mode, pinned handle, Docker scope, and Compose file; TTL, description, and labels are ignored.
 With --pending or --key, --quiet prints only the lease ID (including on retry);
 exit codes distinguish success from failure. --quiet cannot combine with --axi
 or --json for those contract creates. Without these flags it keeps its usual behavior.
