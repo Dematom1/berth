@@ -31,9 +31,12 @@ and Docker Compose, plus a running Docker engine.
 ## Upgrade from berth
 
 Dibs is the new name for berth. Update install commands, sweep timers, scripts,
-and remote binary paths to `dibs`. For one minor release, `BERTH_*` variables
-remain deprecated aliases for `DIBS_*`; existing berth-named leases remain
-reclaimable. See the [rename release notes](docs/releases/rename-to-dibs.md) for
+and remote binary paths to `dibs`. For one minor release, through the 0.3
+releases and removed in 0.4.0, `BERTH_*` variables remain deprecated aliases
+for `DIBS_*`, and the Nix package and release archives also install a
+deprecated `berth` command. `berth` is the same program as `dibs`, with
+identical stdout and exit codes, plus one stderr deprecation line naming
+`dibs`. Existing berth-named leases remain reclaimable. See the [rename release notes](docs/releases/rename-to-dibs.md) for
 the compatibility details and repository-rename ordering.
 
 ## Output for people, agents, and scripts
@@ -555,11 +558,15 @@ which resources will be deleted.
 the invoking user. State contains resolved Compose values, which may include
 secrets. Keep this directory on a local filesystem, not a network share.
 
-State schema version 2 adds explicitly adopted resource identities. The first
-successful `adopt` upgrades version 1 state, preserving existing lease records.
-Other commands keep version 1 state at version 1. Older binaries reject version 2
-rather than interpreting adopted names as generated ones. Keep a compatible
-binary while leases remain.
+State schema version 2 adds explicitly adopted resource identities and stable
+machine identities. Any command that opens version 1 state migrates it to
+version 2, preserving existing lease records (see below). Older binaries reject
+version 2 rather than interpreting adopted names as generated ones. Keep a
+compatible binary while leases remain. State records the version of the dibs
+binary that last saved it. A binary that finds a state version newer than it
+supports exits 1, keeps the state unchanged, and names the version found, the
+recorded writer version, and the newest version it supports. Upgrade dibs, and
+run `which -a dibs berth` to find a stale binary earlier on `PATH`.
 
 A stable `lock` file serializes ordinary readers and writers through kernel `flock`.
 `orphans` reads an atomic state snapshot without locks or writes. Its answer is

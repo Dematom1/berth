@@ -91,7 +91,7 @@ func (s *store) migrateMachines() error {
 			changed = true
 		}
 	}
-	s.Version = 2
+	s.Version = stateVersion
 	if changed {
 		return s.Save()
 	}

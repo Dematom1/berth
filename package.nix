@@ -9,6 +9,11 @@ buildGoModule {
   env.CGO_ENABLED = 0;
   ldflags = [ "-s" "-w" "-X main.version=${version}" ];
 
+  # Deprecated berth command: the same binary, warning on stderr when invoked as berth.
+  postInstall = ''
+    ln -s dibs $out/bin/berth
+  '';
+
   # Job/SSH tests spawn /bin/sh and other host tools absent from the sandbox.
   # CI runs the complete race suite on Linux and macOS instead.
   doCheck = false;

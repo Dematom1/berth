@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -25,5 +26,13 @@ func WarnLegacyEnv(out io.Writer) {
 	}
 	if len(names) != 0 {
 		fmt.Fprintf(out, "warning: %s deprecated after berth renamed to dibs; use DIBS_* (aliases retained for one minor release)\n", strings.Join(names, ", "))
+	}
+}
+
+// WarnLegacyCommand keeps callers that still run berth working for the same
+// window as the BERTH_* aliases, without touching stdout or exit codes.
+func WarnLegacyCommand(arg0 string, out io.Writer) {
+	if filepath.Base(arg0) == "berth" {
+		fmt.Fprintln(out, "warning: berth command deprecated after berth renamed to dibs; run dibs (berth retained for one minor release)")
 	}
 }

@@ -16,6 +16,8 @@ type Options struct {
 	Directory string
 	Adapters  adapterpkg.Registry
 	Owners    ownerpkg.Registry
+	// Version is recorded in saved state as its writer.
+	Version string
 }
 type Manager struct{ options Options }
 
