@@ -2,5 +2,5 @@ code: COMMAND_FAILED
 contract: 1
 error: lease aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa does not exist on this machine
 exit_code: 3
-help[1]: Run dibs ps to find the lease; a released lease is gone for good
+help[1]: Run dibs create to acquire a new lease; a released lease cannot be restored
 reason: not_found

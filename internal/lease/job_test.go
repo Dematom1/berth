@@ -309,7 +309,7 @@ func TestJobsRealProcesses(t *testing.T) {
 		if err := json.Unmarshal([]byte(out), &view); err != nil || len(view.Leases) != 1 || view.Leases[0].Cores != 1 || view.Leases[0].Memory != "1073741824B" {
 			t.Fatalf("missing ps reservation: %s %v", out, err)
 		}
-		childExit(t, exec.Command(binary, "extend", view.Leases[0].ID, "--ttl", "1h"), 1)
+		childExit(t, exec.Command(binary, "extend", view.Leases[0].ID, "--ttl", "1h"), 3)
 		order := filepath.Join(t.TempDir(), "order")
 		big := startJobCommand(t, binary, "--cores", "2", "--memory", "2GiB", "--wait", "10s", "--", "sh", "-c", `echo big >> "$1"; sleep 0.1`, "_", order)
 		awaitJob(t, func() bool { n := 0; jobStore(t, dir, func(s *store) { n = len(s.Waiters) }); return n == 1 })
