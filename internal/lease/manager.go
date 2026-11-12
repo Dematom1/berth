@@ -96,9 +96,10 @@ type CreateRequest struct {
 	Key string
 	// Pending records the lease before the caller creates the resource in Scope,
 	// optionally pinning its handle as Name.
-	Pending bool
-	Name    string
-	Scope   adapterpkg.ResourceRef
+	Pending          bool
+	Name             string
+	Scope            adapterpkg.ResourceRef
+	ScopeUnavailable error
 }
 
 // Create reports true when Key named an existing lease and nothing was done.
@@ -116,9 +117,12 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 		if !r.Pending {
 			return true
 		}
-		return ref.Context == r.Scope.Context && ref.DockerHost == r.Scope.DockerHost && l.PendingFile == r.File
+		return (r.ScopeUnavailable != nil || (ref.Context == r.Scope.Context && ref.DockerHost == r.Scope.DockerHost)) && l.PendingFile == r.File
 	}); done || err != nil {
 		return l, done, err
+	}
+	if r.ScopeUnavailable != nil {
+		return Lease{}, false, r.ScopeUnavailable
 	}
 	if m.checkOwner(r.Owner, now) != ownerpkg.Alive {
 		return Lease{}, false, errors.New("owner became stale or unavailable while waiting; refresh the owner and retry dibs create")

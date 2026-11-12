@@ -294,16 +294,21 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	case "create":
 		request := leasepkg.CreateRequest{Owner: newOwner, TTL: ttl, Description: resources, Labels: labels, Adapter: driver, File: file, Key: key, Pending: pending, Name: name, ProtectLiveOwner: protect}
 		if pending {
+			if file != "" {
+				var fileErr error
+				if request.File, fileErr = filepath.Abs(file); fileErr != nil {
+					return outputpkg.Error(out, jsonOutput, 2, fileErr.Error(), help(command))
+				}
+			}
 			// Pin the scope now: reconcile must look where the caller will build the resource.
 			scope, scopeErr := adapterpkg.ResolveDockerContext(ctx, "", adapterpkg.RunCommand)
 			if scopeErr != nil {
-				return outputpkg.Error(out, jsonOutput, 1, scopeErr.Error(), "Select a reachable Docker context and retry dibs create")
-			}
-			request.Scope = scope
-			if file != "" {
-				if request.File, scopeErr = filepath.Abs(file); scopeErr != nil {
-					return outputpkg.Error(out, jsonOutput, 2, scopeErr.Error(), help(command))
+				if key == "" {
+					return outputpkg.Error(out, jsonOutput, 1, scopeErr.Error(), "Select a reachable Docker context and retry dibs create")
 				}
+				request.ScopeUnavailable = scopeErr
+			} else {
+				request.Scope = scope
 			}
 		}
 		l, done, createErr := app.leases.Create(ctx, request)

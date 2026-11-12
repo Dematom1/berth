@@ -112,6 +112,28 @@ func diskVersion(t *testing.T, m *Manager) int {
 	return s.Version
 }
 
+func TestPendingKeyedRetryWithoutScopeResolution(t *testing.T) {
+	ctx := context.Background()
+	m, _, _ := pendingManager(t)
+	request := pendingRequest("lab-7", "retry-key")
+	created, done, err := m.Create(ctx, request)
+	if err != nil || done {
+		t.Fatalf("record pending lease: done=%v err=%v", done, err)
+	}
+	unavailable := errors.New("Docker context unavailable")
+	request.Scope = adapterpkg.ResourceRef{}
+	request.ScopeUnavailable = unavailable
+	retried, done, err := m.Create(ctx, request)
+	if err != nil || !done || retried.ID != created.ID {
+		t.Fatalf("retry did not return existing lease: done=%v lease=%+v err=%v", done, retried, err)
+	}
+
+	request.Key = "new-key"
+	if _, _, err := m.Create(ctx, request); !errors.Is(err, unavailable) {
+		t.Fatalf("new lease without scope returned %v, want resolution error", err)
+	}
+}
+
 func TestPendingPinnedHandleLifecycle(t *testing.T) {
 	ctx := context.Background()
 	m, engine, _ := pendingManager(t)

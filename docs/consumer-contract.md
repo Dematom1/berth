@@ -133,7 +133,7 @@ The other verbs are idempotent without a key:
 - `reconcile ID` returns `already_done` for a lease that is no longer pending.
 - `release ID --confirm` and `reclaim ID --confirm` return `already_done` when the lease is already gone. Repeating a successful `extend` renews the same lease again.
 
-A keyed `create` that failed after it saved its lease returns `already_done` on retry, with the partly created resource still under that lease. Release the lease and acquire again when the first attempt reported exit 1.
+A keyed `create` that failed after it saved its lease returns `already_done` on retry, with the partly created resource still under that lease. For `--pending`, a retry can return the recorded lease while Docker context resolution is unavailable; `reconcile` still requires Docker. Release the lease and acquire again when the first attempt reported exit 1.
 
 ## Crash-safe acquire
 
