@@ -40,11 +40,12 @@ Release does not delete `resources/<lease-id>/`. The README says these snapshots
 
 - A missing file is an empty store at the current format version.
 - A file that fails to parse or fails `validate` is an error: `cannot read lease state (kept unchanged)`. The store never treats corrupt state as empty and never rewrites it. Test: `TestStoreDurabilityLockAndCorruption`.
+- A `version` above the newest this binary supports is refused before the rest of the file is decoded. The error names the version found, the recorded `writer_version` when present, the newest version and the dibs version of this binary, and the fix: upgrade dibs, and run `which -a dibs berth` to find a stale binary earlier on `PATH`. The file is kept unchanged and the exit code is the same as for any unreadable state. Test: `TestNewerStateRefusedWithUpgradeHint`.
 - After validation, `migrateMachines` runs. See [Machine identity](#machine-identity).
 
 `validate` rejects the whole file when any of these is true:
 
-- `version` is neither `1` nor `2`, or `leases` is missing.
+- `version` is below `1`, or `leases` is missing.
 - A waiter has a malformed ID, an empty machine, a zero `expires`, an owner kind other than `pid` or `session`, or an empty owner identity.
 - A lease map key does not match the lease's own `id`, or the ID is not 32 lowercase hex characters.
 - A lease has an empty `machine`, a zero `created` or `expires`, or a non-positive `ttl`.
@@ -96,6 +97,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 ```json
 {
   "version": 2,
+  "writer_version": "0.2.3",
   "leases": {
     "<id>": {
       "id": "<id>",
@@ -118,6 +120,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 | Field | Go field and type | Notes |
 | --- | --- | --- |
 | `version` | `store.Version`, int | `2` for new state. `1` and `2` are accepted. |
+| `writer_version` | `store.Writer`, string | Version of the dibs binary that last saved the file. Additive, so the format stays version 2. Omitted when empty. Test: `TestStateWithWriterVersionLoadsAndRecordsWriter`. |
 | `leases` | `map[string]Lease` | Keyed by lease ID |
 | `waiters` | `[]waiter` | FIFO job admission queue. Omitted when empty. |
 | `owner.kind`, `owner.id` | `owner.Reference` | See [Leases](leases.md#owner-kinds) |
@@ -141,7 +144,7 @@ Cloned hosts must have distinct OS identities. dibs does not generate or modify 
 4. **Every mutation happens under the lock.** Load, change, and `Save` happen between `openStore` and `Close` in one process.
 5. **State stays private.** The directory is `0700`, and files are `0600`. Test: `TestOpenStoreRestrictsExistingDirectory`.
 6. **State is local to one host and one Unix user.** Leases carry a stable `machine`, and other hosts never act on them. Do not share the directory over a network filesystem.
-7. **Format changes are contract changes.** `validate` accepts only versions 1 and 2. A new field, a renamed field, a new adapter name, or a new version changes what older binaries accept. Older binaries reject version 2, so a version 2 file needs a compatible binary for every invocation, as the README states.
+7. **Format changes are contract changes.** `validate` accepts only versions 1 and 2. A new field, a renamed field, a new adapter name, or a new version changes what older binaries accept. Older binaries reject version 2, so a version 2 file needs a compatible binary for every invocation, as the README states. Binaries that record `writer_version` refuse any newer version with an upgrade hint instead of a bare format error.
 8. **Resource files stay inside their state directory.** Each adapter's `Validate` checks its file with `SnapshotMatches` (`internal/adapter/snapshot.go`), which accepts the legacy `berth` root only when it resolves to the same ledger.
 
 ## Planned

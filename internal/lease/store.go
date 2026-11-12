@@ -20,13 +20,20 @@ import (
 
 var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
+// stateVersion is the newest state schema this binary reads and writes.
+const stateVersion = 2
+
 type store struct {
-	Version   int              `json:"version"`
+	Version int `json:"version"`
+	// Writer names the binary version behind the last save so an older
+	// binary can say which upgrade it needs. Additive; the schema stays 2.
+	Writer    string           `json:"writer_version,omitempty"`
 	Leases    map[string]Lease `json:"leases"`
 	Waiters   []waiter         `json:"waiters,omitempty"`
 	dir       string
 	lock      *os.File
 	resources adapterpkg.Registry
+	binary    string
 }
 
 func stateDir() (string, error) { return resolveStateDir(true) }
@@ -126,7 +133,7 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	s := &store{Version: 2, Leases: map[string]Lease{}, dir: dir, lock: f, resources: m.options.Adapters}
+	s := &store{Version: stateVersion, Leases: map[string]Lease{}, dir: dir, lock: f, resources: m.options.Adapters, binary: m.options.Version}
 	statePath := filepath.Join(dir, "state.json")
 	if err := os.Chmod(statePath, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
 		s.Close()
@@ -138,10 +145,7 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 	}
 	if err == nil {
 		s.Version = 0
-		err = json.Unmarshal(data, s)
-	}
-	if err == nil {
-		err = s.validate()
+		err = s.decode(data)
 	}
 	if err == nil {
 		err = s.migrateMachines()
@@ -153,8 +157,29 @@ func (m *Manager) openStore(ctx context.Context, dir string) (*store, error) {
 	return s, nil
 }
 
+// decode refuses a newer schema before reading fields whose meaning it may change.
+func (s *store) decode(data []byte) error {
+	var header struct {
+		Version int             `json:"version"`
+		Writer  json.RawMessage `json:"writer_version"`
+	}
+	if json.Unmarshal(data, &header) == nil && header.Version > stateVersion {
+		// writer_version is optional diagnostics; a malformed one must not mask the refusal.
+		var recorded string
+		writer := ""
+		if json.Unmarshal(header.Writer, &recorded) == nil && recorded != "" {
+			writer = " written by dibs " + recorded
+		}
+		return fmt.Errorf("state version %d%s is newer than this binary supports (state version %d, dibs %s); upgrade dibs, and run `which -a dibs berth` to find a stale binary earlier on PATH", header.Version, writer, stateVersion, s.binary)
+	}
+	if err := json.Unmarshal(data, s); err != nil {
+		return err
+	}
+	return s.validate()
+}
+
 func (s *store) validate() error {
-	if (s.Version != 1 && s.Version != 2) || s.Leases == nil {
+	if s.Version < 1 || s.Version > stateVersion || s.Leases == nil {
 		return errors.New("unsupported or incomplete state format")
 	}
 	for _, w := range s.Waiters {
@@ -201,6 +226,7 @@ func (s *store) IDs() []string {
 }
 
 func (s *store) Save() error {
+	s.Writer = s.binary
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

@@ -53,6 +53,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "__job_exec" {
 		os.Exit(leasepkg.Exec(os.Args[2:]))
 	}
+	compat.WarnLegacyCommand(os.Args[0], os.Stderr)
 	compat.WarnLegacyEnv(os.Stderr)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

@@ -210,6 +210,8 @@ func TestGoReleaserArtifactContract(t *testing.T) {
 	require(t, gotArch["amd64"] && gotArch["arm64"] && len(gotArch) == 2, "release must build both supported architectures")
 	ldflags := list(build["ldflags"])
 	require(t, len(ldflags) > 0 && strings.Contains(ldflags[0].(string), "main.version={{.Version}}"), "binary version must be stamped from release tag")
+	berth := object(list(cfg["builds"])[1])
+	require(t, len(list(cfg["builds"])) == 2 && berth["binary"] == "berth" && berth["main"] == build["main"] && fmt.Sprint(berth["goos"], berth["goarch"], berth["ldflags"]) == fmt.Sprint(build["goos"], build["goarch"], build["ldflags"]), "archives must ship the deprecated berth command built like dibs")
 	archive := object(list(cfg["archives"])[0])
 	require(t, len(list(archive["formats"])) == 1 && list(archive["formats"])[0] == "tar.gz", "release artifacts must be archives")
 	require(t, object(cfg["checksum"])["name_template"] == "checksums.txt", "release must publish checksums")

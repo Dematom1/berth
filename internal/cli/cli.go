@@ -31,7 +31,7 @@ type application struct {
 
 func Run(ctx context.Context, args []string, out io.Writer, version string) int {
 	resources, owners := newAdapters(), newOwners()
-	app := application{version, resources, owners, leasepkg.New(leasepkg.Options{Adapters: resources, Owners: owners})}
+	app := application{version, resources, owners, leasepkg.New(leasepkg.Options{Adapters: resources, Owners: owners, Version: version})}
 	return app.runWithOutput(ctx, args, out, outputpkg.Auto)
 }
 func (app application) leaseError(out io.Writer, mode outputpkg.Mode, command string, err error) int {

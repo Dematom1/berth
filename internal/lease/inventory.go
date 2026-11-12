@@ -2,7 +2,6 @@ package lease
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
@@ -13,16 +12,13 @@ import (
 )
 
 func (m *Manager) readInventoryStore(dir string) (*store, error) {
-	s := &store{Version: 1, Leases: map[string]Lease{}, dir: dir, resources: m.options.Adapters}
+	s := &store{Version: 1, Leases: map[string]Lease{}, dir: dir, resources: m.options.Adapters, binary: m.options.Version}
 	data, err := os.ReadFile(filepath.Join(dir, "state.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
 	if err == nil {
-		err = json.Unmarshal(data, s)
-	}
-	if err == nil {
-		err = s.validate()
+		err = s.decode(data)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot read lease state (kept unchanged): %w", err)
@@ -98,7 +94,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, error) {
 		return Lease{}, err
 	}
 	l.Labels = map[string]string{"io.dibs.lease": l.ID, "io.dibs.owner": l.Owner.String(), "io.dibs.expires": l.Expires.Format(time.RFC3339Nano), "io.dibs.machine": l.Machine}
-	s.Version = 2
+	s.Version = stateVersion
 	s.Leases[l.ID] = l
 	if err := s.Save(); err != nil {
 		return Lease{}, err

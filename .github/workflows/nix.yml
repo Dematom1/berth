@@ -35,5 +35,7 @@ jobs:
         run: nix build --print-build-logs
       - name: Check stamped version
         run: test "$(./result/bin/dibs --version)" = "$(jq -r '.["."]' .release-please-manifest.json)"
+      - name: Check deprecated berth command
+        run: test "$(./result/bin/berth --version 2>/dev/null)" = "$(./result/bin/dibs --version)"
       - name: Build through flake-compat
         run: nix-build default.nix -A "packages.$(nix eval --impure --raw --expr builtins.currentSystem).default" --no-out-link
