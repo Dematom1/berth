@@ -137,6 +137,9 @@ func parse(key string, row Row) (Policy, error) {
 	return p, p.check(key)
 }
 
+// Validate checks a recorded policy against the rules a configured row must meet.
+func (p Policy) Validate() error { return p.check(p.Row) }
+
 func (p Policy) check(key string) error {
 	invalid := func(why string) error { return fmt.Errorf("policy %q: %s", key, why) }
 	switch {

@@ -177,3 +177,60 @@ func TestSweepProtectsLiveOwnerShellUnlessPolicyAllowsIt(t *testing.T) {
 		})
 	}
 }
+
+func TestPolicyExplainHintsAndRenewalDeadline(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("DIBS_STATE", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("DIBS_CONSUMER_CONTRACT", "1")
+	t.Setenv("DIBS_LEASE_POLICIES", "1")
+	owner := "pid:" + strconv.Itoa(os.Getpid())
+	write := func(body string) {
+		if err := os.MkdirAll(filepath.Join(config, "dibs"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(config, "dibs", "config.json"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A top-level null is not a config object.
+	write("null")
+	if result := jsonRun(t, 2, "create", "--owner", owner); !strings.Contains(result["error"].(string), "exactly one JSON object") {
+		t.Fatalf("null config = %v", result)
+	}
+
+	// Renewing with a TTL shorter than the recorded cadence never advises renewing after expiry.
+	write(`{"policies": {"none": {"binding": "time", "ttl": "2h", "renew": "90m"}}}`)
+	id := jsonRun(t, 0, "create", "--owner", owner)["record"].(map[string]any)["id"].(string)
+	jsonRun(t, 0, "extend", id, "--ttl", "10m")
+	explained := jsonRun(t, 0, "explain", id)
+	renewBy, err := time.Parse(time.RFC3339, explained["renew_by"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires, err := time.Parse(time.RFC3339Nano, explained["lease"].(map[string]any)["expires"].(string))
+	if err != nil || renewBy.After(expires) {
+		t.Fatalf("renew_by %v is after expiry %v (%v)", renewBy, expires, err)
+	}
+
+	// Only a lease that truly lives while its owner does says so.
+	hint := func(row string) string {
+		write(`{"policies": {"none": ` + row + `}}`)
+		id := jsonRun(t, 0, "create", "--owner", owner)["record"].(map[string]any)["id"].(string)
+		return strings.Join(toStrings(jsonRun(t, 0, "explain", id)["help"]), "\n")
+	}
+	if got := hint(`{"binding": "hybrid", "max_lifetime": "24h"}`); !strings.Contains(got, "lives while its owner does") {
+		t.Fatalf("owner-protected hybrid hint = %q", got)
+	}
+	if got := hint(`{"binding": "hybrid", "max_lifetime": "24h", "reclaim_live_owner": true}`); strings.Contains(got, "lives while its owner does") {
+		t.Fatalf("hybrid that may reclaim a live owner promised owner lifetime: %q", got)
+	}
+}
+
+func toStrings(value any) []string {
+	var out []string
+	for _, item := range value.([]any) {
+		out = append(out, item.(string))
+	}
+	return out
+}

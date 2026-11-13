@@ -171,12 +171,12 @@ Examples:
 Set expiry to now + D (positive Go duration). Only an unexpired lease with a
 verified live owner on this machine can be extended. It cannot be resurrected.
 A --protect-live-owner lease with a live owner also renews after expiry when its
-resource is still present (status reattached). A protected lease refused for
-reason owner_dead, owner_unknown, resource_absent or resource_unknown exits 3;
-every other refusal exits 1. A refusal leaves the lease unchanged.
-A lease with a policy max_lifetime never extends past it; at the cap, extend
-exits 3 with reason max_lifetime. Owner-bound policy leases renew like
-protected ones.
+resource is still present (status reattached). A protected or owner-bound
+policy lease refused for reason owner_dead, owner_unknown, resource_absent,
+resource_unknown or max_lifetime exits 3; every other refusal exits 1. A refusal
+leaves the lease unchanged. A lease with a policy max_lifetime never extends
+past it: a time-bound lease expires at its cap and is refused as expired, and an
+owner-bound or hybrid lease at its cap is refused with max_lifetime.
 With the consumer contract on, every refusal exits 3 with a reason: also
 expired, wrong_machine, job_deadline and not_found; exit 1 is then only for
 operation failures, and success carries contract: 1 and status renewed.

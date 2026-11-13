@@ -56,7 +56,7 @@ How a lease policy ties the lease's life to time or to its owner: `time` ends it
 _Avoid_: protection, mode
 
 **Grace period**:
-How long a reclaim condition must hold before dibs acts on it. For owner death it counts from the first confirmed sweep or reclaim that saw the owner dead.
+How long a reclaim condition must hold before dibs acts on it. For owner death it counts from the first confirmed sweep that saw the owner dead.
 _Avoid_: signal escalation delay
 
 **Busy resource**:

@@ -195,3 +195,69 @@ func TestPolicyStateNeedsVersionFive(t *testing.T) {
 		t.Fatal("death stamp without a grace period accepted")
 	}
 }
+
+// A confirmed sweep never touches another machine's death observation, and a
+// grace refusal from reclaim writes nothing, as every refusal must.
+func TestGraceClockWritesOnlyLocalSweeps(t *testing.T) {
+	ctx := context.Background()
+	m := testManager()
+	m.options.Owners = ownerpkg.NewRegistry(ownerpkg.PID(), ownerpkg.Session(), ownerpkg.Heartbeat())
+	m.options.Directory = t.TempDir()
+	s, err := m.openStore(ctx, m.options.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grace := &policypkg.Policy{Row: "none", Binding: policypkg.Owner, TTL: time.Hour, Grace: time.Hour, Action: policypkg.Destroy}
+	foreign := testLease(t)
+	foreign.Machine, foreign.Policy = "linux:other", grace
+	stamp := testNow
+	foreign.DeadSince = &stamp
+	s.Leases[foreign.ID] = foreign
+	alive := func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return ownerpkg.Alive }
+	host := testLease(t).Machine
+	sweep(ctx, s, host, testNow.Add(time.Minute), true, alive, testAdapters())
+	if got := s.Leases[foreign.ID].DeadSince; got == nil || !got.Equal(stamp) {
+		t.Fatalf("sweep changed a foreign lease's death stamp: %v", got)
+	}
+	delete(s.Leases, foreign.ID)
+
+	// The owner is a PID that cannot exist, so reclaim sees it dead.
+	local := testLease(t)
+	local.Owner, local.Policy = ownerpkg.Reference{Kind: "pid", ID: "2147483640", Identity: "gone"}, grace
+	s.Leases[local.ID] = local
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	for _, confirm := range []bool{false, true} {
+		if _, err := m.Reclaim(ctx, local.ID, confirm); reason(err) != HoldGrace {
+			t.Fatalf("reclaim confirm=%v inside grace = %v", confirm, err)
+		}
+	}
+	if l, _, err := m.Get(ctx, local.ID); err != nil || l.DeadSince != nil {
+		t.Fatalf("grace refusal wrote a death stamp: %+v %v", l.DeadSince, err)
+	}
+}
+
+func TestStateRejectsInvalidRecordedPolicy(t *testing.T) {
+	m := testManager()
+	m.options.Directory = t.TempDir()
+	s, err := m.openStore(context.Background(), m.options.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.Version = 5
+	for name, p := range map[string]policypkg.Policy{
+		"unknown action":       {Row: "none", Binding: policypkg.Time, TTL: time.Hour, Action: "reportt"},
+		"unknown binding":      {Row: "none", Binding: "forever", TTL: time.Hour, Action: policypkg.Destroy},
+		"idle on a time lease": {Row: "none", Binding: policypkg.Time, TTL: time.Hour, Idle: time.Minute, Action: policypkg.Destroy},
+	} {
+		l := testLease(t)
+		l.Policy = &p
+		s.Leases = map[string]Lease{l.ID: l}
+		if err := s.validate(); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+}

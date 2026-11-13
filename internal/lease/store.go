@@ -211,6 +211,11 @@ func (s *store) validate() error {
 		if l.DeadSince != nil && (l.Policy == nil || l.Policy.Grace == 0) {
 			return errors.New("invalid owner death record")
 		}
+		if l.Policy != nil {
+			if err := l.Policy.Validate(); err != nil {
+				return fmt.Errorf("invalid recorded lease policy: %w", err)
+			}
+		}
 		if l.KeyedBy != "" && l.KeyedBy != "create" && l.KeyedBy != "pending" && l.KeyedBy != "adopt" || l.KeyedBy != "" && l.Key == "" {
 			return errors.New("invalid lease key mode")
 		}

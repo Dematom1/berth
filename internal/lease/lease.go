@@ -31,7 +31,7 @@ type Lease struct {
 	Reservation *ReservationView       `json:"job,omitempty"`
 	// Policy is the lifetime rule recorded at acquire; nil leases follow TTL and protection alone.
 	Policy *policypkg.Policy `json:"policy,omitempty"`
-	// DeadSince is when a confirmed sweep or reclaim first saw the owner dead, so a grace period can run.
+	// DeadSince is when a confirmed sweep first saw the owner dead, so a grace period can run.
 	DeadSince *time.Time `json:"owner_dead_since,omitempty"`
 }
 

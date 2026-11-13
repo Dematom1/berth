@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -78,5 +80,30 @@ func TestExecOwnerOff(t *testing.T) {
 	}
 	if got := registry.Check(context.Background(), Reference{Kind: "exec", ID: "true"}, time.Now()).Liveness; got != Unknown {
 		t.Fatalf("recorded exec lease with the owner off = %s, want unknown", got)
+	}
+}
+
+// A probe that answers and leaves a background helper behind must not leak it.
+func TestExecProbeReapsBackgroundHelpers(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "helper.pid")
+	if got := probe(context.Background(), "sleep 600 & echo $! > "+pidFile+"; exit 0", 5*time.Second); got != Alive {
+		t.Fatalf("probe = %s, want alive", got)
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if _, live := ProcessIdentity(pid); live == Dead {
+			return
+		}
+		if time.Now().After(deadline) {
+			syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("probe helper %d outlived its probe", pid)
+		}
 	}
 }

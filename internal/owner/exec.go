@@ -29,6 +29,11 @@ func probe(ctx context.Context, command string, timeout time.Duration) Liveness 
 	cmd.WaitDelay = time.Second
 	cmd.Dir = "/"
 	err := cmd.Run()
+	if cmd.Process != nil {
+		// A probe's background helpers would otherwise outlive it; its group ID
+		// stays reserved while any member lives, so this signals only the probe's own.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	if ctx.Err() != nil {
 		return Unknown
 	}

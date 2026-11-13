@@ -216,6 +216,9 @@ func Policies() (map[string]policypkg.Row, error) {
 	if err != nil || !found {
 		return nil, err
 	}
+	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, errors.New("invalid config: the file must contain exactly one JSON object")
+	}
 	var c Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()

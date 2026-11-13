@@ -144,9 +144,11 @@ func earliest(times []time.Time, grace time.Duration) time.Time {
 	return first.Add(grace)
 }
 
-// observeDeath starts or clears a grace period's clock; it reports whether the lease changed.
+// observeDeath starts or clears a grace period's clock; it reports whether the
+// lease changed. Only a confirmed sweep calls it, so a refusal never writes.
 func observeDeath(l *Lease, v Verdict, now time.Time) bool {
-	if l.Policy == nil || l.Policy.Grace == 0 {
+	// Another machine's lease is never changed here, not even its death observation.
+	if l.Policy == nil || l.Policy.Grace == 0 || v.Hold == HoldWrongMachine {
 		return false
 	}
 	if v.Liveness == ownerpkg.Dead && l.DeadSince == nil {

@@ -162,7 +162,7 @@ func (app application) runContract(ctx context.Context, command string, args []s
 		}
 		kube := kubeconfigFor(app.resources, e.Lease)
 		hints := []string{"Run dibs extend " + id + " --ttl <duration> to renew", "Run dibs release " + id + " --confirm to release"}
-		if e.Lease.Policy.OwnerBound() {
+		if p := e.Lease.Policy; p.OwnerBound() && !p.ReclaimLiveOwner {
 			hints = []string{"The lease lives while its owner does; run dibs release " + id + " --confirm to end it sooner"}
 		}
 		if e.Lease.ResourceRef.Pending {
@@ -244,7 +244,8 @@ func explainPolicy(result map[string]any, e leasepkg.Explanation) {
 		result["reclaim_at"], result["remaining"] = v.Due.Format(time.RFC3339), max(0, v.Due.Sub(e.At)).Round(time.Second).String()
 	}
 	if p.Renew > 0 && p.Binding == policypkg.Time && e.PolicySource == "lease" {
-		result["renew_by"] = e.Lease.Expires.Add(p.Renew - e.Lease.TTL).Format(time.RFC3339)
+		// Extend may shorten the TTL below the recorded cadence; never advise renewing after expiry.
+		result["renew_by"] = e.Lease.Expires.Add(min(p.Renew, e.Lease.TTL) - e.Lease.TTL).Format(time.RFC3339)
 	}
 	if a := v.Activity; a != nil {
 		activity := map[string]any{"busy": a.Busy, "idle": "", "members": a.Members}

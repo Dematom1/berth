@@ -46,15 +46,6 @@ func (r *Refusal) Error() string {
 }
 func (r *Refusal) Unwrap() error { return r.Cause }
 
-// graceEnd is when a dead owner's grace period ends, counting from now when no confirmed command has seen the death yet.
-func graceEnd(l Lease, now time.Time) time.Time {
-	since := now
-	if l.DeadSince != nil {
-		since = *l.DeadSince
-	}
-	return since.Add(l.Policy.Grace)
-}
-
 func refuse(reason, message string) error { return &Refusal{Reason: reason, Message: message} }
 
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+=-]{0,199}$`)
@@ -442,15 +433,12 @@ func (m *Manager) Reclaim(ctx context.Context, id string, confirm bool) (Reclaim
 		return ReclaimResult{}, refuse("owner_unknown", "owner "+l.Owner.String()+" cannot be verified; reclaim refused")
 	}
 	v := decide(ctx, l, host, now, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return live }, m.options.Adapters)
-	if confirm && observeDeath(&l, v, now) {
-		s.Leases[id] = l
-		if err := s.Save(); err != nil {
-			return ReclaimResult{}, err
-		}
-	}
 	switch v.Hold {
 	case HoldGrace:
-		return ReclaimResult{}, refuse(HoldGrace, "owner "+l.Owner.String()+" is dead, but the lease's grace period runs until "+graceEnd(l, now).Format(time.RFC3339)+"; reclaim refused")
+		if l.DeadSince == nil {
+			return ReclaimResult{}, refuse(HoldGrace, "owner "+l.Owner.String()+" is dead, but the lease's grace period starts only when a confirmed sweep sees the death; reclaim refused")
+		}
+		return ReclaimResult{}, refuse(HoldGrace, "owner "+l.Owner.String()+" is dead, but the lease's grace period runs until "+l.DeadSince.Add(l.Policy.Grace).Format(time.RFC3339)+"; reclaim refused")
 	case HoldResourceBusy:
 		return ReclaimResult{}, refuse(HoldResourceBusy, v.Activity.Busy+"; reclaim refused")
 	case HoldResourceUnknown:

@@ -277,7 +277,7 @@ with code 2 and names the setting. Leases already recorded can still be listed,
 released, and swept.
 
 ```sh
- export DIBS_SHELL_ADAPTER=1 DIBS_EXEC_OWNER=1
+ export DIBS_SHELL_ADAPTER=1 DIBS_EXEC_OWNER=1 DIBS_CONSUMER_CONTRACT=1   # explain needs the contract
  dibs adopt shell "$$" --owner 'exec:test -e /run/task-7.open' --ttl 8h
  dibs list --owner 'exec:test -e /run/task-7.open'   # shells held for the task
  dibs explain <id>                                   # why it is held
@@ -496,8 +496,9 @@ workers. The supported owner kinds are:
 The `exec` owner is off by default. Turn it on per machine with
 `"exec_owner": true` in the user config, or with `DIBS_EXEC_OWNER=1`; the
 variable overrides the config either way. While it is off, `--owner exec:...`
-fails with code 2, and an already recorded `exec` lease reads as unknown, so only
-expiry reclaims it.
+fails with code 2, and an already recorded `exec` lease reads as unknown. Only
+expiry then reclaims an unprotected time-bound lease; shell, owner-bound, hybrid,
+and `--protect-live-owner` leases are kept while their owner is unknown.
 
 Dibs runs the command with `/bin/sh -c` from `/`, with stdin from `/dev/null`,
 output discarded, and a 10-second timeout, in its own process group so a timeout
@@ -519,7 +520,9 @@ The `pr` owner is off by default. Turn it on per machine with `"pr_owner": true`
 in the user config, or with `DIBS_PR_OWNER=1`. `DIBS_PR_OWNER` overrides the
 config either way, so `DIBS_PR_OWNER=0` turns a config opt-in off. Project files
 cannot enable it. While it is off, `--owner pr:...` fails with code 2, and an
-already recorded `pr` lease reads as unknown, so only expiry reclaims it.
+already recorded `pr` lease reads as unknown. Only expiry then reclaims an
+unprotected time-bound lease; shell, owner-bound, hybrid, and
+`--protect-live-owner` leases are kept while their owner is unknown.
 
 Dibs reads the pull request with one `gh api` GET per owner check, using your
 existing `gh` authentication for that host. It never writes to GitHub and never
@@ -631,7 +634,7 @@ setting, and every lease follows its TTL as described above.
 | `ttl` | TTL when `--ttl` is omitted, including for `adopt`; default `8h` |
 | `renew` | Advised renewal cadence; `explain` shows `renew_by` |
 | `max_lifetime` | Hard cap from creation; live-owner reclamation requires `reclaim_live_owner: true` on a hybrid row; `extend` never passes it |
-| `grace` | How long a reclaim condition must hold before dibs acts; for owner death it counts from the first confirmed sweep or reclaim that saw the owner dead |
+| `grace` | How long a reclaim condition must hold before dibs acts; for owner death it counts from the first confirmed sweep that saw the owner dead; `reclaim` never starts it |
 | `idle` | Hybrid only: reclaim after this idle duration. A live owner is reclaimed only with `reclaim_live_owner: true`; unknown owners are never reclaimed. Shell idle means no foreground job, measured from terminal input/output; a shell without a terminal never goes idle |
 | `reclaim_live_owner` | Hybrid only, default `false`: allow idle or max_lifetime to reclaim a shell with a proven-live owner; unknown owners and TTL expiry remain protected |
 | `action` | `destroy` (default) reclaims; `report` lists the lease under `held` in `sweep` but never reclaims it automatically. Explicit `release` and `reclaim` still act |
