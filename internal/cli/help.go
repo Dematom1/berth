@@ -23,7 +23,8 @@ exit 0 success with status; 1 operation failed, records retained; 2 usage;
 3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
 not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
 resource_absent, resource_unknown, ambiguous, owner_alive, owner_unknown,
-expired, owner_dead, job_deadline. Extend success is renewed or reattached.
+expired, owner_dead, job_deadline, max_lifetime, grace, resource_busy.
+Extend success is renewed or reattached.
 Exit 1 is only for operation failures. Output carries contract: 1.
 See docs/consumer-contract.md.`
 
@@ -33,14 +34,31 @@ lease reclaimable, so its live owner can lose its resources by missing either
 cadence. With --protect-live-owner, only proven owner death reclaims; a late
 extend with a live owner reattaches when the resource is still present.`
 
+const policies = `Lease policies are off until DIBS_LEASE_POLICIES=1 or "lease_policies": true.
+While on, the policies table in the user config picks each new lease's rule by
+resource kind, or kind/owner kind: binding time (TTL), owner (only owner death
+ends it), or hybrid (owner-bound plus idle or max_lifetime); ttl, renew,
+max_lifetime, grace, idle, reclaim_live_owner and action destroy|report. Shells
+never reclaim on TTL while their owner is alive or unknown. Idle/max_lifetime
+reclaim a live owner only with reclaim_live_owner: true on a hybrid row; an
+unknown owner is never reclaimed. The lease records its policy.
+--ttl must fit max_lifetime; --idle D and --max-lifetime D may only tighten the
+row. Off, --idle and --max-lifetime exit 2 naming the setting.`
+
 var commandHelp = map[string]string{
 	"adopt": `dibs adopt <kind|k3d|compose> <name> --owner KIND:ID --ttl D
   [--context NAME] [--file PATH (required for compose)] [--stale 15m]
-  [--protect-live-owner] [--key K] [--full] [--axi | --json]
+  [--protect-live-owner] [--key K] [--idle D] [--max-lifetime D] [--full] [--axi | --json]
+dibs adopt shell <pid> --owner KIND:ID --ttl D [--key K] [--idle D] [--max-lifetime D]
 dibs adopt <kind|k3d|compose> <handle> --pending ID [--file PATH] [--axi | --json]
 Explicitly lease an existing resource. Existence must be verified and no lease
 may already own it. Captures cleanup configuration; does not recreate resources.
-Owner and positive TTL are required. Release/sweep keep their preview defaults.
+Owner and positive TTL are required; with lease policies on, the policy
+supplies the TTL. Release/sweep keep their preview defaults.
+shell (DIBS_SHELL_ADAPTER=1 or "shell_adapter": true) leases a running shell by
+PID and start time, with its descendants such as gitstatusd. Cleanup refuses a
+shell with a foreground job, sends SIGHUP, then SIGTERM and SIGKILL after 5s
+each, reports each step on stderr, and verifies every member gone.
 --key K: retries match owner, protection, adapter, mode, resource, Docker scope, and Compose file; TTL, description, and labels are ignored.
 --protect-live-owner: only proven owner death reclaims; expiry alone never does.
 Requires DIBS_LIVE_OWNER_PROTECTION=1 or "live_owner_protection": true.
@@ -50,7 +68,8 @@ returns status already_done. Statuses: adopted, bound, already_done.
 Examples:
   dibs adopt kind my-lab --owner pid:1234 --ttl 1h
   dibs adopt compose my-stack --file compose.yaml --owner pid:1234 --ttl 2h
-  dibs adopt kind lab-7 --pending <id>`,
+  dibs adopt kind lab-7 --pending <id>
+  dibs adopt shell "$$" --owner 'exec:test -e /tmp/task-7.open' --ttl 8h`,
 	"reconcile": `dibs reconcile [<id>] [--confirm] [--axi | --json]
 Resolve pending leases after a crash between creating a resource and dibs adopt
 --pending. A resource matches only by evidence recorded before it existed: the
@@ -70,7 +89,9 @@ default. --confirm destroys the resource, verifies it is gone, then forgets the
 lease. A job lease whose process-group leader is already gone is released
 without signaling, so its descendants are not verified gone. An alive owner
 is refused (owner_alive) even after expiry; unknown liveness is refused
-(owner_unknown). Expiry-driven reclaim stays with sweep.
+(owner_unknown). Expiry-driven reclaim stays with sweep. A dead owner inside its
+policy's grace period is refused (grace), and so is a resource whose adapter
+reports work in progress (resource_busy) or cannot read it (resource_unknown).
 A lease already gone is status already_done. Statuses: preview, reclaimed,
 already_done.
 Examples:
@@ -79,6 +100,10 @@ Examples:
 	"explain": `dibs explain <id> [--full] [--axi | --json]
 Read-only: the lease, its owner liveness, expiry, machine, whether sweep or
 reclaim would act now, and why. Status explained; a missing lease is not_found.
+With lease policies on, for a lease that recorded a policy, or for a resource
+whose adapter reports activity, it also shows policy (row, source, binding,
+ttl, renew, max_lifetime, grace, idle, action), trigger, held_because,
+reclaim_at, remaining, renew_by, and activity (busy, idle, members).
 Examples:
   dibs explain <id>
   dibs explain <id> --json`,
@@ -104,10 +129,12 @@ Examples:
 	"create": `dibs create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
   [--resources TEXT] [--label key=value ...] [--adapter {{adapters}}]
   [--file PATH (required for compose)] [--protect-live-owner] [--key K] [--pending [--name HANDLE]]
-  [--quiet | -q] [--axi | --json]
+  [--idle D] [--max-lifetime D] [--quiet | -q] [--axi | --json]
 Owner defaults to DIBS_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
 not a Unix SID. heartbeat:<path> must already be a fresh regular file.
+exec:<command> (DIBS_EXEC_OWNER=1 or "exec_owner": true) runs the command with
+/bin/sh from / with a 10s timeout: exit 0 alive, 1-125 dead, anything else unknown.
 kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
@@ -144,9 +171,12 @@ Examples:
 Set expiry to now + D (positive Go duration). Only an unexpired lease with a
 verified live owner on this machine can be extended. It cannot be resurrected.
 A --protect-live-owner lease with a live owner also renews after expiry when its
-resource is still present (status reattached). A protected lease refused for
-reason owner_dead, owner_unknown, resource_absent or resource_unknown exits 3;
-every other refusal exits 1. A refusal leaves the lease unchanged.
+resource is still present (status reattached). A protected or owner-bound
+policy lease refused for reason owner_dead, owner_unknown, resource_absent,
+resource_unknown or max_lifetime exits 3; every other refusal exits 1. A refusal
+leaves the lease unchanged. A lease with a policy max_lifetime never extends
+past it: a time-bound lease expires at its cap and is refused as expired, and an
+owner-bound or hybrid lease at its cap is refused with max_lifetime.
 With the consumer contract on, every refusal exits 3 with a reason: also
 expired, wrong_machine, job_deadline and not_found; exit 1 is then only for
 operation failures, and success carries contract: 1 and status renewed.
@@ -164,9 +194,15 @@ Examples:
   dibs release <id> --confirm`,
 	"sweep": `dibs sweep [--confirm] [--machine NAME] [--json]
 Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
-are retained unless expired. --protect-live-owner leases are reclaimed only on
+are retained unless expired, except shell leases which remain owner-bound. --protect-live-owner leases are reclaimed only on
 proven owner death. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
+With lease policies, a lease's recorded policy also decides: owner-bound leases
+ignore expiry, and max_lifetime and idle timeouts may end leases. For shells,
+TTL never reclaims a live or unknown owner; idle/max_lifetime require
+reclaim_live_owner: true and a proven-live owner. held lists leases whose
+condition fired but are kept: grace, resource_busy, resource_unknown,
+live_owner, or report_only. A busy resource is never reclaimed.
 Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
   dibs sweep
@@ -235,6 +271,9 @@ Run dibs <command> --help for command flags.`
 	body = strings.ReplaceAll(body, "{{adapters}}", strings.Join(newAdapters().CreateNames(), "|"))
 	if command == "create" || command == "extend" {
 		body += "\n\n" + cadence
+	}
+	if command == "create" || command == "adopt" {
+		body += "\n\n" + policies
 	}
 	if command != "agent" {
 		body += "\nOutput: --axi for agents, --json for scripts (mutually exclusive).\nDefault: human on terminals; AXI for pipes or DIBS_AXI=1.\nLease commands: --full restores complete AXI records/text; JSON is always complete."

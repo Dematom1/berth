@@ -6,6 +6,7 @@ import (
 	"fmt"
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,6 +37,7 @@ type AdoptRequest struct {
 	Resource         adapterpkg.ResourceRef
 	File             string
 	ProtectLiveOwner bool
+	Policy           *policypkg.Policy
 	Key              string
 	// Pending binds Resource.Name to this pending lease instead of a new one.
 	Pending string
@@ -75,7 +77,7 @@ func (m *Manager) Adopt(ctx context.Context, r AdoptRequest) (Lease, bool, error
 	if r.Key != "" {
 		l.KeyedBy = "adopt"
 	}
-	l.ProtectLiveOwner = r.ProtectLiveOwner
+	l.ProtectLiveOwner, l.Policy = r.ProtectLiveOwner, r.Policy
 	if r.Key != "" && r.Resource.Adapter == "compose" {
 		l.PendingFile = r.File
 	}

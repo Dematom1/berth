@@ -17,13 +17,13 @@ type listedPackage struct {
 
 func TestPackageGraph(t *testing.T) {
 	allowed := map[string]string{
-		"cli":          "lease owner adapter adapter/none adapter/kind adapter/k3d adapter/compose job config output remote budget atomicfile compat",
+		"cli":          "lease owner adapter adapter/none adapter/kind adapter/k3d adapter/compose adapter/shell policy job config output remote budget atomicfile compat",
 		"job":          "lease owner budget config output remote",
 		"remote":       "config output",
 		"output":       "lease owner config budget compat",
-		"lease":        "adapter owner budget atomicfile compat",
-		"adapter/none": "adapter", "adapter/kind": "adapter", "adapter/k3d": "adapter", "adapter/compose": "adapter atomicfile",
-		"config": "budget compat", "adapter": "", "owner": "", "budget": "", "atomicfile": "", "compat": "",
+		"lease":        "adapter owner policy budget atomicfile compat",
+		"adapter/none": "adapter", "adapter/kind": "adapter", "adapter/k3d": "adapter", "adapter/compose": "adapter atomicfile", "adapter/shell": "adapter",
+		"config": "budget policy compat", "policy": "", "adapter": "", "owner": "", "budget": "", "atomicfile": "", "compat": "",
 	}
 	const prefix = "github.com/Dematom1/dibs/internal/"
 	cmd := exec.Command("go", "list", "-json", "./...")

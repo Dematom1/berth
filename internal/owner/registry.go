@@ -55,6 +55,9 @@ func (r Registry) Bind(ctx context.Context, value string, stale time.Duration, n
 	if !ok && kind == "pr" {
 		return Reference{}, errors.New("the pr owner is off; " + prOptIn)
 	}
+	if !ok && kind == "exec" {
+		return Reference{}, errors.New("the exec owner is off; " + execOptIn)
+	}
 	if !ok {
 		names := r.Names()
 		return Reference{}, fmt.Errorf("unknown owner kind %q; use %s, or %s", kind, strings.Join(names[:len(names)-1], ", "), names[len(names)-1])

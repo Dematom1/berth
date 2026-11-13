@@ -9,6 +9,7 @@ import (
 
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 )
 
 type Lease struct {
@@ -28,6 +29,10 @@ type Lease struct {
 	PendingFile string                 `json:"pending_file,omitempty"`
 	ResourceRef adapterpkg.ResourceRef `json:"resource"`
 	Reservation *ReservationView       `json:"job,omitempty"`
+	// Policy is the lifetime rule recorded at acquire; nil leases follow TTL and protection alone.
+	Policy *policypkg.Policy `json:"policy,omitempty"`
+	// DeadSince is when a confirmed sweep first saw the owner dead, so a grace period can run.
+	DeadSince *time.Time `json:"owner_dead_since,omitempty"`
 }
 
 func newLease(owner ownerpkg.Reference, ttl time.Duration, resources string, labels map[string]string, now time.Time) (Lease, error) {
@@ -51,7 +56,7 @@ func reclaimable(l Lease, host string, now time.Time, check func(ownerpkg.Refere
 		return false, ownerpkg.Unknown
 	}
 	live := check(l.Owner, now)
-	if l.ProtectLiveOwner {
+	if (l.ResourceRef.Adapter == "shell" && l.ResourceRef.Process != nil) || l.ProtectLiveOwner || l.Policy.OwnerBound() {
 		return live == ownerpkg.Dead, live
 	}
 	return live == ownerpkg.Dead || !now.Before(l.Expires), live
@@ -64,6 +69,7 @@ const (
 	OwnerUnknown    = "owner_unknown"
 	ResourceAbsent  = "resource_absent"
 	ResourceUnknown = "resource_unknown"
+	MaxLifetime     = "max_lifetime"
 	Renewed         = "renewed"
 	Reattached      = "reattached"
 )
@@ -79,7 +85,7 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 		return "", &RenewRefusal{Reason: "job_deadline", Message: "job deadlines cannot be extended; start a new dibs job with --timeout", Legacy: true}
 	}
 	status := Renewed
-	if !l.ProtectLiveOwner {
+	if !l.ProtectLiveOwner && !l.Policy.OwnerBound() {
 		if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != ownerpkg.Alive {
 			reason := "expired"
 			if live == ownerpkg.Dead {
@@ -108,7 +114,17 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 			status = Reattached
 		}
 	}
-	l.TTL, l.Expires = ttl, now.Add(ttl)
+	expires := now.Add(ttl)
+	if p := l.Policy; p != nil && p.MaxLifetime > 0 {
+		end := l.Created.Add(p.MaxLifetime)
+		if !now.Before(end) {
+			return "", &RenewRefusal{Reason: MaxLifetime}
+		}
+		if expires.After(end) {
+			expires, ttl = end, end.Sub(now)
+		}
+	}
+	l.TTL, l.Expires = ttl, expires
 	return status, nil
 }
 
@@ -140,6 +156,9 @@ func releaseLease(ctx context.Context, s *store, id, host string, adapters adapt
 	} else {
 		cleanupErr = a.Adapter.Destroy(ctx, target(l))
 	}
+	if errors.Is(cleanupErr, adapterpkg.ErrBusy) {
+		cleanupErr = &Refusal{Reason: HoldResourceBusy, Message: cleanupErr.Error()}
+	}
 	if err := cleanupErr; err != nil {
 		return false, err
 	}
@@ -160,17 +179,29 @@ type SweepResult struct {
 	Eligible  []string          `json:"eligible"`
 	Unknown   []string          `json:"unknown"`
 	Failures  map[string]string `json:"failures"`
+	// Held maps leases whose reclaim condition fired to the reason they are kept.
+	Held map[string]string `json:"held,omitempty"`
 }
 
 func sweep(ctx context.Context, s *store, host string, now time.Time, confirm bool, check func(ownerpkg.Reference, time.Time) ownerpkg.Liveness, adapters adapterpkg.Registry) SweepResult {
-	r := SweepResult{Reclaimed: []string{}, Eligible: []string{}, Unknown: []string{}, Failures: map[string]string{}}
+	r := SweepResult{Reclaimed: []string{}, Eligible: []string{}, Unknown: []string{}, Failures: map[string]string{}, Held: map[string]string{}}
 	for _, id := range s.IDs() {
 		l := s.Leases[id]
-		eligible, live := reclaimable(l, host, now, check)
-		if live == ownerpkg.Unknown {
+		v := decide(ctx, l, host, now, check, adapters)
+		if v.Liveness == ownerpkg.Unknown {
 			r.Unknown = append(r.Unknown, id)
 		}
-		if !eligible {
+		if confirm && observeDeath(&l, v, now) {
+			s.Leases[id] = l
+			if err := s.Save(); err != nil {
+				r.Failures[id] = err.Error()
+				continue
+			}
+		}
+		if v.Trigger != "" && !v.Reclaim {
+			r.Held[id] = v.Hold
+		}
+		if !v.Reclaim {
 			continue
 		}
 		r.Eligible = append(r.Eligible, id)

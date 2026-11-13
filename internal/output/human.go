@@ -52,6 +52,18 @@ func humanValue(key string, value any, now time.Time) string {
 		sort.Strings(pairs)
 		return humanText(strings.Join(pairs, ", "))
 	}
+	if object, ok := value.(map[string]any); ok {
+		pairs := []string{}
+		for _, field := range keys(object) {
+			if text := humanValue(field, object[field], now); text != "-" {
+				pairs = append(pairs, field+"="+text)
+			}
+		}
+		return humanText(strings.Join(pairs, ", "))
+	}
+	if items, ok := value.([]string); ok {
+		return humanText(strings.Join(items, ", "))
+	}
 	return humanText(fmt.Sprint(value))
 }
 

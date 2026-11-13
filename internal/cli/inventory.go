@@ -7,6 +7,7 @@ import (
 	leasepkg "github.com/Dematom1/dibs/internal/lease"
 	outputpkg "github.com/Dematom1/dibs/internal/output"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 	remotepkg "github.com/Dematom1/dibs/internal/remote"
 	"io"
 	"strings"
@@ -34,7 +35,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	contextName := fs.String("context", "", "Docker context (default selected context)")
 	var owner, file, key, pending string
 	var protect bool
-	var ttl time.Duration
+	var ttl, idle, maxLifetime time.Duration
 	stale := 15 * time.Minute
 	if command == "adopt" {
 		fs.StringVar(&owner, "owner", "", "required named owner")
@@ -44,6 +45,8 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		fs.StringVar(&key, "key", "", "idempotency key")
 		fs.StringVar(&pending, "pending", "", "bind to this pending lease")
 		fs.BoolVar(&protect, "protect-live-owner", false, "reclaim only on proven owner death")
+		fs.DurationVar(&idle, "idle", 0, "tighter policy idle timeout")
+		fs.DurationVar(&maxLifetime, "max-lifetime", 0, "tighter policy maximum lifetime")
 	}
 	if err := parseFlags(fs, args); err != nil {
 		return outputpkg.Error(out, mode, 2, err.Error(), help(command))
@@ -54,6 +57,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	}
 	out = &outputpkg.Writer{Writer: out, Mode: mode.Effective(out), Full: *full, FullCommand: "dibs --axi ps --full"}
 	var parsedOwner ownerpkg.Reference
+	var leasePolicy *policypkg.Policy
 	if command == "adopt" {
 		d, known := app.resources.Lookup(fs.Arg(0))
 		if (pending != "" || key != "") && !consumerContractEnabled() {
@@ -65,8 +69,12 @@ func (app application) runInventory(ctx context.Context, command string, args []
 			}
 			return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Resource: adapterpkg.ResourceRef{Adapter: fs.Arg(0), Name: fs.Arg(1)}, File: file, Pending: pending}, true)
 		}
-		if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || owner == "" || ttl <= 0 || d.RequiresFile != (file != "") {
-			return outputpkg.Error(out, mode, 2, "require type, name, explicit --owner and positive --ttl; --file is required only for compose", help(command))
+		if fs.Arg(0) == "shell" && !shellAdapterEnabled() {
+			return outputpkg.Error(out, mode, 2, shellAdapterOff, help(command))
+		}
+		// With lease policies on, the policy row supplies the TTL.
+		if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || owner == "" || ttl < 0 || (ttl == 0 && !leasePoliciesEnabled()) || d.RequiresFile != (file != "") || (d.HostScoped && *contextName != "") {
+			return outputpkg.Error(out, mode, 2, "require type, name, explicit --owner and positive --ttl; --file is required only for compose, --context only for Docker resources", help(command))
 		}
 		if protect && !liveOwnerProtectionEnabled() {
 			return outputpkg.Error(out, mode, 2, liveOwnerProtectionOff, help(command))
@@ -79,6 +87,12 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		if err != nil {
 			return outputpkg.Error(out, mode, 2, err.Error(), help(command))
 		}
+		if leasePolicy, ttl, err = app.leasePolicy(fs.Arg(0), parsedOwner.Kind, ttl, ttl > 0, idle, maxLifetime); err != nil {
+			return outputpkg.Error(out, mode, 2, err.Error(), help(command))
+		}
+		if d.HostScoped {
+			return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: adapterpkg.ResourceRef{Adapter: fs.Arg(0), Name: fs.Arg(1)}, Key: key, ProtectLiveOwner: protect, Policy: leasePolicy}, key != "")
+		}
 	} else if fs.NArg() != 0 {
 		return outputpkg.Error(out, mode, 2, "orphans takes no positional arguments", help(command))
 	}
@@ -88,7 +102,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	}
 	if command == "adopt" {
 		r.Adapter, r.Name = fs.Arg(0), fs.Arg(1)
-		return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, Key: key, ProtectLiveOwner: protect}, key != "")
+		return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, Key: key, ProtectLiveOwner: protect, Policy: leasePolicy}, key != "")
 	}
 	rows, err := app.leases.Orphans(ctx, r)
 	if err != nil {

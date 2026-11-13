@@ -6,10 +6,12 @@ import (
 	"flag"
 	"io"
 	"strings"
+	"time"
 
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	leasepkg "github.com/Dematom1/dibs/internal/lease"
 	outputpkg "github.com/Dematom1/dibs/internal/output"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 )
 
 // contractVersion versions the status, reason and exit-code contract that new
@@ -32,6 +34,10 @@ var reasonHints = map[string]string{
 	"owner_dead":       "Run dibs reclaim <id> --confirm or dibs sweep --confirm",
 	"resource_unknown": "Retry dibs extend <id> when the resource tool is reachable; the lease is retained",
 	"job_deadline":     "Start a new dibs job with --timeout",
+	"max_lifetime":     "Release the lease and acquire again; its policy caps how long one lease may live",
+	"grace":            "Retry after the grace period; dibs explain <id> shows when it ends",
+	"resource_busy":    "Wait for the foreground job to finish; a busy resource is never reclaimed",
+	"live_owner":       "The condition fired, but the owner is alive or unknown; reclamation requires explicit policy permission for live owners",
 }
 
 const keyRule = "--key must be 1-200 letters, digits or ._:/@+=- and start with a letter or digit"
@@ -156,6 +162,9 @@ func (app application) runContract(ctx context.Context, command string, args []s
 		}
 		kube := kubeconfigFor(app.resources, e.Lease)
 		hints := []string{"Run dibs extend " + id + " --ttl <duration> to renew", "Run dibs release " + id + " --confirm to release"}
+		if p := e.Lease.Policy; p.OwnerBound() && !p.ReclaimLiveOwner {
+			hints = []string{"The lease lives while its owner does; run dibs release " + id + " --confirm to end it sooner"}
+		}
 		if e.Lease.ResourceRef.Pending {
 			handle := e.Lease.ResourceRef.Name
 			if handle == "" {
@@ -166,11 +175,16 @@ func (app application) runContract(ctx context.Context, command string, args []s
 		if e.Reclaim {
 			hints = []string{"Run dibs reclaim " + id + " --confirm to reclaim it"}
 		}
-		outputpkg.Emit(out, mode, contractResult("explained", map[string]any{
+		result := map[string]any{
 			"lease": outputpkg.LeaseView(e.Lease, e.Liveness, e.At, kube), "record": outputpkg.LeaseRecord(e.Lease, kube),
 			"liveness": string(e.Liveness), "expired": e.Expired, "this_machine": e.ThisMachine,
 			"sweep_would_reclaim": e.Sweep, "reclaim_would_reclaim": e.Reclaim, "why": e.Reason, "help": hints,
-		}))
+		}
+		// Policy fields appear only where policies or resource activity exist, so other leases explain exactly as before.
+		if leasePoliciesEnabled() || e.Lease.Policy != nil || e.Verdict.Activity != nil {
+			explainPolicy(result, e)
+		}
+		outputpkg.Emit(out, mode, contractResult("explained", result))
 		return 0
 	}
 	rows, err := app.leases.Reconcile(ctx, id, *confirm)
@@ -211,4 +225,36 @@ func (app application) runContract(ctx context.Context, command string, args []s
 	}
 	outputpkg.Emit(out, mode, result)
 	return code
+}
+
+func duration(d time.Duration) string {
+	if d <= 0 {
+		return ""
+	}
+	return d.String()
+}
+
+// explainPolicy adds the governing policy, the time left before the next reclaim
+// condition, and why the lease is still held.
+func explainPolicy(result map[string]any, e leasepkg.Explanation) {
+	p, v := e.Policy, e.Verdict
+	result["policy"] = map[string]any{"row": p.Row, "source": e.PolicySource, "binding": p.Binding, "ttl": duration(p.TTL), "renew": duration(p.Renew), "max_lifetime": duration(p.MaxLifetime), "grace": duration(p.Grace), "idle": duration(p.Idle), "action": p.Action, "reclaim_live_owner": p.ReclaimLiveOwner}
+	result["trigger"], result["held_because"], result["reclaim_at"], result["remaining"], result["renew_by"] = v.Trigger, v.Hold, "", "", ""
+	if !v.Due.IsZero() {
+		result["reclaim_at"], result["remaining"] = v.Due.Format(time.RFC3339), max(0, v.Due.Sub(e.At)).Round(time.Second).String()
+	}
+	if p.Renew > 0 && p.Binding == policypkg.Time && e.PolicySource == "lease" {
+		// Extend may shorten the TTL below the recorded cadence; never advise renewing after expiry.
+		result["renew_by"] = e.Lease.Expires.Add(min(p.Renew, e.Lease.TTL) - e.Lease.TTL).Format(time.RFC3339)
+	}
+	if a := v.Activity; a != nil {
+		activity := map[string]any{"busy": a.Busy, "idle": "", "members": a.Members}
+		if a.IdleKnown {
+			activity["idle"] = a.Idle.Round(time.Second).String()
+		}
+		if v.ActivityErr != nil {
+			activity["error"] = v.ActivityErr.Error()
+		}
+		result["activity"] = activity
+	}
 }

@@ -3,10 +3,12 @@ stdout:
 dibs create [--owner KIND:ID] [--ttl 8h] [--stale 15m]
   [--resources TEXT] [--label key=value ...] [--adapter none|kind|k3d|compose]
   [--file PATH (required for compose)] [--protect-live-owner] [--key K] [--pending [--name HANDLE]]
-  [--quiet | -q] [--axi | --json]
+  [--idle D] [--max-lifetime D] [--quiet | -q] [--axi | --json]
 Owner defaults to DIBS_OWNER, then pid:<parent-pid>. pid and session pin
 process start time; session:<holder-pid> follows a session-holding process,
 not a Unix SID. heartbeat:<path> must already be a fresh regular file.
+exec:<command> (DIBS_EXEC_OWNER=1 or "exec_owner": true) runs the command with
+/bin/sh from / with a 10s timeout: exit 0 alive, 1-125 dead, anything else unknown.
 kind and k3d create uniquely named clusters; kind uses a private kubeconfig.
 compose creates
 a uniquely named project with a durable resolved config. none records metadata
@@ -36,6 +38,17 @@ when one third of its TTL remains. Owner death OR expiry makes an unprotected
 lease reclaimable, so its live owner can lose its resources by missing either
 cadence. With --protect-live-owner, only proven owner death reclaims; a late
 extend with a live owner reattaches when the resource is still present.
+
+Lease policies are off until DIBS_LEASE_POLICIES=1 or "lease_policies": true.
+While on, the policies table in the user config picks each new lease's rule by
+resource kind, or kind/owner kind: binding time (TTL), owner (only owner death
+ends it), or hybrid (owner-bound plus idle or max_lifetime); ttl, renew,
+max_lifetime, grace, idle, reclaim_live_owner and action destroy|report. Shells
+never reclaim on TTL while their owner is alive or unknown. Idle/max_lifetime
+reclaim a live owner only with reclaim_live_owner: true on a hybrid row; an
+unknown owner is never reclaimed. The lease records its policy.
+--ttl must fit max_lifetime; --idle D and --max-lifetime D may only tighten the
+row. Off, --idle and --max-lifetime exit 2 naming the setting.
 Output: --axi for agents, --json for scripts (mutually exclusive).
 Default: human on terminals; AXI for pipes or DIBS_AXI=1.
 Lease commands: --full restores complete AXI records/text; JSON is always complete.
@@ -48,7 +61,8 @@ exit 0 success with status; 1 operation failed, records retained; 2 usage;
 3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
 not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
 resource_absent, resource_unknown, ambiguous, owner_alive, owner_unknown,
-expired, owner_dead, job_deadline. Extend success is renewed or reattached.
+expired, owner_dead, job_deadline, max_lifetime, grace, resource_busy.
+Extend success is renewed or reattached.
 Exit 1 is only for operation failures. Output carries contract: 1.
 See docs/consumer-contract.md.
 

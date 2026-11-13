@@ -16,6 +16,7 @@ import (
 
 	budgetpkg "github.com/Dematom1/dibs/internal/budget"
 	"github.com/Dematom1/dibs/internal/compat"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 )
 
 const gib = int64(1 << 30)
@@ -38,6 +39,13 @@ type Config struct {
 	LiveOwnerProtection bool `json:"live_owner_protection"`
 	// ConsumerContract turns on the versioned consumer contract (docs/consumer-contract.md).
 	ConsumerContract bool `json:"consumer_contract"`
+	// ExecOwner registers the exec owner kind.
+	ExecOwner bool `json:"exec_owner"`
+	// ShellAdapter allows dibs adopt shell.
+	ShellAdapter bool `json:"shell_adapter"`
+	// LeasePolicies turns on the lease policy table; Policies overrides its rows.
+	LeasePolicies bool                     `json:"lease_policies"`
+	Policies      map[string]policypkg.Row `json:"policies"`
 }
 
 func hostMemory() (int64, error) {
@@ -168,6 +176,9 @@ type optIns struct {
 	PROwner             bool `json:"pr_owner"`
 	LiveOwnerProtection bool `json:"live_owner_protection"`
 	ConsumerContract    bool `json:"consumer_contract"`
+	ExecOwner           bool `json:"exec_owner"`
+	ShellAdapter        bool `json:"shell_adapter"`
+	LeasePolicies       bool `json:"lease_policies"`
 }
 
 // readOptIns reads opt-ins without probing host memory; a missing or unreadable config leaves them off.
@@ -188,6 +199,40 @@ func LiveOwnerProtection() bool { return readOptIns().LiveOwnerProtection }
 
 // ConsumerContract reports the consumer_contract opt-in.
 func ConsumerContract() bool { return readOptIns().ConsumerContract }
+
+// ExecOwner reports the exec_owner opt-in.
+func ExecOwner() bool { return readOptIns().ExecOwner }
+
+// ShellAdapter reports the shell_adapter opt-in.
+func ShellAdapter() bool { return readOptIns().ShellAdapter }
+
+// LeasePolicies reports the lease_policies opt-in.
+func LeasePolicies() bool { return readOptIns().LeasePolicies }
+
+// Policies strictly reads the configured policy rows without probing the host,
+// so a malformed table is an error rather than a silent default.
+func Policies() (map[string]policypkg.Row, error) {
+	data, found, err := read()
+	if err != nil || !found {
+		return nil, err
+	}
+	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, errors.New("invalid config: the file must contain exactly one JSON object")
+	}
+	var c Config
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&c); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err == nil {
+			err = errors.New("multiple JSON values")
+		}
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+	return c.Policies, nil
+}
 
 // SSH config aliases may supply proxying, keys, and host-key policy. Dibs never
 // disables host-key checking or falls back to interactive authentication.

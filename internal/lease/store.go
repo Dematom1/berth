@@ -21,8 +21,9 @@ import (
 var leaseID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 // stateVersion is the newest state schema this binary reads and writes:
-// 3 adds live-owner protection, 4 adds idempotency keys and pending leases.
-const stateVersion = 4
+// 3 adds live-owner protection, 4 adds idempotency keys and pending leases,
+// 5 adds lease policies and shell leases.
+const stateVersion = 5
 
 type store struct {
 	Version int `json:"version"`
@@ -203,6 +204,17 @@ func (s *store) validate() error {
 		}
 		if l.ProtectLiveOwner && s.Version < 3 {
 			return errors.New("invalid live-owner protection")
+		}
+		if (l.Policy != nil || l.DeadSince != nil || l.ResourceRef.Process != nil) && s.Version < 5 {
+			return errors.New("invalid lease policy or shell record")
+		}
+		if l.DeadSince != nil && (l.Policy == nil || l.Policy.Grace == 0) {
+			return errors.New("invalid owner death record")
+		}
+		if l.Policy != nil {
+			if err := l.Policy.Validate(); err != nil {
+				return fmt.Errorf("invalid recorded lease policy: %w", err)
+			}
 		}
 		if l.KeyedBy != "" && l.KeyedBy != "create" && l.KeyedBy != "pending" && l.KeyedBy != "adopt" || l.KeyedBy != "" && l.Key == "" {
 			return errors.New("invalid lease key mode")

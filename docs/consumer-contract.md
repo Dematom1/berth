@@ -121,6 +121,11 @@ Exit 3 means that dibs changed no lease and touched no resource. Opening the led
 | `expired` | `extend` found an unprotected lease expired while its owner is alive | Release it and acquire again; do not create a second lease for a resource still covered |
 | `owner_dead` | `extend` found the owner dead | Run `dibs reclaim ID --confirm` or `dibs sweep --confirm` |
 | `job_deadline` | A job reservation cannot be extended | Start a new `dibs job` with `--timeout` |
+| `max_lifetime` | `extend` reached the lease policy's maximum lifetime | Release it and acquire again |
+| `grace` | `reclaim` found the owner dead, but the lease policy's grace period has not passed | Retry after the time `dibs explain ID` shows |
+| `resource_busy` | `reclaim` found the resource doing work, such as a shell with a foreground job | Wait for the work to finish; a busy resource is never reclaimed |
+
+`reclaim` also refuses with `resource_unknown` when the resource's activity cannot be read.
 
 ## Idempotency
 
@@ -176,7 +181,9 @@ Renew at the latest when one third of the TTL remains. For a `heartbeat:<file>` 
 
 `dibs reclaim ID` previews, and `--confirm` acts only when the owner check returns `dead` on this machine. An alive owner is refused with `owner_alive` even after the lease has expired, and unknown liveness is refused with `owner_unknown`. Reclaim destroys the resource, verifies it is gone, and then forgets the lease. A cleanup failure retains the lease and exits 1.
 
-`reclaim` is the only command that requires proven owner death. `sweep --confirm` and job admission still reclaim expired leases even when the owner is alive or unknown, so consumers must renew before expiry. `dibs explain ID` reports both decisions without acting: `sweep_would_reclaim`, `reclaim_would_reclaim`, `liveness`, `expired`, `this_machine`, and a readable `why`.
+`reclaim` is the only command that requires proven owner death. `sweep --confirm` and job admission can reclaim expired time-bound leases even when the owner is alive or unknown, so consumers must renew before expiry. Shell leases and `--protect-live-owner` leases are retained while the owner is alive or unknown. `dibs explain ID` reports both decisions without acting: `sweep_would_reclaim`, `reclaim_would_reclaim`, `liveness`, `expired`, `this_machine`, and a readable `why`.
+
+With lease policies on (see the README), a lease records its policy, and sweep follows it: an owner-bound lease ignores expiry. By default, shell idle and maximum-lifetime triggers do not reclaim a live or unknown owner; `reclaim_live_owner: true` on a hybrid policy explicitly permits those triggers for a proven-live owner only. Shell, owner-bound, and hybrid leases are never reclaimed while their owner is unknown, and a busy resource never is; an expired time-bound lease can still be swept with an unknown owner, as above. Only a confirmed `sweep` starts a dead owner's grace period: `reclaim` refuses with `grace` without recording anything, like every refusal. `sweep` lists a lease whose condition fired but is kept under `held`, with the reason `grace`, `resource_busy`, `resource_unknown`, `live_owner`, or `report_only`. For such leases, and for any lease while policies are on, `explain` adds `policy` (`row`, `source`, `binding`, `ttl`, `renew`, `max_lifetime`, `grace`, `idle`, `reclaim_live_owner`, `action`), `trigger` (`owner_dead`, `expired`, `max_lifetime`, `idle`, or empty), `held_because`, `reclaim_at` and `remaining` (when the next condition or grace period ends; empty when none is scheduled), `renew_by`, and, when the adapter reports activity, `activity` (`busy`, `idle`, `members`). A lease acquired without a policy reports `source: legacy`, and a job reports `source: job_class`.
 
 ## Map your lifecycle onto the verbs
 

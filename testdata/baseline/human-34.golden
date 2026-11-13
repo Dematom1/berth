@@ -2,9 +2,15 @@ exit: 0
 stdout:
 dibs sweep [--confirm] [--machine NAME] [--json]
 Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
-are retained unless expired. --protect-live-owner leases are reclaimed only on
+are retained unless expired, except shell leases which remain owner-bound. --protect-live-owner leases are reclaimed only on
 proven owner death. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
+With lease policies, a lease's recorded policy also decides: owner-bound leases
+ignore expiry, and max_lifetime and idle timeouts may end leases. For shells,
+TTL never reclaims a live or unknown owner; idle/max_lifetime require
+reclaim_live_owner: true and a proven-live owner. held lists leases whose
+condition fired but are kept: grace, resource_busy, resource_unknown,
+live_owner, or report_only. A busy resource is never reclaimed.
 Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
   dibs sweep

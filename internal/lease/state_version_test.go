@@ -19,7 +19,7 @@ func TestNewerStateRefusedWithUpgradeHint(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 	// A future schema may change field types; the refusal must not depend on them.
-	data := []byte(`{"version":5,"writer_version":"9.0.0","leases":{}}` + "\n")
+	data := []byte(`{"version":6,"writer_version":"9.0.0","leases":{}}` + "\n")
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestNewerStateRefusedWithUpgradeHint(t *testing.T) {
 		if err == nil {
 			t.Fatal("newer state was accepted")
 		}
-		for _, want := range []string{"kept unchanged", "state version 5 written by dibs 9.0.0", "state version 4, dibs 0.2.3", "upgrade dibs", "`which -a dibs berth`"} {
+		for _, want := range []string{"kept unchanged", "state version 6 written by dibs 9.0.0", "state version 5, dibs 0.2.3", "upgrade dibs", "`which -a dibs berth`"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("refusal %q lacks %q", err, want)
 			}
@@ -39,11 +39,11 @@ func TestNewerStateRefusedWithUpgradeHint(t *testing.T) {
 	if got, err := os.ReadFile(path); err != nil || string(got) != string(data) {
 		t.Fatalf("newer state changed: %s %v", got, err)
 	}
-	for _, state := range []string{`{"version":5,"leases":{}}`, `{"version":5,"writer_version":{},"leases":{}}`} {
+	for _, state := range []string{`{"version":6,"leases":{}}`, `{"version":6,"writer_version":{},"leases":{}}`} {
 		if err := os.WriteFile(path, []byte(state), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := m.openStore(context.Background(), dir); err == nil || strings.Contains(err.Error(), "written by") || !strings.Contains(err.Error(), "state version 5 is newer") || !strings.Contains(err.Error(), "`which -a dibs berth`") {
+		if _, err := m.openStore(context.Background(), dir); err == nil || strings.Contains(err.Error(), "written by") || !strings.Contains(err.Error(), "state version 6 is newer") || !strings.Contains(err.Error(), "`which -a dibs berth`") {
 			t.Fatalf("refusal without usable writer %s: %v", state, err)
 		}
 	}

@@ -21,7 +21,8 @@ exit 0 success with status; 1 operation failed, records retained; 2 usage;
 3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
 not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
 resource_absent, resource_unknown, ambiguous, owner_alive, owner_unknown,
-expired, owner_dead, job_deadline. Extend success is renewed or reattached.
+expired, owner_dead, job_deadline, max_lifetime, grace, resource_busy.
+Extend success is renewed or reattached.
 Exit 1 is only for operation failures. Output carries contract: 1.
 See docs/consumer-contract.md.
 

@@ -17,6 +17,13 @@ The lease manager checks existence and duplicate ownership under its state lock
 before recording an adopted lease. The CLI derives adoption support from the
 registry's discovery capability.
 
+An adapter can also provide `Definition.Activity` to report current use. A
+`Busy` answer names work in progress and holds any reclaim of the lease, and an
+error holds it as unknown; `Idle` feeds a hybrid lease policy's idle timeout.
+`Definition.HostScoped` marks a resource that lives on this host outside any
+Docker context, so `adopt` resolves no Docker scope for it. The
+[shell](internal/adapter/shell/shell.go) adapter uses both.
+
 The lifecycle owner is [`internal/lease`](internal/lease). It owns locking, durable state, admission, start and finish, and record removal. The job facade never writes state. Process reservations are private lifecycle records, not external adapters.
 
 Owner integrations have a separate registry in [`cli.newOwners`](internal/cli/owners.go). References, raw observations, and pinned-identity decisions live in [`internal/owner`](internal/owner).
