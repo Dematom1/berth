@@ -87,21 +87,25 @@ func TestReclaimGuards(t *testing.T) {
 			t.Fatal("activity without a process table is known")
 		}
 	})
-	t.Run("PID reused after initial snapshot is never signaled", func(t *testing.T) {
+	t.Run("reused shell and helper PIDs are never signaled", func(t *testing.T) {
+		const shellPID, helperPID = 2147483640, 2147483641
 		calls := 0
 		var log bytes.Buffer
-		old := shell
-		old.Start = start
 		list := func(context.Context) (map[int]Process, error) {
 			calls++
-			p := old
+			identity := start
 			if calls > 1 {
-				p.Start = "Fri Nov 13 09:00:00 2026"
+				identity = "Fri Nov 13 09:00:00 2026"
 			}
-			return map[int]Process{p.PID: p}, nil
+			return map[int]Process{
+				shellPID:  {PID: shellPID, PPID: 1, PGID: shellPID, TPGID: shellPID, Stat: "Ss", TTY: "??", Start: identity, Name: "zsh"},
+				helperPID: {PID: helperPID, PPID: shellPID, PGID: helperPID, Stat: "S", TTY: "??", Start: identity, Name: "gitstatusd"},
+			}, nil
 		}
+		helper := adapterpkg.ProcessMember{PID: helperPID, Start: start, Command: "gitstatusd"}
+		target := target(shellPID, helper)
 		d := definition(list, &log)
-		if err := d.Adapter.Destroy(context.Background(), target(500)); err != nil {
+		if err := d.Adapter.Destroy(context.Background(), target); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(log.String(), "SIGHUP") || !strings.Contains(log.String(), "verified gone") {
