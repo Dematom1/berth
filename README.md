@@ -662,6 +662,9 @@ Key a row by resource kind, or by `<kind>/<owner kind>`, which takes precedence:
 }
 ```
 
+In the shell row, `reclaim_live_owner: true` is an explicit opt-in that overrides
+retaining shells with a live owner; omit it to keep the default protection.
+
 An `owner` binding takes no `idle` or `max_lifetime`, a `time` binding takes no
 `idle`, and a `hybrid` binding needs one of them. Only adapters that report
 activity accept `idle`; today that is `shell`. Unknown fields and invalid rows
