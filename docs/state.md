@@ -8,7 +8,7 @@ Source: `internal/lease/store.go` (paths, locking, reading, validation, saving),
 
 `resolveStateDir` picks the first match and makes it absolute:
 
-1. `DIBS_STATE`, or the legacy `BERTH_STATE`. An explicit path is used as given and is never moved.
+1. `DIBS_STATE`, or the legacy `BERTH_STATE`. An explicit path must be absolute, is used as given, and is never moved. dibs refuses a relative path rather than create a ledger under the working directory.
 2. `$XDG_STATE_HOME/dibs`.
 3. `~/.local/state/dibs`.
 

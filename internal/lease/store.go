@@ -42,7 +42,11 @@ func stateDir() (string, error) { return resolveStateDir(true) }
 
 func resolveStateDir(publish bool) (string, error) {
 	if dir := compat.Env("STATE"); dir != "" {
-		return filepath.Abs(dir)
+		// A relative ledger path would split the host-wide lock by working directory.
+		if !filepath.IsAbs(dir) {
+			return "", fmt.Errorf("DIBS_STATE must be an absolute path, got %q", dir)
+		}
+		return filepath.Clean(dir), nil
 	}
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
