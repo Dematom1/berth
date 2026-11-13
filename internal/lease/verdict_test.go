@@ -90,7 +90,12 @@ func TestDecideAppliesPolicy(t *testing.T) {
 		want bool
 	}{{ownerpkg.Alive, false}, {ownerpkg.Unknown, false}, {ownerpkg.Dead, true}} {
 		shell.Expires = shell.Created.Add(-time.Hour)
-		v := decide(context.Background(), shell, shell.Machine, shell.Created, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live }, observed(idle(0), nil))
+		check := func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live }
+		eligible, _ := reclaimable(shell, shell.Machine, shell.Created, check)
+		if eligible != tc.want {
+			t.Fatalf("legacy shell eligible for TTL reclaim with owner %s: %v", tc.live, eligible)
+		}
+		v := decide(context.Background(), shell, shell.Machine, shell.Created, check, observed(idle(0), nil))
 		if v.Reclaim != tc.want {
 			t.Fatalf("legacy shell live=%s: %+v", tc.live, v)
 		}
