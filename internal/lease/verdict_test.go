@@ -252,6 +252,10 @@ func TestStateRejectsInvalidRecordedPolicy(t *testing.T) {
 		"unknown action":       {Row: "none", Binding: policypkg.Time, TTL: time.Hour, Action: "reportt"},
 		"unknown binding":      {Row: "none", Binding: "forever", TTL: time.Hour, Action: policypkg.Destroy},
 		"idle on a time lease": {Row: "none", Binding: policypkg.Time, TTL: time.Hour, Idle: time.Minute, Action: policypkg.Destroy},
+		"negative renew":        {Row: "none", Binding: policypkg.Time, TTL: time.Hour, Renew: -time.Minute, Action: policypkg.Destroy},
+		"negative max lifetime": {Row: "none", Binding: policypkg.Time, TTL: time.Hour, MaxLifetime: -time.Minute, Action: policypkg.Destroy},
+		"negative grace":        {Row: "none", Binding: policypkg.Time, TTL: time.Hour, Grace: -time.Minute, Action: policypkg.Destroy},
+		"negative idle":         {Row: "none", Binding: policypkg.Hybrid, TTL: time.Hour, Idle: -time.Minute, MaxLifetime: time.Hour, Action: policypkg.Destroy},
 	} {
 		l := testLease(t)
 		l.Policy = &p

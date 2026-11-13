@@ -149,6 +149,8 @@ func (p Policy) check(key string) error {
 		return invalid("action must be destroy or report")
 	case p.TTL <= 0:
 		return invalid("ttl must be positive")
+	case p.Renew < 0 || p.MaxLifetime < 0 || p.Grace < 0 || p.Idle < 0:
+		return invalid("renew, max_lifetime, grace, and idle must be non-negative")
 	case p.Renew > p.TTL:
 		return invalid("renew must not exceed ttl")
 	case p.MaxLifetime > 0 && p.MaxLifetime < p.TTL:
