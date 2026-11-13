@@ -1,1 +1,8 @@
 /bin/
+
+# Local agent and temp droppings must never be committed.
+scratchpad/
+/private/
+/tmp/
+/Users/
+__pycache__/

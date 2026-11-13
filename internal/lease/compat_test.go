@@ -38,6 +38,13 @@ func TestRenamedStateSelection(t *testing.T) {
 	if dir, err := stateDir(); err != nil || dir != os.Getenv("DIBS_STATE") {
 		t.Fatalf("preferred explicit state: %q, %v", dir, err)
 	}
+	// An icon-decorated `ls -d` capture once created this tree in the working directory.
+	for _, relative := range []string{"state", "\ue5ff " + filepath.Join(home, "st.Zpto")} {
+		t.Setenv("DIBS_STATE", relative)
+		if dir, err := stateDir(); err == nil {
+			t.Fatalf("relative explicit state %q accepted as %q", relative, dir)
+		}
+	}
 }
 
 func TestStateRenameKeepsLegacyLeasesAndLock(t *testing.T) {
