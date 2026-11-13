@@ -253,9 +253,9 @@ and release keeps the lease if it cannot.
 `--key K` on `create` and `adopt` makes a matching retry return the existing
 lease with `status: already_done`; retries ignore TTL, description, and labels,
 returning the original lease unchanged. A key is free again after release.
-`reclaim` is the only command that always requires proven
-owner death; `sweep` and job admission spare a live owner only for a lease
-created with `--protect-live-owner` (see below).
+`reclaim` always requires proven owner death. `sweep` and job admission also
+preserve live or unknown owners for shell leases and leases created with
+`--protect-live-owner` (see below).
 
 With the contract on, these commands, `extend`, and `release` follow version 1
 of the [consumer contract](docs/consumer-contract.md): `contract: 1`, a
@@ -551,8 +551,9 @@ dibs sweep --confirm   # after the PR closes or merges
 Touch a heartbeat file at most every staleness/3. Extend a lease at the latest
 when one third of its TTL remains. A lease is reclaimable when its owner is
 dead **or** when it has expired. A live owner that misses either cadence loses
-its resources. Unknown liveness alone never permits reclaim, but expiry still
-does. `extend` refuses expired leases and owners that are dead or unknown,
+its resources, except shell leases and protected leases. Unknown liveness alone
+never permits reclaim for shell leases or protected leases; other time-bound
+leases may still be reclaimed at expiry. `extend` refuses expired leases and owners that are dead or unknown,
 except that a protected lease with a live owner reattaches after expiry while
 its resource is present (see below).
 
@@ -629,18 +630,19 @@ setting, and every lease follows its TTL as described above.
 | `binding` | `time`: the lease ends at expiry or owner death. `owner`: it lives exactly while its owner is alive; expiry never reclaims it. `hybrid`: owner-bound, and it also ends after `idle` or `max_lifetime` |
 | `ttl` | TTL when `--ttl` is omitted, including for `adopt`; default `8h` |
 | `renew` | Advised renewal cadence; `explain` shows `renew_by` |
-| `max_lifetime` | Hard cap from creation, even with a live owner; `extend` never passes it |
+| `max_lifetime` | Hard cap from creation; live-owner reclamation requires `reclaim_live_owner: true` on a hybrid row; `extend` never passes it |
 | `grace` | How long a reclaim condition must hold before dibs acts; for owner death it counts from the first confirmed sweep or reclaim that saw the owner dead |
-| `idle` | Hybrid only: reclaim after the resource has been idle this long, even with a live owner. A shell is idle when it has no foreground job, measured from its terminal's last input or output. A shell without a terminal never goes idle |
+| `idle` | Hybrid only: reclaim after this idle duration. A live owner is reclaimed only with `reclaim_live_owner: true`; unknown owners are never reclaimed. Shell idle means no foreground job, measured from terminal input/output; a shell without a terminal never goes idle |
+| `reclaim_live_owner` | Hybrid only, default `false`: allow idle or max_lifetime to reclaim a shell with a proven-live owner; unknown owners and TTL expiry remain protected |
 | `action` | `destroy` (default) reclaims; `report` lists the lease under `held` in `sweep` but never reclaims it automatically. Explicit `release` and `reclaim` still act |
 
 Built-in rows apply when the table is on:
 
-| Row | Binding | TTL | Renew | Max lifetime | Idle |
-| --- | --- | --- | --- | --- | --- |
-| `shell` | `hybrid` | `8h` | - | - | `30m` |
-| `kind`, `k3d`, `compose` | `time` | `4h` | `2h` | `24h` | - |
-| `none` | `time` | `8h` | - | - | - |
+| Row | Binding | TTL | Renew | Max lifetime | Idle | Reclaim live owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| `shell` | `hybrid` | `8h` | - | - | `30m` | `false` |
+| `kind`, `k3d`, `compose` | `time` | `4h` | `2h` | `24h` | - | - |
+| `none` | `time` | `8h` | - | - | - | - |
 
 Job deadlines come from job classes, and a `process` row is refused. A row you
 configure replaces the built-in row with the same key; omitted fields are off.
@@ -650,7 +652,7 @@ Key a row by resource kind, or by `<kind>/<owner kind>`, which takes precedence:
 {
   "lease_policies": true,
   "policies": {
-    "shell": {"binding": "hybrid", "idle": "45m", "grace": "2m"},
+    "shell": {"binding": "hybrid", "idle": "45m", "grace": "2m", "reclaim_live_owner": true},
     "kind/pr": {"binding": "owner"},
     "compose": {"binding": "time", "ttl": "2h", "max_lifetime": "12h", "action": "report"}
   }
@@ -668,7 +670,7 @@ policy when it is created, so later config edits, or turning the setting off,
 never loosen or tighten an existing lease. `--protect-live-owner` outranks a
 policy: only proven owner death reclaims a protected lease.
 
-A busy resource is never reclaimed, whatever the policy says. `dibs explain`
+Shell leases are owner-bound even without a recorded policy: TTL expiry never reclaims them while the owner is alive or unknown. The default shell hybrid idle timeout is inert for a live owner; set `reclaim_live_owner: true` explicitly to permit idle or maximum-lifetime reclamation of a live owner. Unknown owners and busy resources are always retained. `dibs explain`
 shows the governing policy (`source: lease`, or `legacy` for a lease acquired
 without one), the condition that fired, when the next condition ends
 (`reclaim_at`, `remaining`), and why the lease is still held (`held_because`).

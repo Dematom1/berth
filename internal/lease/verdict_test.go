@@ -24,6 +24,8 @@ func TestDecideAppliesPolicy(t *testing.T) {
 	timed := &policypkg.Policy{Row: "none", Binding: policypkg.Time, TTL: hour, MaxLifetime: 3 * hour, Action: policypkg.Destroy}
 	owner := &policypkg.Policy{Row: "none", Binding: policypkg.Owner, TTL: hour, Action: policypkg.Destroy}
 	hybrid := &policypkg.Policy{Row: "none", Binding: policypkg.Hybrid, TTL: hour, Idle: 30 * time.Minute, MaxLifetime: 10 * hour, Action: policypkg.Destroy}
+	hybridReclaim := *hybrid
+	hybridReclaim.ReclaimLiveOwner = true
 	withGrace := func(p *policypkg.Policy, g time.Duration) *policypkg.Policy { c := *p; c.Grace = g; return &c }
 	report := func(p *policypkg.Policy) *policypkg.Policy { c := *p; c.Action = policypkg.Report; return &c }
 	idle := func(d time.Duration) adapterpkg.Activity { return adapterpkg.Activity{Idle: d, IdleKnown: true} }
@@ -46,9 +48,14 @@ func TestDecideAppliesPolicy(t *testing.T) {
 		{"owner: unknown never reclaims", owner, ownerpkg.Unknown, 100 * hour, idle(0), nil, "", HoldOwnerUnknown, 0},
 		{"owner: death reclaims", owner, ownerpkg.Dead, 0, idle(0), nil, TriggerOwnerDead, "", 0},
 		{"hybrid: active shell held", hybrid, ownerpkg.Alive, 2 * hour, idle(10 * time.Minute), nil, "", HoldOwnerAlive, 2*hour + 20*time.Minute},
-		{"hybrid: idle past timeout", hybrid, ownerpkg.Alive, 2 * hour, idle(31 * time.Minute), nil, TriggerIdle, "", 0},
+		{"hybrid: idle past timeout holds live owner", hybrid, ownerpkg.Alive, 2 * hour, idle(31 * time.Minute), nil, TriggerIdle, HoldLiveOwner, 0},
+		{"hybrid: idle allowed for live owner", &hybridReclaim, ownerpkg.Alive, 2 * hour, idle(31 * time.Minute), nil, TriggerIdle, "", 0},
+		{"hybrid: idle never allowed for unknown owner", &hybridReclaim, ownerpkg.Unknown, 2 * hour, idle(31 * time.Minute), nil, TriggerIdle, HoldLiveOwner, 0},
 		{"hybrid: idle unknown waits for max", hybrid, ownerpkg.Alive, 2 * hour, adapterpkg.Activity{}, nil, "", HoldOwnerAlive, 10 * hour},
-		{"hybrid: max lifetime with live owner", hybrid, ownerpkg.Alive, 10 * hour, idle(0), nil, TriggerMaxLifetime, "", 0},
+		{"hybrid: max lifetime holds live owner", hybrid, ownerpkg.Alive, 10 * hour, idle(0), nil, TriggerMaxLifetime, HoldLiveOwner, 0},
+		{"hybrid: max lifetime allowed for live owner", &hybridReclaim, ownerpkg.Alive, 10 * hour, idle(0), nil, TriggerMaxLifetime, "", 0},
+		{"hybrid: max lifetime never allowed for unknown owner", &hybridReclaim, ownerpkg.Unknown, 10 * hour, idle(0), nil, TriggerMaxLifetime, HoldLiveOwner, 0},
+		{"hybrid: owner hold takes precedence over unreadable activity", hybrid, ownerpkg.Alive, 10 * hour, adapterpkg.Activity{}, errors.New("ps failed"), TriggerMaxLifetime, HoldLiveOwner, 0},
 		{"busy holds a fired trigger", owner, ownerpkg.Dead, 0, busy, nil, TriggerOwnerDead, HoldResourceBusy, 0},
 		{"busy is never idle", hybrid, ownerpkg.Alive, 2 * hour, busy, nil, "", HoldOwnerAlive, 10 * hour},
 		{"unreadable activity holds", owner, ownerpkg.Dead, 0, adapterpkg.Activity{}, errors.New("ps failed"), TriggerOwnerDead, HoldResourceUnknown, 0},
@@ -74,6 +81,19 @@ func TestDecideAppliesPolicy(t *testing.T) {
 	l.Policy = owner
 	if v := decide(context.Background(), l, "elsewhere", testNow, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return ownerpkg.Dead }, observed(idle(0), nil)); v.Reclaim || v.Hold != HoldWrongMachine {
 		t.Fatalf("foreign verdict = %+v", v)
+	}
+	shell := testLease(t)
+	shell.ResourceRef.Adapter = "shell"
+	shell.ResourceRef.Process = &adapterpkg.ProcessRef{PID: 123, Start: "test"}
+	for _, tc := range []struct {
+		live ownerpkg.Liveness
+		want bool
+	}{{ownerpkg.Alive, false}, {ownerpkg.Unknown, false}, {ownerpkg.Dead, true}} {
+		shell.Expires = shell.Created.Add(-time.Hour)
+		v := decide(context.Background(), shell, shell.Machine, shell.Created, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live }, observed(idle(0), nil))
+		if v.Reclaim != tc.want {
+			t.Fatalf("legacy shell live=%s: %+v", tc.live, v)
+		}
 	}
 	// Protection outranks any policy limit: only proven death reclaims.
 	l.Policy, l.ProtectLiveOwner = hybrid, true

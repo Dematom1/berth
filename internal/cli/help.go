@@ -38,7 +38,10 @@ const policies = `Lease policies are off until DIBS_LEASE_POLICIES=1 or "lease_p
 While on, the policies table in the user config picks each new lease's rule by
 resource kind, or kind/owner kind: binding time (TTL), owner (only owner death
 ends it), or hybrid (owner-bound plus idle or max_lifetime); ttl, renew,
-max_lifetime, grace and action destroy|report. The lease records its policy.
+max_lifetime, grace, idle, reclaim_live_owner and action destroy|report. Shells
+never reclaim on TTL while their owner is alive or unknown. Idle/max_lifetime
+reclaim a live owner only with reclaim_live_owner: true on a hybrid row; an
+unknown owner is never reclaimed. The lease records its policy.
 --ttl must fit max_lifetime; --idle D and --max-lifetime D may only tighten the
 row. Off, --idle and --max-lifetime exit 2 naming the setting.`
 
@@ -191,14 +194,15 @@ Examples:
   dibs release <id> --confirm`,
 	"sweep": `dibs sweep [--confirm] [--machine NAME] [--json]
 Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
-are retained unless expired. --protect-live-owner leases are reclaimed only on
+are retained unless expired, except shell leases which remain owner-bound. --protect-live-owner leases are reclaimed only on
 proven owner death. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
 With lease policies, a lease's recorded policy also decides: owner-bound leases
-ignore expiry, and max_lifetime and idle timeouts end leases. held lists leases
-whose condition fired but are kept: grace, resource_busy, resource_unknown, or
-report_only. A busy resource, such as a shell with a foreground job, is never
-reclaimed.
+ignore expiry, and max_lifetime and idle timeouts may end leases. For shells,
+TTL never reclaims a live or unknown owner; idle/max_lifetime require
+reclaim_live_owner: true and a proven-live owner. held lists leases whose
+condition fired but are kept: grace, resource_busy, resource_unknown,
+live_owner, or report_only. A busy resource is never reclaimed.
 Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
   dibs sweep

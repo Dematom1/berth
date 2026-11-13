@@ -56,7 +56,7 @@ func reclaimable(l Lease, host string, now time.Time, check func(ownerpkg.Refere
 		return false, ownerpkg.Unknown
 	}
 	live := check(l.Owner, now)
-	if l.ProtectLiveOwner || l.Policy.OwnerBound() {
+	if (l.ResourceRef.Adapter == "shell" && l.ResourceRef.Process != nil) || l.ProtectLiveOwner || l.Policy.OwnerBound() {
 		return live == ownerpkg.Dead, live
 	}
 	return live == ownerpkg.Dead || !now.Before(l.Expires), live

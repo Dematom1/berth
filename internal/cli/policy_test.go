@@ -10,6 +10,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
+	leasepkg "github.com/Dematom1/dibs/internal/lease"
+	outputpkg "github.com/Dematom1/dibs/internal/output"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 )
 
 func jsonRun(t *testing.T, want int, args ...string) map[string]any {
@@ -108,5 +114,66 @@ func TestPolicyTableOnCreateAndExplain(t *testing.T) {
 	write(`{"policies": {"none": {"binding": "time", "ttl": "1h", "typo": true}}}`)
 	if result := jsonRun(t, 2, "create", "--owner", owner); !strings.Contains(result["error"].(string), "unknown field") {
 		t.Fatalf("unknown policy field = %v", result)
+	}
+}
+
+type policyShell struct{ destroyed *bool }
+
+func (p policyShell) Create(context.Context, adapterpkg.Target) error { return nil }
+func (p policyShell) Destroy(context.Context, adapterpkg.Target) error {
+	*p.destroyed = true
+	return nil
+}
+
+func TestSweepProtectsLiveOwnerShellUnlessPolicyAllowsIt(t *testing.T) {
+	for _, allowLive := range []bool{false, true} {
+		t.Run(strconv.FormatBool(allowLive), func(t *testing.T) {
+			destroyed := false
+			ref := adapterpkg.ResourceRef{Adapter: "shell", Name: "424242", Adopted: true, Process: &adapterpkg.ProcessRef{PID: 424242, Start: "shell-start"}}
+			definition := adapterpkg.Definition{
+				Name: "shell", Adapter: policyShell{&destroyed},
+				Discover: func(_ context.Context, r adapterpkg.ResourceRef) ([]map[string]any, error) {
+					return []map[string]any{{"name": r.Name}}, nil
+				},
+				Prepare: func(_ context.Context, r adapterpkg.PrepareRequest) (adapterpkg.ResourceRef, error) {
+					return r.Existing, nil
+				},
+				Validate: func(string, adapterpkg.Metadata, adapterpkg.ResourceRef) error { return nil },
+				Env:      func(adapterpkg.ResourceRef) adapterpkg.Environment { return adapterpkg.Environment{} },
+				Activity: func(context.Context, adapterpkg.Target) (adapterpkg.Activity, error) {
+					return adapterpkg.Activity{Idle: time.Hour, IdleKnown: true}, nil
+				},
+			}
+			resources := adapterpkg.NewRegistry(definition)
+			owners := newOwners()
+			owner, err := owners.Bind(context.Background(), "pid:"+strconv.Itoa(os.Getpid()), 0, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager := leasepkg.New(leasepkg.Options{Directory: t.TempDir(), Adapters: resources, Owners: owners})
+			policy := &policypkg.Policy{Row: "shell", Binding: policypkg.Hybrid, TTL: time.Hour, Idle: time.Nanosecond, Action: policypkg.Destroy, ReclaimLiveOwner: allowLive}
+			l, _, err := manager.Adopt(context.Background(), leasepkg.AdoptRequest{Owner: owner, TTL: time.Hour, Resource: ref, Policy: policy})
+			if err != nil {
+				t.Fatal(err)
+			}
+			app := application{version: version, resources: resources, owners: owners, leases: manager}
+			var out bytes.Buffer
+			if code := app.runWithOutput(context.Background(), []string{"sweep", "--confirm"}, &out, outputpkg.JSON); code != 0 {
+				t.Fatalf("sweep = %d: %s", code, out.String())
+			}
+			if destroyed != allowLive {
+				t.Fatalf("destroyed=%v, policy permission=%v", destroyed, allowLive)
+			}
+			if !allowLive {
+				var result map[string]any
+				if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				held := result["held"].(map[string]any)
+				if held[l.ID] != leasepkg.HoldLiveOwner {
+					t.Fatalf("held = %v", held)
+				}
+			}
+		})
 	}
 }

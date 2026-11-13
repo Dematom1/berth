@@ -24,27 +24,29 @@ const (
 
 // Row is one configured policy as the user config spells it; durations use Go syntax.
 type Row struct {
-	Binding     string `json:"binding"`
-	TTL         string `json:"ttl"`
-	Renew       string `json:"renew"`
-	MaxLifetime string `json:"max_lifetime"`
-	Grace       string `json:"grace"`
-	Idle        string `json:"idle"`
-	Action      string `json:"action"`
+	Binding          string `json:"binding"`
+	TTL              string `json:"ttl"`
+	Renew            string `json:"renew"`
+	MaxLifetime      string `json:"max_lifetime"`
+	Grace            string `json:"grace"`
+	Idle             string `json:"idle"`
+	Action           string `json:"action"`
+	ReclaimLiveOwner bool   `json:"reclaim_live_owner,omitempty"`
 }
 
 // Policy is the lifetime rule a lease records when it is acquired; later config
 // edits never change a recorded policy.
 type Policy struct {
 	// Row is the table key that supplied the policy, such as "shell" or "kind/pr".
-	Row         string        `json:"row"`
-	Binding     string        `json:"binding"`
-	TTL         time.Duration `json:"ttl"`
-	Renew       time.Duration `json:"renew,omitempty"`
-	MaxLifetime time.Duration `json:"max_lifetime,omitempty"`
-	Grace       time.Duration `json:"grace,omitempty"`
-	Idle        time.Duration `json:"idle,omitempty"`
-	Action      string        `json:"action"`
+	Row              string        `json:"row"`
+	Binding          string        `json:"binding"`
+	TTL              time.Duration `json:"ttl"`
+	Renew            time.Duration `json:"renew,omitempty"`
+	MaxLifetime      time.Duration `json:"max_lifetime,omitempty"`
+	Grace            time.Duration `json:"grace,omitempty"`
+	Idle             time.Duration `json:"idle,omitempty"`
+	Action           string        `json:"action"`
+	ReclaimLiveOwner bool          `json:"reclaim_live_owner,omitempty"`
 }
 
 // OwnerBound reports whether expiry is ignored and owner death ends the lease.
@@ -112,7 +114,7 @@ func Table(rows map[string]Row, kinds Kinds) (map[string]Policy, error) {
 }
 
 func parse(key string, row Row) (Policy, error) {
-	p := Policy{Row: key, Binding: row.Binding, TTL: 8 * time.Hour, Action: row.Action}
+	p := Policy{Row: key, Binding: row.Binding, TTL: 8 * time.Hour, Action: row.Action, ReclaimLiveOwner: row.ReclaimLiveOwner}
 	if p.Action == "" {
 		p.Action = Destroy
 	}
@@ -148,6 +150,8 @@ func (p Policy) check(key string) error {
 		return invalid("renew must not exceed ttl")
 	case p.MaxLifetime > 0 && p.MaxLifetime < p.TTL:
 		return invalid("max_lifetime must be at least ttl")
+	case p.ReclaimLiveOwner && p.Binding != Hybrid:
+		return invalid("reclaim_live_owner requires a hybrid binding")
 	case p.Binding == Owner && (p.Idle > 0 || p.MaxLifetime > 0):
 		return invalid("an owner binding has no idle or max_lifetime; use hybrid")
 	case p.Binding == Time && p.Idle > 0:

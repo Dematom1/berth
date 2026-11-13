@@ -19,6 +19,7 @@ const (
 	HoldWrongMachine    = "wrong_machine"
 	HoldOwnerAlive      = "owner_alive"
 	HoldOwnerUnknown    = "owner_unknown"
+	HoldLiveOwner       = "live_owner"
 	HoldGrace           = "grace"
 	HoldResourceBusy    = "resource_busy"
 	HoldResourceUnknown = "resource_unknown"
@@ -52,6 +53,7 @@ func decide(ctx context.Context, l Lease, host string, now time.Time, check func
 		return v
 	}
 	p := l.Policy
+	shell := l.ResourceRef.Adapter == "shell" && l.ResourceRef.Process != nil
 	var grace time.Duration
 	if p != nil {
 		grace = p.Grace
@@ -67,7 +69,7 @@ func decide(ctx context.Context, l Lease, host string, now time.Time, check func
 		fired[TriggerOwnerDead] = since
 	} else if eligible {
 		fired[TriggerExpired] = l.Expires
-	} else if !l.ProtectLiveOwner && !p.OwnerBound() {
+	} else if !l.ProtectLiveOwner && !shell && !p.OwnerBound() {
 		next = append(next, l.Expires)
 	}
 	if p != nil && p.MaxLifetime > 0 && !l.ProtectLiveOwner {
@@ -115,10 +117,12 @@ func decide(ctx context.Context, l Lease, host string, now time.Time, check func
 	switch {
 	case !ready:
 		v.Hold, v.Due = HoldGrace, earliest(waiting, grace)
-	case v.ActivityErr != nil:
-		v.Hold = HoldResourceUnknown
 	case v.Activity != nil && v.Activity.Busy != "":
 		v.Hold = HoldResourceBusy
+	case live != ownerpkg.Dead && (shell || (p != nil && p.Binding == policypkg.Hybrid)) && (live != ownerpkg.Alive || p == nil || !p.ReclaimLiveOwner):
+		v.Hold = HoldLiveOwner
+	case v.ActivityErr != nil:
+		v.Hold = HoldResourceUnknown
 	case p != nil && p.Action == policypkg.Report:
 		v.Hold = HoldReportOnly
 	default:

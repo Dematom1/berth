@@ -43,7 +43,10 @@ Lease policies are off until DIBS_LEASE_POLICIES=1 or "lease_policies": true.
 While on, the policies table in the user config picks each new lease's rule by
 resource kind, or kind/owner kind: binding time (TTL), owner (only owner death
 ends it), or hybrid (owner-bound plus idle or max_lifetime); ttl, renew,
-max_lifetime, grace and action destroy|report. The lease records its policy.
+max_lifetime, grace, idle, reclaim_live_owner and action destroy|report. Shells
+never reclaim on TTL while their owner is alive or unknown. Idle/max_lifetime
+reclaim a live owner only with reclaim_live_owner: true on a hybrid row; an
+unknown owner is never reclaimed. The lease records its policy.
 --ttl must fit max_lifetime; --idle D and --max-lifetime D may only tighten the
 row. Off, --idle and --max-lifetime exit 2 naming the setting.
 Output: --axi for agents, --json for scripts (mutually exclusive).

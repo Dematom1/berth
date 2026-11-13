@@ -486,7 +486,11 @@ func Governing(l Lease) (policypkg.Policy, string) {
 	if l.Policy != nil {
 		return *l.Policy, "lease"
 	}
-	p := policypkg.Policy{Row: l.ResourceRef.Adapter, Binding: policypkg.Time, TTL: l.TTL, Action: policypkg.Destroy}
+	binding := policypkg.Time
+	if l.ResourceRef.Adapter == "shell" && l.ResourceRef.Process != nil {
+		binding = policypkg.Owner
+	}
+	p := policypkg.Policy{Row: l.ResourceRef.Adapter, Binding: binding, TTL: l.TTL, Action: policypkg.Destroy}
 	if l.ProtectLiveOwner {
 		p.Binding = policypkg.Owner
 	}
@@ -511,7 +515,7 @@ func (m *Manager) Explain(ctx context.Context, id string) (Explanation, error) {
 	e.Verdict = decide(ctx, l, host, now, m.checkOwner, m.options.Adapters)
 	e.Policy, e.PolicySource = Governing(l)
 	e.Liveness, e.Sweep = e.Verdict.Liveness, e.Verdict.Reclaim
-	held := e.Verdict.Hold == HoldGrace || e.Verdict.Hold == HoldResourceBusy || e.Verdict.Hold == HoldResourceUnknown
+	held := e.Verdict.Hold == HoldGrace || e.Verdict.Hold == HoldResourceBusy || e.Verdict.Hold == HoldResourceUnknown || e.Verdict.Hold == HoldLiveOwner
 	e.Reclaim = e.ThisMachine && e.Liveness == ownerpkg.Dead && !held
 	e.Reason = why(e, l)
 	if l.ResourceRef.Pending {
@@ -529,6 +533,8 @@ func why(e Explanation, l Lease) string {
 		return v.Activity.Busy + "; nothing reclaims it while that job runs"
 	case v.Hold == HoldResourceUnknown:
 		return v.Trigger + " fired, but the resource's activity cannot be read; nothing would reclaim it"
+	case v.Hold == HoldLiveOwner:
+		return v.Trigger + " fired, but the owner is alive or unknown; it would be reclaimed if the policy allowed reclaiming a live owner"
 	case v.Hold == HoldGrace:
 		return "a reclaim condition holds, but the policy's grace period has not passed; nothing would reclaim it yet"
 	case v.Hold == HoldReportOnly:

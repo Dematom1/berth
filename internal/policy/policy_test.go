@@ -19,7 +19,7 @@ func TestDefaultsCoverEveryResource(t *testing.T) {
 			t.Fatalf("default %s = %+v, %v", r, p, ok)
 		}
 	}
-	if p := table["shell"]; p.Binding != Hybrid || p.Idle != 30*time.Minute {
+	if p := table["shell"]; p.Binding != Hybrid || p.Idle != 30*time.Minute || p.ReclaimLiveOwner {
 		t.Fatalf("shell default = %+v", p)
 	}
 	if p := table["kind"]; p.Binding != Time || p.TTL != 4*time.Hour || p.MaxLifetime != 24*time.Hour {
@@ -41,19 +41,25 @@ func TestConfiguredRowsReplaceAndNarrow(t *testing.T) {
 	if p, _ := Resolve(table, "kind", "pid"); p.Row != "kind" || p.Binding != Owner || p.MaxLifetime != 0 {
 		t.Fatalf("replaced row = %+v", p)
 	}
+	for _, binding := range []string{Time, Owner} {
+		if _, err := Table(map[string]Row{"shell": {Binding: binding, ReclaimLiveOwner: true}}, kinds); err == nil || !strings.Contains(err.Error(), "reclaim_live_owner requires a hybrid binding") {
+			t.Fatalf("reclaim_live_owner accepted for %s: %v", binding, err)
+		}
+	}
 	for row, want := range map[string]Row{
-		"binding must be time, owner, or hybrid":    {Binding: "forever"},
-		"action must be destroy or report":          {Binding: "time", Action: "delete"},
-		"non-negative Go duration":                  {Binding: "time", TTL: "soon"},
-		"max_lifetime must be at least ttl":         {Binding: "time", TTL: "4h", MaxLifetime: "1h"},
-		"owner binding has no idle or max_lifetime": {Binding: "owner", MaxLifetime: "24h"},
-		"idle needs a hybrid binding":               {Binding: "time", Idle: "5m"},
-		"hybrid binding needs idle or max_lifetime": {Binding: "hybrid"},
-		"renew must not exceed ttl":                 {Binding: "time", TTL: "1h", Renew: "2h"},
-		"no idle signal":                            {Binding: "hybrid", Idle: "5m"},
-		"job deadlines come from job classes":       {Binding: "time"},
-		"key must be a resource kind":               {Binding: "time"},
-		"optionally /<owner kind> (pid, pr, exec)":  {Binding: "time"},
+		"binding must be time, owner, or hybrid":       {Binding: "forever"},
+		"action must be destroy or report":             {Binding: "time", Action: "delete"},
+		"non-negative Go duration":                     {Binding: "time", TTL: "soon"},
+		"max_lifetime must be at least ttl":            {Binding: "time", TTL: "4h", MaxLifetime: "1h"},
+		"owner binding has no idle or max_lifetime":    {Binding: "owner", MaxLifetime: "24h"},
+		"idle needs a hybrid binding":                  {Binding: "time", Idle: "5m"},
+		"hybrid binding needs idle or max_lifetime":    {Binding: "hybrid"},
+		"reclaim_live_owner requires a hybrid binding": {Binding: "time", ReclaimLiveOwner: true},
+		"renew must not exceed ttl":                    {Binding: "time", TTL: "1h", Renew: "2h"},
+		"no idle signal":                               {Binding: "hybrid", Idle: "5m"},
+		"job deadlines come from job classes":          {Binding: "time"},
+		"key must be a resource kind":                  {Binding: "time"},
+		"optionally /<owner kind> (pid, pr, exec)":     {Binding: "time"},
 	} {
 		key := map[string]string{"no idle signal": "kind", "job deadlines come from job classes": "process", "key must be a resource kind": "vm", "optionally /<owner kind> (pid, pr, exec)": "kind/github"}[row]
 		if key == "" {
