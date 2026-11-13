@@ -186,8 +186,8 @@ The cadence is a recommendation. Missing it does not by itself make a lease recl
 
 Reviewers check every change to `internal/lease/lease.go`, `internal/lease/manager.go`, `internal/owner/`, and the lease commands in `internal/cli/cli.go` against these rules.
 
-1. **Never reclaim a live, unexpired owner.** Automatic reclaim (`sweep`, job admission) goes through `reclaimable`, which requires `dead` or expired. Expiry wins even over a live owner, by policy (ADR 0001, finding F1 in `verification/findings.md`). A protected lease requires `dead` (ADR 0008, `ProtectedSafe` in `verification/Lease.tla`). Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestFormalLeaseDomain`, `TestProtectedReclaimAndRenew`.
-2. **`unknown` is never `dead`.** Any error that does not prove absence returns `unknown`. An `unknown` owner keeps its lease until expiry. Tests: `TestOwnerLiveness`, `TestOutOfRangePIDIsUnknownNotDead`.
+1. **Reclaim follows the recorded lease rule.** A time-bound lease can be reclaimed at expiry even with a live or unknown owner; an owner-bound lease requires proven owner death. Shell leases remain held for live or unknown owners, and busy or unobservable resources are never reclaimed. See [lease policies](../README.md#lease-policies) and [consumer contract](consumer-contract.md#reclaim-and-sweep). Tests: `TestReclaimAndExtend`, `TestSweepDecisions`, `TestFormalLeaseDomain`, `TestProtectedReclaimAndRenew`.
+2. **`unknown` is never `dead`.** Any error that does not prove absence returns `unknown`. Unknown liveness alone never permits reclaim; the recorded policy determines whether expiry can still reclaim. Tests: `TestOwnerLiveness`, `TestOutOfRangePIDIsUnknownNotDead`.
 3. **A host acts only on its own leases.** `reclaimable`, `extendLease`, and `releaseLease` compare `Machine` with this host before anything else. Expired foreign leases stay. Test: `TestReclaimAndExtend`.
 4. **A record is removed only after verify-gone.** `releaseLease` deletes the lease only after `Destroy` returns nil, and every built-in adapter's `Destroy` verifies absence before returning nil. The one exception is a job reservation whose group leader is already gone and reaped: `processResource.Destroy` then succeeds without verifying that descendants are gone. See [Jobs](jobs.md#process-group-cleanup) and [ADR 0002](adr/0002-reclaim-with-proof.md#existing-process-exception). See [Adapters](adapters.md#invariants). Test: `TestSweepPreviewRetryAndIdempotence`.
 5. **Cleanup intent is durable before the resource exists.** `Manager.Create` saves the lease before the adapter's `Create` runs. Test: `TestCLICreateFailureKeepsDurableCleanupIntent`.
@@ -197,12 +197,6 @@ Reviewers check every change to `internal/lease/lease.go`, `internal/lease/manag
 9. **A late renew never recreates.** A protected lease reattaches only to the same lease ID and a present resource. Every refusal leaves the record unchanged. Test: `TestProtectedReclaimAndRenew`.
 10. **Job deadlines never move.** `extendLease` refuses reservations. Test: `TestJobsRealProcesses` covers the job lifecycle. See [Jobs](jobs.md#invariants).
 
-## Planned
+## Owner extensions
 
-The approved extension direction in [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md#approved-direction-not-an-implemented-extension-interface) plans these owner extensions. None exists in the code today. The owner registry in `internal/owner/registry.go` is internal, not a versioned public interface.
-
-- A versioned Owner contract: `check` returns `alive`, `dead`, or `unknown` with an identity. Today the registry holds the three native kinds only.
-- An `exec` owner from a local script, such as `--owner exec:./check.sh`.
-- Out-of-process `dibs-owner-<name>` plugins on `PATH` that speak a JSON protocol over stdin and stdout.
-- A conformance kit for owners, alongside the planned `dibs adapter test <name>`. Neither command exists.
-- Owner kinds such as container, pod, unit, GitHub run, pull request, agent session, task, parent lease, URL, and device.
+The owner registry supports native owner kinds and the opt-in `exec` owner, which runs a caller-supplied liveness command. See [exec owners](../README.md#exec-owners) for its user-facing contract. The broader extension direction remains recorded in [ADR 0005](adr/0005-adapter-and-owner-extension-contracts.md).
