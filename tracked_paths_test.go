@@ -21,7 +21,7 @@ func privatePathReason(path string) string {
 		switch {
 		case r == unicode.ReplacementChar:
 			return "is not valid UTF-8"
-		case unicode.IsControl(r):
+		case unicode.IsControl(r), unicode.Is(unicode.Cf, r):
 			return "contains a control character"
 		case unicode.Is(unicode.Co, r):
 			return "contains a private-use character"
@@ -37,6 +37,8 @@ func TestPrivatePathReason(t *testing.T) {
 		"a\tb",
 		"a\x1b[0mb",
 		"a\nb",
+		"a\u202eb",
+		"a\u200bb",
 		"\xff",
 		"x/Users/me/lock",
 		"x/private/tmp/lock",
