@@ -38,14 +38,17 @@ The SSH handshake compares this string exactly. See [Remote jobs over SSH](remot
 
 | Command | Flags | Positional |
 | --- | --- | --- |
-| `create`, `up` | `--owner`, `--ttl` (default `8h`), `--stale` (default `15m`), `--resources`, `--label key=value` (repeatable), `--adapter none\|kind\|k3d\|compose` (default `none`), `--file` (Compose only, required for Compose), `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2), `--quiet`, `-q` | none |
+| `create`, `up` | `--owner`, `--ttl` (default `8h`), `--stale` (default `15m`), `--resources`, `--label key=value` (repeatable), `--adapter none\|kind\|k3d\|compose` (default `none`), `--file` (Compose only, required for Compose), `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2), `--quiet`, `-q`, `--key`, `--pending`, `--name` (with `--pending`; these three need the `consumer_contract` opt-in, otherwise exit 2) | none |
 | `list`, `ls`, `ps`, `who` | `--owner`, `--machine` | none |
 | `extend` | `--ttl` (required, positive) | lease ID |
 | `release`, `down` | `--confirm` | lease ID |
 | `sweep` | `--confirm`, `--machine` | none |
 | `env` | none | lease ID |
 | `job` | `--cores`, `--memory`, `--class` (default `default`), `--timeout`, `--wait` (default `30m`), `--machine` | `-- <cmd...>` |
-| `adopt` | `--owner` (required), `--ttl` (required, positive), `--stale` (default `15m`), `--file` (Compose only), `--context`, `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2) | `<kind\|k3d\|compose> <name>` |
+| `adopt` | `--owner` (required), `--ttl` (required, positive), `--stale` (default `15m`), `--file` (Compose only), `--context`, `--protect-live-owner` (needs the `live_owner_protection` opt-in, otherwise exit 2), `--key`; or `--pending ID` alone, with optional `--file` (`--key` and `--pending` need the `consumer_contract` opt-in) | `<kind\|k3d\|compose> <name>` |
+| `reconcile` | `--confirm` (needs the `consumer_contract` opt-in) | optional lease ID |
+| `reclaim` | `--confirm` (needs the `consumer_contract` opt-in) | lease ID |
+| `explain` | none (needs the `consumer_contract` opt-in) | lease ID |
 | `orphans` | `--context` | none |
 | `machine install` | `--file` (required) | machine name |
 | `setup hooks` | `--remove` | none |
@@ -59,6 +62,7 @@ Behavior lives in the component docs:
 
 - `create`, `list`, `extend`, `release`, and `sweep`: [Leases](leases.md).
 - `adopt`, `orphans`, and the adapter flags: [Adapters](adapters.md).
+- `--pending`, `--key`, `reconcile`, `reclaim`, `explain`, and the contract form of `extend` and `release`: [Consumer contract](consumer-contract.md).
 - `job`: [Jobs](jobs.md).
 - `agent`, `machine install`, and `--machine`: [Remote jobs over SSH](remote.md).
 - `setup hooks`: [Agent hooks](hooks.md).
@@ -107,7 +111,7 @@ The `exitCodes` constant in `internal/cli/help.go` is the contract. The README r
 | Child's code | `dibs job`: the child ran to completion |
 | `124` | `dibs job`: the deadline fired before the child was confirmed exited, or completion could not be verified at the deadline (the coreutils `timeout` convention) |
 | `75` | `dibs job`: no slot freed within `--wait` (`EX_TEMPFAIL`). No child started. |
-| `3` | `dibs extend` refused a lease with live-owner protection. `reason` is `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`, and the lease is unchanged. The `extend` help states this. Unprotected leases keep exit 1. |
+| `3` | `dibs extend` refused a lease with live-owner protection. `reason` is `owner_dead`, `owner_unknown`, `resource_absent`, or `resource_unknown`, and the lease is unchanged. The `extend` help states this. Unprotected leases keep exit 1. With the consumer contract on (`DIBS_CONSUMER_CONTRACT=1` or `"consumer_contract": true`), every refusal by `reconcile`, `reclaim`, `explain`, `extend`, `release`, or a `--pending`/`--key` invocation exits 3 with a stable `reason`, and nothing changes. |
 | `76` | SSH transport or protocol failure after SSH started. The remote result is unknown. A remote child that exits 76 also returns 76, so the code alone does not prove a transport failure. Check stderr for the `SSH transport/protocol failed` line. |
 | `128 + signal` | `dibs job`: a signal ended the child |
 | `125` | `dibs job`: the helper exited before it ran the child, or the child's wait status was unavailable |

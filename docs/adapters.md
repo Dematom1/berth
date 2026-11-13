@@ -51,10 +51,10 @@ The `Prepare` function of each Docker-backed adapter then:
 
 1. Creates `<state>/resources/<id>/` with mode `0700`.
 2. Sets the resource name to `dibs-<lease id>`, or `dibs-<first 26 ID characters>` for k3d, which limits cluster names to 32 characters.
-3. For k3d only, records the context's endpoint from `docker context inspect` as `docker_host`. kind and Compose record the context name and never an endpoint.
+3. For k3d only, records the context's endpoint from `docker context inspect` as `docker_host`. kind and Compose record the context name and never an endpoint for resources they create.
 4. For Compose, writes the resolved config snapshot described under [Compose](#compose).
 
-Later commands use the pinned context name, not the caller's current environment. kind and Compose resolve the endpoint from that named context on every call, so if the context is later pointed at another daemon, cleanup targets that daemon. k3d is the only adapter that pins the endpoint itself:
+Later commands for created kind and Compose resources use the pinned context name, not the caller's current environment. They resolve the endpoint from that named context on every call, so if the context is later pointed at another daemon, cleanup targets that daemon. Adopted and pending-bound resources capture `docker_host` during adoption; ownership checks compare resolved endpoints, and cleanup requires that endpoint. k3d-created resources also pin the endpoint itself:
 
 - `DockerEnv` (kind, Compose, and discovery) sets `DOCKER_HOST=` (empty), `DOCKER_CONTEXT=<recorded context name>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `COMPOSE_INTERACTIVE_NO_CLI=1`.
 - `k3dEnv` sets `DOCKER_CONTEXT=` (empty), `DOCKER_HOST=<pinned endpoint>`, `KIND_EXPERIMENTAL_PROVIDER=docker`, and `KUBECONFIG=<private file>`.
@@ -109,10 +109,12 @@ The `process` adapter backs job reservations. It is not in the registry. `proces
 
 1. The owner must be alive, and the TTL must be positive.
 2. The adapter must support discovery, the name must be valid, and `--file` must be present exactly when the adapter requires it (Compose).
-3. No existing lease may already own the resource. `resourceLeased` compares adapter and name, and resolves other Docker contexts to rule out a shared endpoint.
-4. The resource must exist. Discovery finds it by its project or cluster label.
+3. No existing lease may already own the resource. `claimant` compares adapter and name, then compares Docker endpoints: recorded endpoints when both exist, otherwise resolved context endpoints. Context names alone count only when both refs lack endpoints and name the same context. If an endpoint cannot be resolved, adoption fails closed. A pending lease also claims its pinned handle.
+4. The resource must exist. Discovery finds it by its project or cluster label. A resource labeled `io.dibs.lease=<id>` for a pending lease belongs to that lease and is refused.
 5. The adapter's `Prepare` captures its cleanup scope with `Adopted` set. kind and k3d write their kubeconfig from `kind get kubeconfig` or `k3d kubeconfig get`. Compose verifies adoption.
-6. The lease gets `io.dibs.*` labels, and the state is saved at version 2.
+6. The lease gets `io.dibs.*` labels. State is saved as version 4 while any lease has an idempotency key or a pending resource, version 3 while any lease is protected, and version 2 otherwise. See [State](state.md#format-version-2).
+
+With `--pending ID`, `bindPending` binds the named resource to an existing pending lease instead of creating a lease. The pending lease supplies the owner, TTL, key, and Docker scope. Binding keeps the lease ID, merges the `io.dibs.*` attribution into the lease labels, and writes the same captured cleanup configuration as adoption. `Manager.Reconcile` finds the resource for a pending lease by its pinned handle or its `io.dibs.lease` label and binds a single unclaimed match. See [Consumer contract](consumer-contract.md#crash-safe-acquire). Tests: `TestPendingPinnedHandleLifecycle`, `TestReconcileByLabel`, `TestIntegrationPendingCrashRecovery`.
 
 Adoption does not recreate the resource and does not change its name. The adopted lease is then an ordinary lease: `dibs release <id> --confirm` runs the adapter's `Destroy` and deletes the resource. Adoption therefore carries the same destructive cleanup as a created lease.
 
@@ -120,7 +122,7 @@ For Compose, `verifyComposeAdoption` in `internal/adapter/compose/inventory.go` 
 
 ## Orphans
 
-`dibs orphans [--context NAME]` lists resources that no lease owns. `Manager.Orphans` runs discovery for every adapter that can create, then drops every resource that `resourceLeased` matches.
+`dibs orphans [--context NAME]` lists resources that no lease owns. `Manager.Orphans` runs discovery for every adapter that can create, then drops every resource that `claimant` matches, including resources that a pending lease pinned or labeled.
 
 - Discovery (`DiscoverDocker`) finds containers (`-a`), and for Compose also volumes and networks, by their project or cluster label. It groups them by name and reports labels, creation evidence, and the Compose working directory with its status.
 - The lease check reads a snapshot of `state.json` with `readInventoryStore`. That read takes no lock, writes nothing, and does not migrate state. Its answer is point-in-time evidence.

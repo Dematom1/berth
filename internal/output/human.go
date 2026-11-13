@@ -41,14 +41,13 @@ func humanValue(key string, value any, now time.Time) string {
 	if key == "age" {
 		return fmt.Sprint(value) + " ago"
 	}
-	// Print labels in their --label key=value form, not Go map syntax.
 	if labels, ok := value.(map[string]string); ok {
 		if len(labels) == 0 {
 			return "-"
 		}
 		pairs := make([]string, 0, len(labels))
-		for k, v := range labels {
-			pairs = append(pairs, k+"="+v)
+		for label, text := range labels {
+			pairs = append(pairs, label+"="+text)
 		}
 		sort.Strings(pairs)
 		return humanText(strings.Join(pairs, ", "))
@@ -59,7 +58,7 @@ func humanValue(key string, value any, now time.Time) string {
 func humanObject(w io.Writer, value map[string]any, now time.Time) {
 	for _, key := range keys(value) {
 		switch key {
-		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code":
+		case "records", "record", "count", "memory_bytes", "help", "code", "exit_code", "contract":
 			continue
 		case "protect_live_owner":
 			if value[key] == true {
@@ -103,11 +102,42 @@ func humanObject(w io.Writer, value map[string]any, now time.Time) {
 						cells[i] += ", protected"
 					}
 				}
+				if row["pending"] == true {
+					cells[6] += " (pending)"
+				}
 				fmt.Fprintln(table, strings.Join(cells, "\t"))
 			}
 			table.Flush()
 		case "lease":
 			humanObject(w, value[key].(map[string]any), now)
+		case "results":
+			rows := value[key].([]map[string]any)
+			if len(rows) == 0 {
+				fmt.Fprintln(w, "No pending leases.")
+			}
+			table := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+			if len(rows) > 0 {
+				fmt.Fprintln(table, "ID\tSTATUS\tRESOURCE\tMATCHES\tCONFLICTS")
+			}
+			for _, row := range rows {
+				resource := fmt.Sprint(row["resource_adapter"])
+				if name := fmt.Sprint(row["resource_name"]); name != "" {
+					resource += ":" + name
+				}
+				list := func(field string) string {
+					items, _ := row[field].([]string)
+					if len(items) == 0 {
+						return "-"
+					}
+					return strings.Join(items, ", ")
+				}
+				cells := []string{fmt.Sprint(row["id"]), fmt.Sprint(row["status"]), resource, list("matches"), list("conflicts")}
+				for i, cell := range cells {
+					cells[i] = humanText(cell)
+				}
+				fmt.Fprintln(table, strings.Join(cells, "\t"))
+			}
+			table.Flush()
 		default:
 			if items, ok := value[key].([]string); ok {
 				text := "none"

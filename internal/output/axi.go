@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,15 +36,25 @@ func axiView(value map[string]any, fullCommand string) map[string]any {
 			rows := item.([]map[string]any)
 			total := len(rows)
 			shown := make([]map[string]any, 0, min(total, axiListLimit))
-			// The protection column appears only when a shown lease is protected, so unprotected tables keep their shape.
-			protected := slices.ContainsFunc(rows[:min(total, axiListLimit)], func(row map[string]any) bool { return row["protect_live_owner"] == true })
+			// Optional columns appear only when some row has them, on every row of the table.
+			optional := map[string]any{}
+			for _, row := range rows[:min(total, axiListLimit)] {
+				for field, empty := range map[string]any{"pending": false, "key": "", "protect_live_owner": false} {
+					if _, ok := row[field]; ok {
+						optional[field] = empty
+					}
+				}
+			}
 			for _, row := range rows[:min(total, axiListLimit)] {
 				compact := map[string]any{}
 				for _, field := range []string{"id", "owner", "liveness", "expires", "machine", "resource", "resources", "cores", "memory_bytes", "kubeconfig"} {
 					compact[field] = row[field]
 				}
-				if protected {
-					compact["protect_live_owner"] = row["protect_live_owner"] == true
+				for field, empty := range optional {
+					compact[field] = empty
+					if value, ok := row[field]; ok {
+						compact[field] = value
+					}
 				}
 				if text, ok := compact["resources"].(string); ok {
 					compact["resources"] = preview(text)
@@ -117,8 +126,9 @@ func toonObject(w io.Writer, object map[string]any, indent string) {
 			nested := false
 			for _, row := range v {
 				for _, cell := range row {
+					// Tabular rows hold only primitives; lists and objects need the list form.
 					switch cell.(type) {
-					case map[string]any, map[string]string:
+					case map[string]any, map[string]string, []string:
 						nested = true
 					}
 				}

@@ -38,6 +38,42 @@ func testStore(t *testing.T) *store {
 	return s
 }
 
+func TestExtendRefusalReasons(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		machine string
+		live    ownerpkg.Liveness
+		expired bool
+		job     bool
+		want    string
+	}{
+		{"expired", "", ownerpkg.Alive, true, false, "expired"},
+		{"dead before expiry", "", ownerpkg.Dead, false, false, "owner_dead"},
+		{"dead after expiry", "", ownerpkg.Dead, true, false, "owner_dead"},
+		{"unknown after expiry", "", ownerpkg.Unknown, true, false, "owner_unknown"},
+		{"job deadline", "", ownerpkg.Alive, false, true, "job_deadline"},
+		{"wrong machine", "elsewhere", ownerpkg.Alive, false, false, "wrong_machine"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := testLease(t)
+			host := l.Machine
+			if tc.machine != "" {
+				l.Machine = tc.machine
+			}
+			if tc.expired {
+				l.Expires = testNow
+			}
+			if tc.job {
+				l.Reservation = &ReservationView{}
+			}
+			_, err := extendLease(&l, host, time.Hour, testNow, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return tc.live }, func(Lease) (bool, error) { return true, nil })
+			if reason(err) != tc.want {
+				t.Fatalf("reason = %q, want %q (%v)", reason(err), tc.want, err)
+			}
+		})
+	}
+}
+
 func TestReclaimAndExtend(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -202,7 +238,7 @@ func TestProtectedStateFormat(t *testing.T) {
 	for _, bad := range []string{
 		`{"version":2,"leases":{"` + protected.ID + `":` + leaseJSON(t, protected) + `}}`,
 		`{"version":3,"leases":{"` + job.ID + `":` + leaseJSON(t, job) + `}}`,
-		`{"version":4,"leases":{}}`,
+		`{"version":5,"leases":{}}`,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(bad), 0600); err != nil {
 			t.Fatal(err)

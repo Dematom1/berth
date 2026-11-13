@@ -11,7 +11,10 @@ import (
 // ResourceRef captures the cleanup scope before a resource is created.
 
 type ResourceRef struct {
-	Adopted    bool   `json:"adopted,omitempty"`
+	Adopted bool `json:"adopted,omitempty"`
+	// Pending records the scope, and optionally the handle, of a resource the
+	// caller has yet to create; Name is empty when only a label will match it.
+	Pending    bool   `json:"pending,omitempty"`
 	Adapter    string `json:"adapter"`
 	Name       string `json:"name,omitempty"`
 	Context    string `json:"docker_context,omitempty"`

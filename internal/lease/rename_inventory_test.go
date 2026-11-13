@@ -39,7 +39,7 @@ func TestRenamedInventoryAndAdoption(t *testing.T) {
 				if err != nil || len(rows) != 1 || rows[0]["labels"].(map[string]string)["io."+product+".lease"] != "old-attribution" {
 					t.Fatalf("lost legacy inventory: %v %v", rows, err)
 				}
-				l, err := m.Adopt(context.Background(), r)
+				l, _, err := m.Adopt(context.Background(), r)
 				if err != nil || l.ResourceRef.Name != name || !l.ResourceRef.Adopted {
 					t.Fatalf("adoption: %+v %v", l, err)
 				}

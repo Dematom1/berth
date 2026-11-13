@@ -12,18 +12,22 @@ import (
 )
 
 type Lease struct {
-	ID          string                 `json:"id"`
-	Machine     string                 `json:"machine"`
-	Owner       ownerpkg.Reference     `json:"owner"`
-	Created     time.Time              `json:"created"`
-	Expires     time.Time              `json:"expires"`
-	TTL         time.Duration          `json:"ttl"`
-	Description string                 `json:"resources"`
-	Labels      map[string]string      `json:"labels"`
+	ID               string             `json:"id"`
+	Machine          string             `json:"machine"`
+	Owner            ownerpkg.Reference `json:"owner"`
+	Created          time.Time          `json:"created"`
+	Expires          time.Time          `json:"expires"`
+	TTL              time.Duration      `json:"ttl"`
+	Description      string             `json:"resources"`
+	Labels           map[string]string  `json:"labels"`
+	ProtectLiveOwner bool               `json:"protect_live_owner,omitempty"`
+	Key              string             `json:"key,omitempty"`
+	// KeyedBy records which request a key named (create, pending, or adopt), so a
+	// retry in another mode is a different request even after a pending lease binds.
+	KeyedBy     string                 `json:"keyed_by,omitempty"`
+	PendingFile string                 `json:"pending_file,omitempty"`
 	ResourceRef adapterpkg.ResourceRef `json:"resource"`
 	Reservation *ReservationView       `json:"job,omitempty"`
-	// Opt-in: only proven owner death reclaims; expiry alone never does.
-	ProtectLiveOwner bool `json:"protect_live_owner,omitempty"`
 }
 
 func newLease(owner ownerpkg.Reference, ttl time.Duration, resources string, labels map[string]string, now time.Time) (Lease, error) {
@@ -53,53 +57,37 @@ func reclaimable(l Lease, host string, now time.Time, check func(ownerpkg.Refere
 	return live == ownerpkg.Dead || !now.Before(l.Expires), live
 }
 
-// RenewRefusal is a protected lease's renew refusal; the lease is left unchanged.
-type RenewRefusal struct {
-	Reason string
-	Cause  error
-}
+type RenewRefusal = Refusal
 
 const (
 	OwnerDead       = "owner_dead"
 	OwnerUnknown    = "owner_unknown"
 	ResourceAbsent  = "resource_absent"
 	ResourceUnknown = "resource_unknown"
+	Renewed         = "renewed"
+	Reattached      = "reattached"
 )
 
-func (r *RenewRefusal) Error() string {
-	message := map[string]string{
-		OwnerDead:       "renew refused: the lease owner is dead; the lease is retained for reclaim",
-		OwnerUnknown:    "renew refused: the lease owner cannot be verified; the lease is retained and not reclaimable",
-		ResourceAbsent:  "renew refused: the expired lease's resource is gone; the lease is retained",
-		ResourceUnknown: "renew refused: the expired lease's resource cannot be verified; the lease is retained",
-	}[r.Reason]
-	if r.Cause != nil {
-		message += ": " + r.Cause.Error()
-	}
-	return message
-}
-func (r *RenewRefusal) Unwrap() error { return r.Cause }
-
-const (
-	Renewed    = "renewed"
-	Reattached = "reattached"
-)
-
-// present reports whether a lease's pinned resource still exists; an error means unknown.
 func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check func(ownerpkg.Reference, time.Time) ownerpkg.Liveness, present func(Lease) (bool, error)) (string, error) {
 	if ttl <= 0 {
 		return "", errors.New("--ttl must be positive")
 	}
 	if l.Machine != host {
-		return "", errors.New("run dibs extend on the lease's machine")
+		return "", &RenewRefusal{Reason: "wrong_machine", Message: "run dibs extend on the lease's machine", Legacy: true}
 	}
 	if l.Reservation != nil {
-		return "", errors.New("job deadlines cannot be extended; start a new dibs job with --timeout")
+		return "", &RenewRefusal{Reason: "job_deadline", Message: "job deadlines cannot be extended; start a new dibs job with --timeout", Legacy: true}
 	}
 	status := Renewed
 	if !l.ProtectLiveOwner {
 		if reclaim, live := reclaimable(*l, host, now, check); reclaim || live != ownerpkg.Alive {
-			return "", errors.New("lease is expired, dead, or its owner cannot be verified; create a new lease")
+			reason := "expired"
+			if live == ownerpkg.Dead {
+				reason = OwnerDead
+			} else if live == ownerpkg.Unknown {
+				reason = OwnerUnknown
+			}
+			return "", &RenewRefusal{Reason: reason, Message: "lease is expired, dead, or its owner cannot be verified; create a new lease", Legacy: true}
 		}
 	} else {
 		switch check(l.Owner, now) {
@@ -109,7 +97,6 @@ func extendLease(l *Lease, host string, ttl time.Duration, now time.Time, check 
 		default:
 			return "", &RenewRefusal{Reason: OwnerUnknown}
 		}
-		// A late renew reattaches only to the same, still-present resource; it never recreates one.
 		if !now.Before(l.Expires) {
 			found, err := present(*l)
 			if err != nil {
@@ -138,6 +125,15 @@ func releaseLease(ctx context.Context, s *store, id, host string, adapters adapt
 	if !ok && l.ResourceRef.Adapter != "process" {
 		return false, fmt.Errorf("unsupported resource adapter %q; keep the lease and use a compatible dibs version", l.ResourceRef.Adapter)
 	}
+	if l.ResourceRef.Pending {
+		absent, err := settlePending(ctx, s, &l)
+		if err != nil {
+			return false, err
+		}
+		if absent {
+			return forget(s, l)
+		}
+	}
 	var cleanupErr error
 	if l.ResourceRef.Adapter == "process" {
 		cleanupErr = (processResource{}).Destroy(ctx, l)
@@ -147,9 +143,13 @@ func releaseLease(ctx context.Context, s *store, id, host string, adapters adapt
 	if err := cleanupErr; err != nil {
 		return false, err
 	}
-	delete(s.Leases, id)
+	return forget(s, l)
+}
+
+func forget(s *store, l Lease) (bool, error) {
+	delete(s.Leases, l.ID)
 	if err := s.Save(); err != nil {
-		s.Leases[id] = l
+		s.Leases[l.ID] = l
 		return false, err
 	}
 	return true, nil

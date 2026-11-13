@@ -32,7 +32,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	full := fs.Bool("full", false, "complete AXI lease record")
 	outputpkg.Flags(fs, &mode)
 	contextName := fs.String("context", "", "Docker context (default selected context)")
-	var owner, file string
+	var owner, file, key, pending string
 	var protect bool
 	var ttl time.Duration
 	stale := 15 * time.Minute
@@ -41,6 +41,8 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		fs.DurationVar(&ttl, "ttl", 0, "required positive lifetime")
 		fs.DurationVar(&stale, "stale", stale, "heartbeat staleness")
 		fs.StringVar(&file, "file", "", "Compose file")
+		fs.StringVar(&key, "key", "", "idempotency key")
+		fs.StringVar(&pending, "pending", "", "bind to this pending lease")
 		fs.BoolVar(&protect, "protect-live-owner", false, "reclaim only on proven owner death")
 	}
 	if err := parseFlags(fs, args); err != nil {
@@ -54,11 +56,23 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	var parsedOwner ownerpkg.Reference
 	if command == "adopt" {
 		d, known := app.resources.Lookup(fs.Arg(0))
+		if (pending != "" || key != "") && !consumerContractEnabled() {
+			return outputpkg.Error(out, mode, 2, consumerContractOff, help(command))
+		}
+		if pending != "" {
+			if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || !leasepkg.ValidID(pending) || owner != "" || ttl != 0 || key != "" || protect || *contextName != "" || (!d.RequiresFile && file != "") {
+				return outputpkg.Error(out, mode, 2, "--pending takes type, handle and a lease id; the pending lease already fixes owner, TTL, key and context", help(command))
+			}
+			return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Resource: adapterpkg.ResourceRef{Adapter: fs.Arg(0), Name: fs.Arg(1)}, File: file, Pending: pending}, true)
+		}
 		if fs.NArg() != 2 || !known || d.Discover == nil || !adapterpkg.ValidResourceName(fs.Arg(1)) || owner == "" || ttl <= 0 || d.RequiresFile != (file != "") {
 			return outputpkg.Error(out, mode, 2, "require type, name, explicit --owner and positive --ttl; --file is required only for compose", help(command))
 		}
 		if protect && !liveOwnerProtectionEnabled() {
 			return outputpkg.Error(out, mode, 2, liveOwnerProtectionOff, help(command))
+		}
+		if key != "" && !leasepkg.ValidKey(key) {
+			return outputpkg.Error(out, mode, 2, keyRule, help(command))
 		}
 		var err error
 		parsedOwner, err = app.owners.Bind(ctx, owner, stale, time.Now().UTC())
@@ -74,13 +88,7 @@ func (app application) runInventory(ctx context.Context, command string, args []
 	}
 	if command == "adopt" {
 		r.Adapter, r.Name = fs.Arg(0), fs.Arg(1)
-		l, err := app.leases.Adopt(ctx, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, ProtectLiveOwner: protect})
-		if err != nil {
-			return app.leaseError(out, mode, command, err)
-		}
-		kube := kubeconfigFor(app.resources, l)
-		outputpkg.Emit(out, mode, map[string]any{"lease": outputpkg.LeaseView(l, ownerpkg.Alive, l.Created, kube), "record": outputpkg.LeaseRecord(l, kube), "help": []string{"Run dibs release " + l.ID + " to preview cleanup"}})
-		return 0
+		return app.adopt(ctx, out, mode, leasepkg.AdoptRequest{Owner: parsedOwner, TTL: ttl, Resource: r, File: file, Key: key, ProtectLiveOwner: protect}, key != "")
 	}
 	rows, err := app.leases.Orphans(ctx, r)
 	if err != nil {
@@ -90,5 +98,31 @@ func (app application) runInventory(ctx context.Context, command string, args []
 		row["adopt"] = adoptionCommand(row)
 	}
 	outputpkg.Emit(out, mode, map[string]any{"count": len(rows), "orphans": rows, "help": []string{"Unleased does not mean unused. Choose an owner and TTL explicitly; age alone never authorizes cleanup."}})
+	return 0
+}
+
+func (app application) adopt(ctx context.Context, out io.Writer, mode outputpkg.Mode, r leasepkg.AdoptRequest, contract bool) int {
+	l, done, err := app.leases.Adopt(ctx, r)
+	if err != nil && contract {
+		return app.contractError(out, mode, "adopt", r.Pending, err)
+	}
+	if err != nil {
+		return app.leaseError(out, mode, "adopt", err)
+	}
+	live := ownerpkg.Alive
+	if r.Pending != "" {
+		// A pending lease's owner was not rechecked here, so report what it is now.
+		live = app.owners.Check(ctx, l.Owner, time.Now().UTC()).Liveness
+	}
+	kube := kubeconfigFor(app.resources, l)
+	result := map[string]any{"lease": outputpkg.LeaseView(l, live, l.Created, kube), "record": outputpkg.LeaseRecord(l, kube), "help": []string{"Run dibs release " + l.ID + " to preview cleanup"}}
+	if contract {
+		status := map[bool]string{false: "adopted", true: "bound"}[r.Pending != ""]
+		if done {
+			status = "already_done"
+		}
+		result = contractResult(status, result)
+	}
+	outputpkg.Emit(out, mode, result)
 	return 0
 }

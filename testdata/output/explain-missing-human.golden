@@ -1,0 +1,2 @@
+Error: lease aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa does not exist on this machine
+Run dibs create to acquire a new lease; a released lease cannot be restored
