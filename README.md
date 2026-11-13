@@ -805,7 +805,9 @@ which resources will be deleted.
 ## State and safety
 
 `DIBS_STATE` defaults to `$XDG_STATE_HOME/dibs`, or
-`~/.local/state/dibs` when XDG is unset. State files and snapshots are private to
+`~/.local/state/dibs` when XDG is unset. An explicit `DIBS_STATE` must be an
+absolute path; dibs refuses relative paths rather than create state in the
+working directory. State files and snapshots are private to
 the invoking user. State contains resolved Compose values, which may include
 secrets. Keep this directory on a local filesystem, not a network share.
 
