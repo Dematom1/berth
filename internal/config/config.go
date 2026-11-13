@@ -222,6 +222,12 @@ func Policies() (map[string]policypkg.Row, error) {
 	if err := decoder.Decode(&c); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err == nil {
+			err = errors.New("multiple JSON values")
+		}
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 	return c.Policies, nil
 }
 

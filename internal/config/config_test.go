@@ -44,6 +44,17 @@ func TestJobBudgetAndConfig(t *testing.T) {
 	}
 }
 
+func TestPoliciesRejectTrailingJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"policies":{}} {}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DIBS_CONFIG", path)
+	if _, err := Policies(); err == nil {
+		t.Fatal("accepted trailing JSON after policy config")
+	}
+}
+
 func TestPartialConfigKeepsDefaultClass(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{"classes":{"suite":{"cores":1,"memory":"1GiB","timeout":"1h"}}}`), 0600); err != nil {
