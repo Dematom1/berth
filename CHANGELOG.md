@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.4](https://github.com/Dematom1/dibs/compare/v0.2.3...v0.2.4) (2026-11-13)
+
+
+### Features
+
+* **lease:** add recoverable consumer lease contract ([#45](https://github.com/Dematom1/dibs/issues/45)) ([9c3062a](https://github.com/Dematom1/dibs/commit/9c3062aaf9f894f21d1c0a1c1c86da9df8f7e155)), closes [#43](https://github.com/Dematom1/dibs/issues/43)
+* **lease:** add shell leases and configurable policies ([#48](https://github.com/Dematom1/dibs/issues/48)) ([a4ee7a3](https://github.com/Dematom1/dibs/commit/a4ee7a32c55f56db6a82a3312bb5839ca874a0af))
+* **lease:** protect live owners from expiry reclamation ([#44](https://github.com/Dematom1/dibs/issues/44)) ([c8b4b0b](https://github.com/Dematom1/dibs/commit/c8b4b0b1eb720c274d3416bcc7b9abfd91ff44ef)), closes [#41](https://github.com/Dematom1/dibs/issues/41)
+
+
+### Bug Fixes
+
+* **lease:** prevent working-directory state paths ([#49](https://github.com/Dematom1/dibs/issues/49)) ([618b5a5](https://github.com/Dematom1/dibs/commit/618b5a59901608edf6ac2040205dc7ef13d51b60))
+
 ## [0.2.3](https://github.com/Dematom1/dibs/compare/v0.2.2...v0.2.3) (2026-11-12)
 
 
