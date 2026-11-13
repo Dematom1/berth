@@ -225,6 +225,18 @@ func (a adapter) Destroy(ctx context.Context, t adapterpkg.Target) error {
 			a.logf(ref, "verified gone")
 			return nil
 		}
+		if sig == syscall.SIGHUP {
+			for pid := a.o.Self; pid > 1; pid = procs[pid].PPID {
+				if _, in := found[pid]; in {
+					return fmt.Errorf("dibs is running inside shell %d; release it from another shell; lease retained", ref.PID)
+				}
+			}
+			if shell, ok := procs[ref.PID]; live(shell, ok, ref.Start) {
+				if why := busy(procs, shell); why != "" {
+					return fmt.Errorf("%s; lease retained: %w", why, adapterpkg.ErrBusy)
+				}
+			}
+		}
 		a.logf(ref, "%s to %s", sigName(sig), strings.Join(describe(found), ", "))
 		for pid, p := range found {
 			if err := syscall.Kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {

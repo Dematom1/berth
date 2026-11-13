@@ -87,6 +87,29 @@ func TestReclaimGuards(t *testing.T) {
 			t.Fatal("activity without a process table is known")
 		}
 	})
+	t.Run("foreground job appearing before SIGHUP retains lease", func(t *testing.T) {
+		const shellPID, jobPID = 2147483630, 2147483631
+		calls := 0
+		var log bytes.Buffer
+		list := func(context.Context) (map[int]Process, error) {
+			calls++
+			shell := Process{PID: shellPID, PPID: 1, PGID: shellPID, TPGID: shellPID, Stat: "Ss", TTY: "pts/9", Start: start, Name: "zsh"}
+			procs := map[int]Process{shellPID: shell}
+			if calls > 1 {
+				shell.TPGID = jobPID
+				procs[shellPID] = shell
+				procs[jobPID] = Process{PID: jobPID, PPID: shellPID, PGID: jobPID, TPGID: jobPID, Stat: "S+", TTY: "pts/9", Start: start, Name: "work"}
+			}
+			return procs, nil
+		}
+		d := definition(list, &log)
+		if err := d.Adapter.Destroy(context.Background(), target(shellPID)); !errors.Is(err, adapterpkg.ErrBusy) {
+			t.Fatalf("destroy = %v, want busy refusal", err)
+		}
+		if strings.Contains(log.String(), "SIGHUP") {
+			t.Fatalf("foreground job was signaled: %s", log.String())
+		}
+	})
 	t.Run("reused shell and helper PIDs are never signaled", func(t *testing.T) {
 		const shellPID, helperPID = 2147483640, 2147483641
 		calls := 0
