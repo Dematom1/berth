@@ -10,6 +10,7 @@ import (
 
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 )
 
 // LeaseLabel is the label a caller stamps on a resource it builds for a pending
@@ -35,6 +36,7 @@ func (r *Refusal) Error() string {
 			"wrong_machine": "run dibs extend on the lease's machine",
 			"job_deadline":  "job deadlines cannot be extended; start a new dibs job with --timeout",
 			"expired":       "lease is expired; release it and acquire again",
+			MaxLifetime:     "renew refused: the lease reached its policy's maximum lifetime; release it and acquire again",
 		}[r.Reason]
 	}
 	if r.Cause != nil {
@@ -43,6 +45,15 @@ func (r *Refusal) Error() string {
 	return message
 }
 func (r *Refusal) Unwrap() error { return r.Cause }
+
+// graceEnd is when a dead owner's grace period ends, counting from now when no confirmed command has seen the death yet.
+func graceEnd(l Lease, now time.Time) time.Time {
+	since := now
+	if l.DeadSince != nil {
+		since = *l.DeadSince
+	}
+	return since.Add(l.Policy.Grace)
+}
 
 func refuse(reason, message string) error { return &Refusal{Reason: reason, Message: message} }
 
@@ -64,16 +75,18 @@ func sameOwner(a, b ownerpkg.Reference) bool {
 
 // settleVersion writes the lowest version that holds every record, so an older
 // binary refuses state it would misread: 3 for live-owner protection, 4 for keys
-// and pending leases, which a version 3 reader would silently drop on save.
+// and pending leases, which a version 3 reader would silently drop on save, and 5
+// for lease policies and shells, which a version 4 reader would reclaim at expiry.
 func (s *store) settleVersion() {
 	version := 2
 	for _, l := range s.Leases {
-		if l.Key != "" || l.ResourceRef.Pending {
-			version = 4
-			break
-		}
-		if l.ProtectLiveOwner {
-			version = 3
+		switch {
+		case l.Policy != nil || l.DeadSince != nil || l.ResourceRef.Process != nil:
+			version = 5
+		case l.Key != "" || l.ResourceRef.Pending:
+			version = max(version, 4)
+		case l.ProtectLiveOwner:
+			version = max(version, 3)
 		}
 	}
 	if version > 2 || s.Version > 2 {
@@ -428,6 +441,21 @@ func (m *Manager) Reclaim(ctx context.Context, id string, confirm bool) (Reclaim
 	case ownerpkg.Unknown:
 		return ReclaimResult{}, refuse("owner_unknown", "owner "+l.Owner.String()+" cannot be verified; reclaim refused")
 	}
+	v := decide(ctx, l, host, now, func(ownerpkg.Reference, time.Time) ownerpkg.Liveness { return live }, m.options.Adapters)
+	if confirm && observeDeath(&l, v, now) {
+		s.Leases[id] = l
+		if err := s.Save(); err != nil {
+			return ReclaimResult{}, err
+		}
+	}
+	switch v.Hold {
+	case HoldGrace:
+		return ReclaimResult{}, refuse(HoldGrace, "owner "+l.Owner.String()+" is dead, but the lease's grace period runs until "+graceEnd(l, now).Format(time.RFC3339)+"; reclaim refused")
+	case HoldResourceBusy:
+		return ReclaimResult{}, refuse(HoldResourceBusy, v.Activity.Busy+"; reclaim refused")
+	case HoldResourceUnknown:
+		return ReclaimResult{}, &Refusal{Reason: HoldResourceUnknown, Message: "the resource's activity cannot be read; reclaim refused", Cause: v.ActivityErr}
+	}
 	if !confirm {
 		return ReclaimResult{ID: id, Status: "preview", Liveness: live}, nil
 	}
@@ -446,6 +474,26 @@ type Explanation struct {
 	Sweep       bool
 	Reclaim     bool
 	Reason      string
+	Verdict     Verdict
+	// Policy governs the lease: its recorded policy, or the rule a lease without one follows.
+	Policy       policypkg.Policy
+	PolicySource string
+}
+
+// Governing returns the lease's recorded policy, or the time rule (owner-bound
+// when protected) that a lease acquired without one follows, and where it came from.
+func Governing(l Lease) (policypkg.Policy, string) {
+	if l.Policy != nil {
+		return *l.Policy, "lease"
+	}
+	p := policypkg.Policy{Row: l.ResourceRef.Adapter, Binding: policypkg.Time, TTL: l.TTL, Action: policypkg.Destroy}
+	if l.ProtectLiveOwner {
+		p.Binding = policypkg.Owner
+	}
+	if l.Reservation != nil {
+		return p, "job_class"
+	}
+	return p, "legacy"
 }
 
 // Explain reports, without acting, whether sweep or reclaim would act on a lease.
@@ -460,22 +508,46 @@ func (m *Manager) Explain(ctx context.Context, id string) (Explanation, error) {
 		return Explanation{}, refuse("not_found", "lease "+id+" does not exist on this machine")
 	}
 	e := Explanation{At: now, Lease: detached(l), Expired: !now.Before(l.Expires), ThisMachine: l.Machine == host}
-	e.Sweep, e.Liveness = reclaimable(l, host, now, m.checkOwner)
-	e.Reclaim = e.ThisMachine && e.Liveness == ownerpkg.Dead
-	switch {
-	case !e.ThisMachine:
-		e.Reason = "lease belongs to another machine; only that machine may reclaim it"
-	case e.Liveness == ownerpkg.Dead:
-		e.Reason = "owner is dead; sweep and reclaim would destroy the resource"
-	case e.Sweep:
-		e.Reason = "lease expired; sweep would destroy the resource, reclaim would refuse (owner " + string(e.Liveness) + ")"
-	case e.Liveness == ownerpkg.Alive:
-		e.Reason = "owner is alive and lease is unexpired; nothing would reclaim it"
-	default:
-		e.Reason = "owner liveness is unknown and lease is unexpired; nothing would reclaim it"
-	}
+	e.Verdict = decide(ctx, l, host, now, m.checkOwner, m.options.Adapters)
+	e.Policy, e.PolicySource = Governing(l)
+	e.Liveness, e.Sweep = e.Verdict.Liveness, e.Verdict.Reclaim
+	held := e.Verdict.Hold == HoldGrace || e.Verdict.Hold == HoldResourceBusy || e.Verdict.Hold == HoldResourceUnknown
+	e.Reclaim = e.ThisMachine && e.Liveness == ownerpkg.Dead && !held
+	e.Reason = why(e, l)
 	if l.ResourceRef.Pending {
 		e.Reason += "; the resource is pending registration"
 	}
 	return e, nil
+}
+
+func why(e Explanation, l Lease) string {
+	v := e.Verdict
+	switch {
+	case !e.ThisMachine:
+		return "lease belongs to another machine; only that machine may reclaim it"
+	case v.Hold == HoldResourceBusy:
+		return v.Activity.Busy + "; nothing reclaims it while that job runs"
+	case v.Hold == HoldResourceUnknown:
+		return v.Trigger + " fired, but the resource's activity cannot be read; nothing would reclaim it"
+	case v.Hold == HoldGrace:
+		return "a reclaim condition holds, but the policy's grace period has not passed; nothing would reclaim it yet"
+	case v.Hold == HoldReportOnly:
+		return v.Trigger + " fired; the policy's report action lists it but never reclaims it automatically"
+	case e.Liveness == ownerpkg.Dead:
+		return "owner is dead; sweep and reclaim would destroy the resource"
+	case v.Trigger == TriggerMaxLifetime:
+		return "lease reached its policy's maximum lifetime; sweep would destroy the resource, reclaim would refuse (owner " + string(e.Liveness) + ")"
+	case v.Trigger == TriggerIdle:
+		return "resource idle past the policy's idle timeout; sweep would destroy the resource, reclaim would refuse (owner " + string(e.Liveness) + ")"
+	case e.Sweep:
+		return "lease expired; sweep would destroy the resource, reclaim would refuse (owner " + string(e.Liveness) + ")"
+	case (l.ProtectLiveOwner || l.Policy.OwnerBound()) && e.Liveness == ownerpkg.Alive:
+		return "owner is alive and the lease is owner-bound; nothing would reclaim it"
+	case e.Liveness == ownerpkg.Alive:
+		return "owner is alive and lease is unexpired; nothing would reclaim it"
+	case l.ProtectLiveOwner || l.Policy.OwnerBound():
+		return "owner liveness is unknown and the lease is owner-bound; nothing would reclaim it"
+	default:
+		return "owner liveness is unknown and lease is unexpired; nothing would reclaim it"
+	}
 }

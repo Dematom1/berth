@@ -39,12 +39,29 @@ The positive lifetime used to set a lease's expiry, measured from creation or re
 _Avoid_: heartbeat staleness, admission wait
 
 **Expiry**:
-The instant at which a lease becomes reclaimable regardless of owner liveness, on its authoritative machine, unless the lease has live-owner protection.
+The instant at which a lease becomes reclaimable regardless of owner liveness, on its authoritative machine, unless the lease has live-owner protection or an owner-bound lease policy.
 _Avoid_: owner death, automatic deletion
 
 **Live-owner protection**:
 A per-lease opt-in, available once the machine enables the `live_owner_protection` setting, under which only proven owner death makes the lease reclaimable, and a live owner may renew it after expiry while its resource is still present.
 _Avoid_: pinning, lease lock, keep-alive
+
+**Lease policy**:
+The lifetime rule a lease records when it is acquired, chosen by resource kind and optionally owner kind once the machine enables the `lease_policies` setting: a binding, a default TTL, a renewal cadence, a maximum lifetime, a grace period, an idle timeout, and a reclaim action.
+Later config edits never change a recorded policy.
+_Avoid_: TTL, class
+
+**Binding**:
+How a lease policy ties the lease's life to time or to its owner: `time` ends it at expiry or owner death, `owner` only at owner death, and `hybrid` at owner death, an idle timeout, or a maximum lifetime.
+_Avoid_: protection, mode
+
+**Grace period**:
+How long a reclaim condition must hold before dibs acts on it. For owner death it counts from the first confirmed sweep or reclaim that saw the owner dead.
+_Avoid_: signal escalation delay
+
+**Busy resource**:
+A resource whose adapter reports work in progress, such as a shell whose terminal is held by a foreground job. Dibs never reclaims a busy resource, whatever its owner or policy says.
+_Avoid_: idle, alive
 
 **Heartbeat**:
 A periodically refreshed indication that an owner remains present, with a freshness limit independent of the lease's expiry.
@@ -64,6 +81,11 @@ _Avoid_: deletion requested, owner dead
 A resource-lifecycle integration that creates and cleans up the kind of resource named by a lease.
 It is distinct from an owner-liveness integration and from the lease ledger's authority.
 _Avoid_: owner, scheduler, machine
+
+**Exec owner**:
+An owner kind whose liveness is a caller-supplied command: exit 0 is alive, exit 1 through 125 is dead, and anything else is unknown.
+Dibs never learns what the command checks.
+_Avoid_: plugin, heartbeat
 
 ### Admission
 

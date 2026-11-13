@@ -13,6 +13,9 @@ func newOwners() ownerpkg.Registry {
 	if prOwnerEnabled() {
 		owners = append(owners, ownerpkg.PR())
 	}
+	if optedIn("DIBS_EXEC_OWNER", configpkg.ExecOwner) {
+		owners = append(owners, ownerpkg.Exec(ownerpkg.ExecTimeout))
+	}
 	return ownerpkg.NewRegistry(owners...)
 }
 
@@ -31,6 +34,16 @@ const consumerContractOff = `the consumer contract is off; set DIBS_CONSUMER_CON
 func consumerContractEnabled() bool {
 	return optedIn("DIBS_CONSUMER_CONTRACT", configpkg.ConsumerContract)
 }
+
+// shellAdapterOff names the settings that allow dibs adopt shell.
+const shellAdapterOff = `the shell adapter is off; set DIBS_SHELL_ADAPTER=1 or "shell_adapter": true in the user config`
+
+func shellAdapterEnabled() bool { return optedIn("DIBS_SHELL_ADAPTER", configpkg.ShellAdapter) }
+
+// leasePoliciesOff names the settings that turn on the lease policy table.
+const leasePoliciesOff = `lease policies are off; set DIBS_LEASE_POLICIES=1 or "lease_policies": true in the user config`
+
+func leasePoliciesEnabled() bool { return optedIn("DIBS_LEASE_POLICIES", configpkg.LeasePolicies) }
 
 // optedIn lets the DIBS_* variable override the user config either way; it has no BERTH_* alias.
 func optedIn(env string, config func() bool) bool {

@@ -10,6 +10,7 @@ import (
 	adapterpkg "github.com/Dematom1/dibs/internal/adapter"
 	budgetpkg "github.com/Dematom1/dibs/internal/budget"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 )
 
 type Options struct {
@@ -92,6 +93,8 @@ type CreateRequest struct {
 	Adapter          string
 	File             string
 	ProtectLiveOwner bool
+	// Policy is recorded on the lease; nil keeps TTL-only behavior.
+	Policy *policypkg.Policy
 	// Key makes a retry return the lease it already created instead of a second one.
 	Key string
 	// Pending records the lease before the caller creates the resource in Scope,
@@ -145,7 +148,7 @@ func (m *Manager) Create(ctx context.Context, r CreateRequest) (Lease, bool, err
 	if r.Key != "" {
 		l.KeyedBy = createMode(r.Pending)
 	}
-	l.ProtectLiveOwner = r.ProtectLiveOwner
+	l.ProtectLiveOwner, l.Policy = r.ProtectLiveOwner, r.Policy
 	if r.Key != "" && r.Adapter == "compose" {
 		l.PendingFile = r.File
 	}

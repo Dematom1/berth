@@ -1,9 +1,9 @@
 # dibs
 
 Owner-and-expiry leases for local stacks and clusters. One Go binary, no daemon.
-Supports leases, kind and k3d clusters, Docker Compose projects, and local jobs
-with machine-budget admission on macOS and Linux. Jobs can run on configured
-SSH machines.
+Supports leases, kind and k3d clusters, Docker Compose projects, running shells,
+and local jobs with machine-budget admission on macOS and Linux. Jobs can run on
+configured SSH machines.
 
 ## Install
 
@@ -265,6 +265,53 @@ of the [consumer contract](docs/consumer-contract.md): `contract: 1`, a
 lifecycle of a supervisor, an agent session, a CI job, or a script onto these
 commands.
 
+## Lease a running shell
+
+Agents open login shells, treehouse subshells, and the shells inside rex, tmux,
+and herdr panes. Each one can start helper processes, such as `gitstatusd` for
+the prompt. A shell lease ties a shell, and its helpers, to the task that owns
+it. The shell adapter is off by default. Turn it on per machine with
+`"shell_adapter": true` in the user config, or with `DIBS_SHELL_ADAPTER=1`; the
+variable overrides the config either way. While it is off, `adopt shell` fails
+with code 2 and names the setting. Leases already recorded can still be listed,
+released, and swept.
+
+```sh
+ export DIBS_SHELL_ADAPTER=1 DIBS_EXEC_OWNER=1
+ dibs adopt shell "$$" --owner 'exec:test -e /run/task-7.open' --ttl 8h
+ dibs list --owner 'exec:test -e /run/task-7.open'   # shells held for the task
+ dibs explain <id>                                   # why it is held
+ dibs sweep                                          # preview
+ dibs sweep --confirm
+```
+
+A shell enters dibs only through an explicit `adopt` by PID; dibs never starts
+shells, and `orphans` does not list unleased ones. Adopt refuses a process that
+is not a known shell (`sh`, `bash`, `zsh`, `fish`, `dash`, `ksh`, and similar,
+including login names such as `-zsh`), a process that is not running, and a
+shell that is already leased. It pins the shell's PID and start time, and
+records its current descendants with their start times. A reused PID is never
+mistaken for the shell or a helper.
+
+Cleanup covers the shell's whole tree: every recorded helper whose start time
+still matches, and every current descendant, including helpers started after
+adoption. It refuses, and keeps the lease, in these cases:
+
+- The shell has a foreground job: a process group other than the shell's own
+  holds its terminal. This holds for `release --confirm` too, and whatever the
+  owner or policy says.
+- The process table cannot be read.
+- Dibs itself runs inside the shell. Release it from another shell.
+
+Otherwise dibs sends SIGHUP to every member, then SIGTERM to survivors after 5
+seconds, then SIGKILL after 5 more. It reports each step on stderr, re-reads
+each process's start time before signaling it, and forgets the lease only after
+every member is gone. A shell that has already exited is verified gone.
+
+Pane shells and treehouse subshells are ordinary shells found by PID. This
+adapter does not drive tmux, herdr, or rex. A terminal lease that closes a pane
+hangs up its shell, and the shell lease then finds its shell gone.
+
 ## Run a local job
 
 ```sh
@@ -440,6 +487,30 @@ workers. The supported owner kinds are:
 - `pr:OWNER/REPO#N`, `pr:HOST/OWNER/REPO#N`, or
   `pr:https://HOST/OWNER/REPO/pull/N` follows a GitHub pull request. It is off
   until you opt in; see below.
+- `exec:<command>` follows a liveness command that any tool supplies. It is off
+  until you opt in; see below.
+
+### Exec owners
+
+The `exec` owner is off by default. Turn it on per machine with
+`"exec_owner": true` in the user config, or with `DIBS_EXEC_OWNER=1`; the
+variable overrides the config either way. While it is off, `--owner exec:...`
+fails with code 2, and an already recorded `exec` lease reads as unknown, so only
+expiry reclaims it.
+
+Dibs runs the command with `/bin/sh -c` from `/`, with stdin from `/dev/null`,
+output discarded, and a 10-second timeout, in its own process group so a timeout
+stops everything it started. It runs once per owner check, so a list, sweep, or
+explain runs every `exec` lease's command once.
+
+| Probe result | Liveness |
+| --- | --- |
+| Exit 0 | alive |
+| Exit 1 through 125 | dead |
+| Timeout, a signal, exit 126 (cannot execute) or 127 (not found), or a failure to start | unknown |
+
+`create` and `adopt` require the probe to report alive. Use absolute paths, and
+keep secrets out of the command: it is stored in the lease and shown as the owner.
 
 ### Pull request owners
 
@@ -542,6 +613,65 @@ Durations use Go syntax such as `30m`, `2h`, or `1h30m`. Every lease has a posit
 TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
 `extend --ttl` sets the expiry to now plus that duration.
 
+### Lease policies
+
+Leases differ: a shell should live while its task lives, and a test lab should
+live for a few renewable hours with a hard cap. The policy table decides each
+new lease's lifetime by resource kind, optionally narrowed by owner kind. It is
+off by default. Turn it on per machine with `"lease_policies": true` in the user
+config, or with `DIBS_LEASE_POLICIES=1`; the variable overrides the config either
+way. While it is off, `--idle` and `--max-lifetime` fail with code 2 and name the
+setting, and every lease follows its TTL as described above.
+
+| Field | Meaning |
+| --- | --- |
+| `binding` | `time`: the lease ends at expiry or owner death. `owner`: it lives exactly while its owner is alive; expiry never reclaims it. `hybrid`: owner-bound, and it also ends after `idle` or `max_lifetime` |
+| `ttl` | TTL when `--ttl` is omitted, including for `adopt`; default `8h` |
+| `renew` | Advised renewal cadence; `explain` shows `renew_by` |
+| `max_lifetime` | Hard cap from creation, even with a live owner; `extend` never passes it |
+| `grace` | How long a reclaim condition must hold before dibs acts; for owner death it counts from the first confirmed sweep or reclaim that saw the owner dead |
+| `idle` | Hybrid only: reclaim after the resource has been idle this long, even with a live owner. A shell is idle when it has no foreground job, measured from its terminal's last input or output. A shell without a terminal never goes idle |
+| `action` | `destroy` (default) reclaims; `report` lists the lease under `held` in `sweep` but never reclaims it automatically. Explicit `release` and `reclaim` still act |
+
+Built-in rows apply when the table is on:
+
+| Row | Binding | TTL | Renew | Max lifetime | Idle |
+| --- | --- | --- | --- | --- | --- |
+| `shell` | `hybrid` | `8h` | - | - | `30m` |
+| `kind`, `k3d`, `compose` | `time` | `4h` | `2h` | `24h` | - |
+| `none` | `time` | `8h` | - | - | - |
+
+Job deadlines come from job classes, and a `process` row is refused. A row you
+configure replaces the built-in row with the same key; omitted fields are off.
+Key a row by resource kind, or by `<kind>/<owner kind>`, which takes precedence:
+
+```json
+{
+  "lease_policies": true,
+  "policies": {
+    "shell": {"binding": "hybrid", "idle": "45m", "grace": "2m"},
+    "kind/pr": {"binding": "owner"},
+    "compose": {"binding": "time", "ttl": "2h", "max_lifetime": "12h", "action": "report"}
+  }
+}
+```
+
+An `owner` binding takes no `idle` or `max_lifetime`, a `time` binding takes no
+`idle`, and a `hybrid` binding needs one of them. Only adapters that report
+activity accept `idle`; today that is `shell`. Unknown fields and invalid rows
+fail `create` and `adopt` with code 2.
+
+`--ttl` on `create` or `adopt` must fit within `max_lifetime`. `--idle D` and
+`--max-lifetime D` may only tighten the row. Each lease records its effective
+policy when it is created, so later config edits, or turning the setting off,
+never loosen or tighten an existing lease. `--protect-live-owner` outranks a
+policy: only proven owner death reclaims a protected lease.
+
+A busy resource is never reclaimed, whatever the policy says. `dibs explain`
+shows the governing policy (`source: lease`, or `legacy` for a lease acquired
+without one), the condition that fired, when the next condition ends
+(`reclaim_at`, `remaining`), and why the lease is still held (`held_because`).
+
 ## Command reference
 
 | Command | Behavior |
@@ -550,6 +680,7 @@ TTL. `create` defaults to `8h`; `adopt` requires an explicit `--ttl`.
 | `dibs create` or `dibs up` | Create a lease, optionally with `--adapter kind`, `k3d`, or `compose`; with the consumer contract, `--pending` records it before you build the resource and `--key` makes retries idempotent |
 | `dibs adopt <type> <name> --owner KIND:ID --ttl D` | Lease an existing kind, k3d, or Compose resource after verifying existence |
 | `dibs adopt <type> <handle> --pending ID` | Consumer contract: register the resource you built for a pending lease |
+| `dibs adopt shell <pid> --owner KIND:ID` | Lease a running shell and its helpers by PID and start time (`shell_adapter`) |
 | `dibs reconcile [ID] [--confirm]` | Consumer contract: find and bind resources built for pending leases after a crash |
 | `dibs reclaim ID [--confirm]` | Consumer contract: reclaim one lease only when its owner is proven dead |
 | `dibs explain ID` | Consumer contract: owner liveness, expiry, and whether sweep or reclaim would act, and why |
@@ -694,6 +825,11 @@ while only protected leases remain, and version 2 otherwise. A binary that reads
 up to version 3 would drop keys and pending records when it saved, so it
 refuses version 4 instead.
 
+State schema version 5 adds recorded lease policies, owner-death stamps for grace
+periods, and shell leases. Dibs writes version 5 while any lease has one of
+them, and the lower versions above otherwise. A binary that reads up to version
+4 would reclaim an owner-bound lease at expiry, so it refuses version 5 instead.
+
 A stable `lock` file serializes ordinary readers and writers through kernel `flock`.
 `orphans` reads an atomic state snapshot without locks or writes. Its answer is
 point-in-time evidence, not a reservation. `adopt` rechecks ownership under the
@@ -807,6 +943,10 @@ preview leaves them intact, and reclaim them on expiry through confirmed sweep.
 With the consumer contract on, they also record pending leases, build each
 resource out of band as a crashed caller would, then reconcile or register it,
 check that `reclaim` refuses the live owner, and reclaim it after the owner dies.
+The shell test starts a real `bash` login shell on a pseudo-terminal with a
+background helper, adopts it under an `exec` owner, shows that reclaim refuses
+while the owner lives and while a foreground job runs, and shows that sweep
+removes the shell and its helper once the owner is gone; it needs `bash`.
 Missing adapter tools, Docker, or Compose fail the command rather
 than skip; failed cleanup retains the state directory and reports its path.
 

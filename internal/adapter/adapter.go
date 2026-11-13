@@ -20,6 +20,35 @@ type ResourceRef struct {
 	Context    string `json:"docker_context,omitempty"`
 	DockerHost string `json:"docker_host,omitempty"`
 	File       string `json:"file,omitempty"`
+	// Process pins a host process resource by PID and start time.
+	Process *ProcessRef `json:"process,omitempty"`
+}
+
+// ProcessRef pins a host process and the descendants recorded with it, each by
+// start time so a reused PID is never mistaken for a member.
+type ProcessRef struct {
+	PID     int             `json:"pid"`
+	Start   string          `json:"start"`
+	Members []ProcessMember `json:"members,omitempty"`
+}
+type ProcessMember struct {
+	PID     int    `json:"pid"`
+	Start   string `json:"start"`
+	Command string `json:"command"`
+}
+
+// ErrBusy marks a cleanup an adapter refused because the resource is doing work.
+var ErrBusy = errors.New("resource is busy")
+
+// Activity is a resource's current use as its adapter observes it.
+type Activity struct {
+	// Busy names work in progress that reclaim must never interrupt.
+	Busy string
+	// Idle is how long the resource has gone unused; IdleKnown is false when the adapter cannot tell.
+	Idle      time.Duration
+	IdleKnown bool
+	// Members describes what cleanup would act on, for previews.
+	Members []string
 }
 type Metadata struct {
 	LeaseID string
@@ -61,6 +90,11 @@ type Definition struct {
 	// Exists reports whether the pinned resource is present; an error means unknown.
 	// Optional: without it a protected lease cannot reattach after expiry.
 	Exists func(context.Context, Target) (bool, error)
+	// HostScoped resources live on this host, outside any Docker context.
+	HostScoped bool
+	// Activity reports current use; an error means unknown, which keeps the lease.
+	// Optional: without it a resource is never busy and its idle time is unknown.
+	Activity func(context.Context, Target) (Activity, error)
 }
 
 type Registry struct{ definitions []Definition }
@@ -82,6 +116,13 @@ func (r Registry) Lookup(name string) (Definition, bool) {
 		}
 	}
 	return Definition{}, false
+}
+func (r Registry) Names() []string {
+	var names []string
+	for _, d := range r.definitions {
+		names = append(names, d.Name)
+	}
+	return names
 }
 func (r Registry) CreateNames() []string {
 	var names []string

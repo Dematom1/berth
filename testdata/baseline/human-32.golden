@@ -7,6 +7,9 @@ A --protect-live-owner lease with a live owner also renews after expiry when its
 resource is still present (status reattached). A protected lease refused for
 reason owner_dead, owner_unknown, resource_absent or resource_unknown exits 3;
 every other refusal exits 1. A refusal leaves the lease unchanged.
+A lease with a policy max_lifetime never extends past it; at the cap, extend
+exits 3 with reason max_lifetime. Owner-bound policy leases renew like
+protected ones.
 With the consumer contract on, every refusal exits 3 with a reason: also
 expired, wrong_machine, job_deadline and not_found; exit 1 is then only for
 operation failures, and success carries contract: 1 and status renewed.
@@ -31,7 +34,8 @@ exit 0 success with status; 1 operation failed, records retained; 2 usage;
 3 refusal, nothing changed, with a stable reason: not_found, wrong_machine,
 not_pending, already_leased, key_conflict, handle_exists, handle_mismatch,
 resource_absent, resource_unknown, ambiguous, owner_alive, owner_unknown,
-expired, owner_dead, job_deadline. Extend success is renewed or reattached.
+expired, owner_dead, job_deadline, max_lifetime, grace, resource_busy.
+Extend success is renewed or reattached.
 Exit 1 is only for operation failures. Output carries contract: 1.
 See docs/consumer-contract.md.
 

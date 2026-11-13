@@ -5,6 +5,11 @@ Preview by default. --confirm reclaims on owner dead OR expiry. Unknown owners
 are retained unless expired. --protect-live-owner leases are reclaimed only on
 proven owner death. Foreign-machine leases are always retained, even
 when expired. Failed cleanup retains its lease. No unleased resources are touched.
+With lease policies, a lease's recorded policy also decides: owner-bound leases
+ignore expiry, and max_lifetime and idle timeouts end leases. held lists leases
+whose condition fired but are kept: grace, resource_busy, resource_unknown, or
+report_only. A busy resource, such as a shell with a foreground job, is never
+reclaimed.
 Run this command from a host timer for automatic reclamation; no daemon runs.
 Examples:
   dibs sweep

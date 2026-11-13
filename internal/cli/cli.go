@@ -19,6 +19,7 @@ import (
 	leasepkg "github.com/Dematom1/dibs/internal/lease"
 	outputpkg "github.com/Dematom1/dibs/internal/output"
 	ownerpkg "github.com/Dematom1/dibs/internal/owner"
+	policypkg "github.com/Dematom1/dibs/internal/policy"
 	remotepkg "github.com/Dematom1/dibs/internal/remote"
 )
 
@@ -55,6 +56,7 @@ func renewRefused(out io.Writer, mode outputpkg.Mode, id string, refusal *leasep
 		leasepkg.OwnerUnknown:    "Retry dibs extend " + id + " later; the lease is retained and not reclaimable",
 		leasepkg.ResourceAbsent:  "Run dibs release " + id + " --confirm, then lease a new resource",
 		leasepkg.ResourceUnknown: "Retry dibs extend " + id + " once the resource tool is reachable; the lease is retained",
+		leasepkg.MaxLifetime:     "Run dibs release " + id + " --confirm, then acquire a new lease; its policy caps how long one lease may live",
 	}[refusal.Reason]
 	outputpkg.Emit(out, mode, map[string]any{"code": "COMMAND_FAILED", "exit_code": 3, "error": refusal.Error(), "reason": refusal.Reason, "id": id, "help": []string{hint}})
 	return 3
@@ -146,7 +148,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	outputpkg.Flags(fs, &jsonOutput)
 	full := fs.Bool("full", false, "complete AXI records, text and list (JSON is always complete)")
 	var owner, resources, driver, file, machineName, key, name string
-	var ttl, stale time.Duration
+	var ttl, stale, idle, maxLifetime time.Duration
 	var confirm, quiet, pending, protect bool
 	labels := labelsFlag{}
 	if command == "list" || command == "sweep" {
@@ -168,6 +170,8 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		fs.BoolVar(&pending, "pending", false, "record the lease before the caller creates the resource")
 		fs.StringVar(&name, "name", "", "pending resource handle")
 		fs.BoolVar(&protect, "protect-live-owner", false, "reclaim only on proven owner death")
+		fs.DurationVar(&idle, "idle", 0, "tighter policy idle timeout")
+		fs.DurationVar(&maxLifetime, "max-lifetime", 0, "tighter policy maximum lifetime")
 	}
 	if command == "extend" {
 		fs.DurationVar(&ttl, "ttl", 0, "new lifetime from now")
@@ -244,6 +248,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 	}
 	now := time.Now().UTC()
 	var newOwner ownerpkg.Reference
+	var leasePolicy *policypkg.Policy
 	if command == "create" {
 		if owner == "" {
 			owner = compat.Env("OWNER")
@@ -254,6 +259,11 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 		var err error
 		newOwner, err = app.owners.Bind(ctx, owner, stale, now)
 		if err != nil {
+			return outputpkg.Error(out, jsonOutput, 2, err.Error(), help(command))
+		}
+		explicitTTL := false
+		fs.Visit(func(f *flag.Flag) { explicitTTL = explicitTTL || f.Name == "ttl" })
+		if leasePolicy, ttl, err = app.leasePolicy(driver, newOwner.Kind, ttl, explicitTTL, idle, maxLifetime); err != nil {
 			return outputpkg.Error(out, jsonOutput, 2, err.Error(), help(command))
 		}
 	}
@@ -292,7 +302,7 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			result["bin"], result["description"] = bin, "Owner-and-expiry leases for local stacks and clusters"
 		}
 	case "create":
-		request := leasepkg.CreateRequest{Owner: newOwner, TTL: ttl, Description: resources, Labels: labels, Adapter: driver, File: file, Key: key, Pending: pending, Name: name, ProtectLiveOwner: protect}
+		request := leasepkg.CreateRequest{Owner: newOwner, TTL: ttl, Description: resources, Labels: labels, Adapter: driver, File: file, Key: key, Pending: pending, Name: name, ProtectLiveOwner: protect, Policy: leasePolicy}
 		if key != "" && !pending && driver != "none" {
 			// A keyed retry must match the Docker scope it was first made in; an unreachable
 			// engine still lets the retry find its lease, but never creates a new one.
@@ -421,6 +431,10 @@ func (app application) runWithOutput(ctx context.Context, args []string, out io.
 			break
 		}
 		result = map[string]any{"confirmed": confirm, "eligible": r.Eligible, "reclaimed": r.Reclaimed, "unknown": r.Unknown}
+		if len(r.Held) > 0 {
+			// A fired condition that must not act yet: a busy resource, a grace period, or a report-only policy.
+			result["held"] = r.Held
+		}
 		if !confirm {
 			result["help"] = []string{"Run dibs sweep --confirm to reclaim eligible leases"}
 		}
