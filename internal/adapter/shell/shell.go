@@ -216,6 +216,15 @@ func (a adapter) Destroy(ctx context.Context, t adapterpkg.Target) error {
 		}
 	}
 	for _, sig := range []syscall.Signal{syscall.SIGHUP, syscall.SIGTERM, syscall.SIGKILL} {
+		procs, err = a.o.List(ctx)
+		if err != nil {
+			return err
+		}
+		found = members(procs, ref, known)
+		if len(found) == 0 {
+			a.logf(ref, "verified gone")
+			return nil
+		}
 		a.logf(ref, "%s to %s", sigName(sig), strings.Join(describe(found), ", "))
 		for pid, p := range found {
 			if err := syscall.Kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {

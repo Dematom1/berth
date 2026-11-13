@@ -87,6 +87,27 @@ func TestReclaimGuards(t *testing.T) {
 			t.Fatal("activity without a process table is known")
 		}
 	})
+	t.Run("PID reused after initial snapshot is never signaled", func(t *testing.T) {
+		calls := 0
+		var log bytes.Buffer
+		old := shell
+		old.Start = start
+		list := func(context.Context) (map[int]Process, error) {
+			calls++
+			p := old
+			if calls > 1 {
+				p.Start = "Fri Nov 13 09:00:00 2026"
+			}
+			return map[int]Process{p.PID: p}, nil
+		}
+		d := definition(list, &log)
+		if err := d.Adapter.Destroy(context.Background(), target(500)); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(log.String(), "SIGHUP") || !strings.Contains(log.String(), "verified gone") {
+			t.Fatalf("reused PID was signaled: %s", log.String())
+		}
+	})
 	t.Run("reused PID is gone, never signaled", func(t *testing.T) {
 		var log bytes.Buffer
 		reused := shell

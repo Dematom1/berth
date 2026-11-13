@@ -305,7 +305,8 @@ adoption. It refuses, and keeps the lease, in these cases:
 
 Otherwise dibs sends SIGHUP to every member, then SIGTERM to survivors after 5
 seconds, then SIGKILL after 5 more. It reports each step on stderr, re-reads
-each process's start time before signaling it, and forgets the lease only after
+each process's start time immediately before each signal round (with a remaining
+race between that read and the signal), and forgets the lease only after
 every member is gone. A shell that has already exited is verified gone.
 
 Pane shells and treehouse subshells are ordinary shells found by PID. This
