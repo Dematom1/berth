@@ -44,7 +44,8 @@ func resolveStateDir(publish bool) (string, error) {
 	if dir := compat.Env("STATE"); dir != "" {
 		// A relative ledger path would split the host-wide lock by working directory.
 		if !filepath.IsAbs(dir) {
-			return "", fmt.Errorf("DIBS_STATE must be an absolute path, got %q", dir)
+			abs, _ := filepath.Abs(dir)
+			return "", fmt.Errorf("DIBS_STATE must be an absolute path, got %q; set an absolute path (from this directory it would resolve to %q)", dir, abs)
 		}
 		return filepath.Clean(dir), nil
 	}
